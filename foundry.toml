@@ -1,0 +1,23 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+viaIR = true
+fs_permissions = [{ access = "read-write", path = "./"}]
+allow_internal_expect_revert = true
+optimizer = true
+optimizer_runs = 9999
+
+remappings = [
+    "@aave-v3-core/contracts/=lib/aave-v3-core/contracts/",
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@uniswap-v2/v2-periphery/=lib/v2-periphery/contracts/",
+    "forge-std/=lib/forge-std/src/"
+]
+
+no_match_test = "test_skip"
+
+[rpc_endpoints]
+flow_testnet = "${FLOW_TESTNET_RPC_URL}"
+

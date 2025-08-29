@@ -1,0 +1,416 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {IDiamondCut, DiamondCutFacet} from "../../src/facets/DiamondCutFacet.sol";
+import {IERC165, IDiamondLoupe, DiamondLoupeFacet} from "../../src/facets/DiamondLoupeFacet.sol";
+import {IAccessControlFacet, AccessControlFacet} from "../../src/facets/AccessControlFacet.sol";
+import {IConfigurationFacet, ConfigurationFacet} from "../../src/facets/ConfigurationFacet.sol";
+import {IMulticallFacet, MulticallFacet} from "../../src/facets/MulticallFacet.sol";
+import {IVaultFacet, IERC4626, IERC20, VaultFacet} from "../../src/facets/VaultFacet.sol";
+import {IERC4626Facet, ERC4626Facet} from "../../src/facets/ERC4626Facet.sol";
+import {IERC7540Facet, ERC7540Facet} from "../../src/facets/ERC7540Facet.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+
+contract DeployConfig {
+    // Roles
+    address public owner;
+    address public curator;
+    address public guardian;
+    address public feeRecipient;
+    address public minter = address(0xd061D61a4d941c39E5453435B6345Dc261C2fcE0);
+
+    // Tokens
+    address public assetToDeposit;
+    address public wrappedNative;
+    address public usdce;
+    address public aaveOracle;
+
+    uint96 public fee;
+    uint256 public depositCapacity;
+    uint256 public timeLockPeriod;
+    uint256 public maxSlippagePercent;
+
+    string public vaultName;
+    string public vaultSymbol;
+
+    struct FacetAddresses {
+        address diamondLoupe;
+        address accessControl;
+        address configuration;
+        address multicall;
+        address vault;
+        address erc4626;
+        address erc7540;
+    }
+
+    function initParamsForProtocolDeployment(
+        address _wrappedNative,
+        address _usdce,
+        address _aaveOracle
+    ) external {
+        wrappedNative = _wrappedNative;
+        usdce = _usdce;
+        aaveOracle = _aaveOracle;
+    }
+
+    function initParamsForVaultCreation(
+        address _owner,
+        address _curator,
+        address _guardian,
+        address _feeRecipient,
+        address _assetToDeposit,
+        uint96 _fee,
+        uint256 _depositCapacity,
+        uint256 _timeLockPeriod,
+        uint256 _maxSlippagePercent,
+        string memory _vaultName,
+        string memory _vaultSymbol
+    ) external {
+        owner = _owner;
+        curator = _curator;
+        guardian = _guardian;
+        feeRecipient = _feeRecipient;
+        assetToDeposit = _assetToDeposit;
+        fee = _fee;
+        depositCapacity = _depositCapacity;
+        timeLockPeriod = _timeLockPeriod;
+        maxSlippagePercent = _maxSlippagePercent;
+        vaultName = _vaultName;
+        vaultSymbol = _vaultSymbol;
+    }
+
+    function getCuts(
+        FacetAddresses memory facetAddresses
+    ) external view returns (IDiamondCut.FacetCut[] memory) {
+        /// DEFAULT FACETS
+
+        // selectors for diamond loupe
+        bytes4[] memory functionSelectorsLoupeFacet = new bytes4[](5);
+        functionSelectorsLoupeFacet[0] = IDiamondLoupe.facets.selector;
+        functionSelectorsLoupeFacet[1] = IDiamondLoupe
+            .facetFunctionSelectors
+            .selector;
+        functionSelectorsLoupeFacet[2] = IDiamondLoupe.facetAddresses.selector;
+        functionSelectorsLoupeFacet[3] = IDiamondLoupe.facetAddress.selector;
+        functionSelectorsLoupeFacet[4] = IERC165.supportsInterface.selector;
+
+        // selectors for access control
+        bytes4[] memory functionSelectorsAccessControlFacet = new bytes4[](9);
+        functionSelectorsAccessControlFacet[0] = AccessControlFacet
+            .transferCuratorship
+            .selector;
+        functionSelectorsAccessControlFacet[1] = AccessControlFacet
+            .transferOwnership
+            .selector;
+        functionSelectorsAccessControlFacet[2] = AccessControlFacet
+            .acceptOwnership
+            .selector;
+        functionSelectorsAccessControlFacet[3] = AccessControlFacet
+            .transferGuardian
+            .selector;
+        functionSelectorsAccessControlFacet[4] = AccessControlFacet
+            .owner
+            .selector;
+        functionSelectorsAccessControlFacet[5] = AccessControlFacet
+            .pendingOwner
+            .selector;
+        functionSelectorsAccessControlFacet[6] = AccessControlFacet
+            .curator
+            .selector;
+        functionSelectorsAccessControlFacet[7] = AccessControlFacet
+            .guardian
+            .selector;
+        functionSelectorsAccessControlFacet[8] = AccessControlFacet
+            .moreVaultsRegistry
+            .selector;
+
+        bytes memory initDataAccessControlFacet = abi.encode(
+            owner,
+            curator,
+            guardian
+        );
+
+        // selectors for configuration
+        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](22);
+        functionSelectorsConfigurationFacet[0] = ConfigurationFacet
+            .setFeeRecipient
+            .selector;
+        functionSelectorsConfigurationFacet[1] = ConfigurationFacet
+            .setTimeLockPeriod
+            .selector;
+        functionSelectorsConfigurationFacet[2] = ConfigurationFacet
+            .setDepositCapacity
+            .selector;
+        functionSelectorsConfigurationFacet[3] = ConfigurationFacet
+            .addAvailableAsset
+            .selector;
+        functionSelectorsConfigurationFacet[4] = ConfigurationFacet
+            .addAvailableAssets
+            .selector;
+        functionSelectorsConfigurationFacet[5] = ConfigurationFacet
+            .enableAssetToDeposit
+            .selector;
+        functionSelectorsConfigurationFacet[6] = ConfigurationFacet
+            .disableAssetToDeposit
+            .selector;
+        functionSelectorsConfigurationFacet[7] = ConfigurationFacet
+            .isAssetAvailable
+            .selector;
+        functionSelectorsConfigurationFacet[8] = ConfigurationFacet
+            .isAssetDepositable
+            .selector;
+        functionSelectorsConfigurationFacet[9] = ConfigurationFacet
+            .getAvailableAssets
+            .selector;
+        functionSelectorsConfigurationFacet[10] = ConfigurationFacet
+            .fee
+            .selector;
+        functionSelectorsConfigurationFacet[11] = ConfigurationFacet
+            .depositCapacity
+            .selector;
+        functionSelectorsConfigurationFacet[12] = ConfigurationFacet
+            .timeLockPeriod
+            .selector;
+        functionSelectorsConfigurationFacet[13] = ConfigurationFacet
+            .feeRecipient
+            .selector;
+        functionSelectorsConfigurationFacet[14] = ConfigurationFacet
+            .setGasLimitForAccounting
+            .selector;
+        functionSelectorsConfigurationFacet[15] = ConfigurationFacet
+            .setMaxSlippagePercent
+            .selector;
+        functionSelectorsConfigurationFacet[16] = ConfigurationFacet
+            .setDepositWhitelist
+            .selector;
+        functionSelectorsConfigurationFacet[17] = ConfigurationFacet
+            .getDepositWhitelist
+            .selector;
+        functionSelectorsConfigurationFacet[18] = ConfigurationFacet
+            .enableDepositWhitelist
+            .selector;
+        functionSelectorsConfigurationFacet[19] = ConfigurationFacet
+            .disableDepositWhitelist
+            .selector;
+        functionSelectorsConfigurationFacet[20] = ConfigurationFacet
+            .isDepositWhitelistEnabled
+            .selector;
+        functionSelectorsConfigurationFacet[21] = ConfigurationFacet
+            .getDepositableAssets
+            .selector;
+        bytes memory initDataConfigurationFacet = abi.encode(
+            maxSlippagePercent
+        );
+
+        // selectors for multicall
+        bytes4[] memory functionSelectorsMulticallFacet = new bytes4[](5);
+        functionSelectorsMulticallFacet[0] = MulticallFacet
+            .submitActions
+            .selector;
+        functionSelectorsMulticallFacet[1] = MulticallFacet
+            .executeActions
+            .selector;
+        functionSelectorsMulticallFacet[2] = MulticallFacet
+            .vetoActions
+            .selector;
+        functionSelectorsMulticallFacet[3] = MulticallFacet
+            .getPendingActions
+            .selector;
+        functionSelectorsMulticallFacet[4] = MulticallFacet
+            .getCurrentNonce
+            .selector;
+        bytes memory initDataMulticallFacet = abi.encode(timeLockPeriod);
+
+        // selectors for vault
+        bytes4[] memory functionSelectorsVaultFacet = new bytes4[](39);
+        functionSelectorsVaultFacet[0] = IERC20Metadata.name.selector;
+        functionSelectorsVaultFacet[1] = IERC20Metadata.symbol.selector;
+        functionSelectorsVaultFacet[2] = IERC20Metadata.decimals.selector;
+        functionSelectorsVaultFacet[3] = IERC20.balanceOf.selector;
+        functionSelectorsVaultFacet[4] = IERC20.approve.selector;
+        functionSelectorsVaultFacet[5] = IERC20.transfer.selector;
+        functionSelectorsVaultFacet[6] = IERC20.transferFrom.selector;
+        functionSelectorsVaultFacet[7] = IERC20.allowance.selector;
+        functionSelectorsVaultFacet[8] = IERC20.totalSupply.selector;
+        functionSelectorsVaultFacet[9] = IERC4626.asset.selector;
+        functionSelectorsVaultFacet[10] = IERC4626.totalAssets.selector;
+        functionSelectorsVaultFacet[11] = IERC4626.convertToAssets.selector;
+        functionSelectorsVaultFacet[12] = IERC4626.convertToShares.selector;
+        functionSelectorsVaultFacet[13] = IERC4626.maxDeposit.selector;
+        functionSelectorsVaultFacet[14] = IERC4626.previewDeposit.selector;
+        functionSelectorsVaultFacet[15] = IERC4626.deposit.selector;
+        functionSelectorsVaultFacet[16] = IERC4626.maxMint.selector;
+        functionSelectorsVaultFacet[17] = IERC4626.previewMint.selector;
+        functionSelectorsVaultFacet[18] = IERC4626.mint.selector;
+        functionSelectorsVaultFacet[19] = IERC4626.maxWithdraw.selector;
+        functionSelectorsVaultFacet[20] = IERC4626.previewWithdraw.selector;
+        functionSelectorsVaultFacet[21] = IERC4626.withdraw.selector;
+        functionSelectorsVaultFacet[22] = IERC4626.maxRedeem.selector;
+        functionSelectorsVaultFacet[23] = IERC4626.previewRedeem.selector;
+        functionSelectorsVaultFacet[24] = IERC4626.redeem.selector;
+        functionSelectorsVaultFacet[25] = bytes4(
+            keccak256("deposit(address[],uint256[],address)")
+        );
+        functionSelectorsVaultFacet[26] = IVaultFacet.paused.selector;
+        functionSelectorsVaultFacet[27] = IVaultFacet.pause.selector;
+        functionSelectorsVaultFacet[28] = IVaultFacet.unpause.selector;
+        functionSelectorsVaultFacet[29] = IVaultFacet.setFee.selector;
+        functionSelectorsVaultFacet[30] = IVaultFacet.requestRedeem.selector;
+        functionSelectorsVaultFacet[31] = IVaultFacet.requestWithdraw.selector;
+        functionSelectorsVaultFacet[32] = IVaultFacet
+            .setWithdrawalTimelock
+            .selector;
+        functionSelectorsVaultFacet[33] = IVaultFacet.clearRequest.selector;
+        functionSelectorsVaultFacet[34] = IVaultFacet
+            .getWithdrawalRequest
+            .selector;
+        functionSelectorsVaultFacet[35] = IVaultFacet
+            .getWithdrawalTimelock
+            .selector;
+        functionSelectorsVaultFacet[36] = IVaultFacet
+            .lockedTokensAmountOfAsset
+            .selector;
+        functionSelectorsVaultFacet[37] = IVaultFacet
+            .getStakingAddresses
+            .selector;
+        functionSelectorsVaultFacet[38] = IVaultFacet.tokensHeld.selector;
+
+        bytes memory initDataVaultFacet = abi.encode(
+            vaultName,
+            vaultSymbol,
+            assetToDeposit,
+            feeRecipient,
+            fee,
+            depositCapacity
+        );
+
+        /// OPTIONAL FACETS
+        // selectors for more markets
+        bytes4[] memory functionSelectorsAaveV3Facet = new bytes4[](13);
+        functionSelectorsAaveV3Facet[0] = IAaveV3Facet
+            .accountingAaveV3Facet
+            .selector;
+        functionSelectorsAaveV3Facet[1] = IAaveV3Facet.supply.selector;
+        functionSelectorsAaveV3Facet[2] = IAaveV3Facet.withdraw.selector;
+        functionSelectorsAaveV3Facet[3] = IAaveV3Facet.borrow.selector;
+        functionSelectorsAaveV3Facet[4] = IAaveV3Facet.repay.selector;
+        functionSelectorsAaveV3Facet[5] = IAaveV3Facet
+            .repayWithATokens
+            .selector;
+        functionSelectorsAaveV3Facet[6] = IAaveV3Facet
+            .swapBorrowRateMode
+            .selector;
+        functionSelectorsAaveV3Facet[7] = IAaveV3Facet
+            .rebalanceStableBorrowRate
+            .selector;
+        functionSelectorsAaveV3Facet[8] = IAaveV3Facet
+            .setUserUseReserveAsCollateral
+            .selector;
+        functionSelectorsAaveV3Facet[9] = IAaveV3Facet.flashLoan.selector;
+        functionSelectorsAaveV3Facet[10] = IAaveV3Facet
+            .flashLoanSimple
+            .selector;
+        functionSelectorsAaveV3Facet[11] = IAaveV3Facet.setUserEMode.selector;
+        functionSelectorsAaveV3Facet[12] = IAaveV3Facet
+            .claimAllRewards
+            .selector;
+
+        bytes32 facetSelectorAaveV3 = bytes4(
+            keccak256(abi.encodePacked("accountingAaveV3Facet()"))
+        );
+        bytes memory initDataAaveV3Facet = abi.encode(facetSelectorAaveV3);
+
+        // selectors for erc4626Facet
+        bytes4[] memory functionSelectorsERC4626Facet = new bytes4[](6);
+        functionSelectorsERC4626Facet[0] = IERC4626Facet
+            .erc4626Deposit
+            .selector;
+        functionSelectorsERC4626Facet[1] = IERC4626Facet.erc4626Mint.selector;
+        functionSelectorsERC4626Facet[2] = IERC4626Facet
+            .erc4626Withdraw
+            .selector;
+        functionSelectorsERC4626Facet[3] = IERC4626Facet.erc4626Redeem.selector;
+        functionSelectorsERC4626Facet[4] = IERC4626Facet
+            .genericAsyncActionExecution
+            .selector;
+        functionSelectorsERC4626Facet[5] = IERC4626Facet
+            .accountingERC4626Facet
+            .selector;
+
+        bytes32 facetSelectorERC4626 = bytes4(
+            keccak256(abi.encodePacked("accountingERC4626Facet()"))
+        );
+        bytes memory initDataERC4626Facet = abi.encode(facetSelectorERC4626);
+
+        // selectors for erc7540Facet
+        bytes4[] memory functionSelectorsERC7540Facet = new bytes4[](7);
+        functionSelectorsERC7540Facet[0] = IERC7540Facet
+            .erc7540Deposit
+            .selector;
+        functionSelectorsERC7540Facet[1] = IERC7540Facet.erc7540Mint.selector;
+        functionSelectorsERC7540Facet[2] = IERC7540Facet
+            .erc7540Withdraw
+            .selector;
+        functionSelectorsERC7540Facet[3] = IERC7540Facet.erc7540Redeem.selector;
+        functionSelectorsERC7540Facet[4] = IERC7540Facet
+            .erc7540RequestDeposit
+            .selector;
+        functionSelectorsERC7540Facet[5] = IERC7540Facet
+            .erc7540RequestRedeem
+            .selector;
+        functionSelectorsERC7540Facet[6] = IERC7540Facet
+            .accountingERC7540Facet
+            .selector;
+
+        bytes32 facetSelectorERC7540 = bytes4(
+            keccak256(abi.encodePacked("accountingERC7540Facet()"))
+        );
+        bytes memory initDataERC7540Facet = abi.encode(facetSelectorERC7540);
+
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](8);
+        cuts[0] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.diamondLoupe,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsLoupeFacet,
+            initData: ""
+        });
+        cuts[1] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.accessControl,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsAccessControlFacet,
+            initData: initDataAccessControlFacet
+        });
+        cuts[2] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.configuration,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsConfigurationFacet,
+            initData: initDataConfigurationFacet
+        });
+        cuts[3] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.multicall,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsMulticallFacet,
+            initData: initDataMulticallFacet
+        });
+        cuts[4] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.vault,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsVaultFacet,
+            initData: initDataVaultFacet
+        });
+        cuts[5] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.erc4626,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsERC4626Facet,
+            initData: initDataERC4626Facet
+        });
+        cuts[6] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.erc7540,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsERC7540Facet,
+            initData: initDataERC7540Facet
+        });
+
+        return cuts;
+    }
+}
