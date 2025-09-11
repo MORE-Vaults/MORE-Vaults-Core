@@ -11,8 +11,6 @@ import {IAccessControlFacet, AccessControlFacet} from "../src/facets/AccessContr
 import {IConfigurationFacet, ConfigurationFacet} from "../src/facets/ConfigurationFacet.sol";
 import {IMulticallFacet, MulticallFacet} from "../src/facets/MulticallFacet.sol";
 import {IVaultFacet, IERC4626, IERC20, VaultFacet} from "../src/facets/VaultFacet.sol";
-import {IMORELeverageFacet, MORELeverageFacet} from "../src/facets/MORELeverageFacet.sol";
-import {IPool, IAaveV3Facet, AaveV3Facet} from "../src/facets/AaveV3Facet.sol";
 import {DeployConfig} from "./config/DeployConfig.s.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -23,6 +21,9 @@ import {console} from "forge-std/console.sol";
 
 // mainnet deployment script
 // forge script scripts/CreateVault.s.sol:CreateVaultScript --chain-id 747 --rpc-url https://mainnet.evm.nodes.onflow.org -vv --slow --broadcast --verify --verifier blockscout --verifier-url 'https://evm.flowscan.io/api/'
+
+// sepolia testnet deployment script
+// forge script scripts/CreateVault.s.sol:CreateVaultScript --chain-id 11155111 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier blockscout --verifier-url 'https://evm.flowscan.io/api/'
 
 contract CreateVaultScript is Script {
     DeployConfig config;
@@ -35,6 +36,9 @@ contract CreateVaultScript is Script {
     address vault;
     address erc4626;
     address erc7540;
+
+    bool isHub;
+    bytes32 salt;
 
     function test_skip() public pure {}
 
@@ -63,6 +67,9 @@ contract CreateVaultScript is Script {
         multicall = vm.envAddress("MULTICALL_FACET");
         erc4626 = vm.envAddress("ERC4626_FACET");
         erc7540 = vm.envAddress("ERC7540_FACET");
+
+        isHub = vm.envBool("IS_HUB");
+        salt = vm.envBytes32("SALT");
     }
 
     function run() public {
@@ -90,7 +97,9 @@ contract CreateVaultScript is Script {
         );
         address vaultAddress = factory.deployVault(
             cuts,
-            accessControlFacetInitData
+            accessControlFacetInitData,
+            isHub,
+            salt
         );
         console.log("Vault deployed at:", vaultAddress);
 

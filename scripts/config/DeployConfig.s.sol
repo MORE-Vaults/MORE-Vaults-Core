@@ -22,7 +22,7 @@ contract DeployConfig {
     // Tokens
     address public assetToDeposit;
     address public wrappedNative;
-    address public usdce;
+    address public usd;
     address public aaveOracle;
 
     uint96 public fee;
@@ -45,11 +45,11 @@ contract DeployConfig {
 
     function initParamsForProtocolDeployment(
         address _wrappedNative,
-        address _usdce,
+        address _usd,
         address _aaveOracle
     ) external {
         wrappedNative = _wrappedNative;
-        usdce = _usdce;
+        usd = _usd;
         aaveOracle = _aaveOracle;
     }
 
@@ -285,41 +285,6 @@ contract DeployConfig {
         );
 
         /// OPTIONAL FACETS
-        // selectors for more markets
-        bytes4[] memory functionSelectorsAaveV3Facet = new bytes4[](13);
-        functionSelectorsAaveV3Facet[0] = IAaveV3Facet
-            .accountingAaveV3Facet
-            .selector;
-        functionSelectorsAaveV3Facet[1] = IAaveV3Facet.supply.selector;
-        functionSelectorsAaveV3Facet[2] = IAaveV3Facet.withdraw.selector;
-        functionSelectorsAaveV3Facet[3] = IAaveV3Facet.borrow.selector;
-        functionSelectorsAaveV3Facet[4] = IAaveV3Facet.repay.selector;
-        functionSelectorsAaveV3Facet[5] = IAaveV3Facet
-            .repayWithATokens
-            .selector;
-        functionSelectorsAaveV3Facet[6] = IAaveV3Facet
-            .swapBorrowRateMode
-            .selector;
-        functionSelectorsAaveV3Facet[7] = IAaveV3Facet
-            .rebalanceStableBorrowRate
-            .selector;
-        functionSelectorsAaveV3Facet[8] = IAaveV3Facet
-            .setUserUseReserveAsCollateral
-            .selector;
-        functionSelectorsAaveV3Facet[9] = IAaveV3Facet.flashLoan.selector;
-        functionSelectorsAaveV3Facet[10] = IAaveV3Facet
-            .flashLoanSimple
-            .selector;
-        functionSelectorsAaveV3Facet[11] = IAaveV3Facet.setUserEMode.selector;
-        functionSelectorsAaveV3Facet[12] = IAaveV3Facet
-            .claimAllRewards
-            .selector;
-
-        bytes32 facetSelectorAaveV3 = bytes4(
-            keccak256(abi.encodePacked("accountingAaveV3Facet()"))
-        );
-        bytes memory initDataAaveV3Facet = abi.encode(facetSelectorAaveV3);
-
         // selectors for erc4626Facet
         bytes4[] memory functionSelectorsERC4626Facet = new bytes4[](6);
         functionSelectorsERC4626Facet[0] = IERC4626Facet
@@ -367,7 +332,7 @@ contract DeployConfig {
         );
         bytes memory initDataERC7540Facet = abi.encode(facetSelectorERC7540);
 
-        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](8);
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](7);
         cuts[0] = IDiamondCut.FacetCut({
             facetAddress: facetAddresses.diamondLoupe,
             action: IDiamondCut.FacetCutAction.Add,

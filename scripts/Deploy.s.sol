@@ -20,6 +20,7 @@ import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transpa
 import {OracleRegistry} from "../src/registry/OracleRegistry.sol";
 import {IOracleRegistry, IAggregatorV2V3Interface} from "../src/interfaces/IOracleRegistry.sol";
 import {IAaveOracle} from "@aave-v3-core/contracts/interfaces/IAaveOracle.sol";
+import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {console} from "forge-std/console.sol";
 
 // testnet deployment script
@@ -29,7 +30,10 @@ import {console} from "forge-std/console.sol";
 // forge script scripts/Deploy.s.sol:DeployScript --chain-id 747 --rpc-url https://mainnet.evm.nodes.onflow.org -vv --slow --broadcast --verify --verifier blockscout --verifier-url 'https://evm.flowscan.io/api/'
 
 // ethereum mainnet deployment script
-// forge script scripts/Deploy.s.sol:DeployScript --chain-id 1 --rpc-url https://eth-mainnet.g.alchemy.com/v2/8yei2I_LU23eG8eAXP_wN2pS-4JrTa7R -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 1 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
+
+// sepolia testnet deployment script
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 11155111 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
 
 contract DeployScript is Script {
     DeployConfig config;
@@ -48,12 +52,17 @@ contract DeployScript is Script {
     // address constant stgUSDC =
     //     address(0xF1815bd50389c46847f0Bda824eC8da914045D14);
 
-    // ETHEREUM MAINNET
-    address constant USDC = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-    address constant WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address constant RLUSD =
-        address(0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD);
-    address constant USDT = address(0xdAC17F958D2ee523a2206206994597C13D831ec7);
+    // // ETHEREUM MAINNET
+    // address constant USDC = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+    // address constant WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    // address constant RLUSD =
+    //     address(0x8292Bb45bf1Ee4d140127049757C2E0fF06317eD);
+    // address constant USDT = address(0xdAC17F958D2ee523a2206206994597C13D831ec7);
+
+    // SEPOLIA TESTNET
+    address constant USDF = address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766);
+    address constant PROTOCOL_OWNER =
+        address(0xb10C12547799688F2893530c80Cf625f4A193870);
 
     function test_skip() public pure {}
 
@@ -85,17 +94,58 @@ contract DeployScript is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerPrivateKey);
         DeployConfig.FacetAddresses memory facetAddresses;
-        DiamondCutFacet diamondCut = new DiamondCutFacet();
+
+        DiamondCutFacet diamondCut = DiamondCutFacet(
+            CREATE3.deployDeterministic(
+                type(DiamondCutFacet).creationCode,
+                keccak256(abi.encode("diamondCutFacet"))
+            )
+        );
 
         {
             // Deploy facets
-            DiamondLoupeFacet diamondLoupe = new DiamondLoupeFacet();
-            AccessControlFacet accessControl = new AccessControlFacet();
-            ConfigurationFacet configuration = new ConfigurationFacet();
-            MulticallFacet multicall = new MulticallFacet();
-            VaultFacet vault = new VaultFacet();
-            ERC4626Facet erc4626 = new ERC4626Facet();
-            ERC7540Facet erc7540 = new ERC7540Facet();
+            DiamondLoupeFacet diamondLoupe = DiamondLoupeFacet(
+                CREATE3.deployDeterministic(
+                    type(DiamondLoupeFacet).creationCode,
+                    keccak256(abi.encode("diamondLoupe"))
+                )
+            );
+            AccessControlFacet accessControl = AccessControlFacet(
+                CREATE3.deployDeterministic(
+                    type(AccessControlFacet).creationCode,
+                    keccak256(abi.encode("accessControl"))
+                )
+            );
+            ConfigurationFacet configuration = ConfigurationFacet(
+                CREATE3.deployDeterministic(
+                    type(ConfigurationFacet).creationCode,
+                    keccak256(abi.encode("configuration"))
+                )
+            );
+            MulticallFacet multicall = MulticallFacet(
+                CREATE3.deployDeterministic(
+                    type(MulticallFacet).creationCode,
+                    keccak256(abi.encode("multicall"))
+                )
+            );
+            VaultFacet vault = VaultFacet(
+                CREATE3.deployDeterministic(
+                    type(VaultFacet).creationCode,
+                    keccak256(abi.encode("vault"))
+                )
+            );
+            ERC4626Facet erc4626 = ERC4626Facet(
+                CREATE3.deployDeterministic(
+                    type(ERC4626Facet).creationCode,
+                    keccak256(abi.encode("erc4626"))
+                )
+            );
+            ERC7540Facet erc7540 = ERC7540Facet(
+                CREATE3.deployDeterministic(
+                    type(ERC7540Facet).creationCode,
+                    keccak256(abi.encode("erc7540"))
+                )
+            );
 
             facetAddresses.diamondLoupe = address(diamondLoupe);
             facetAddresses.accessControl = address(accessControl);
@@ -170,7 +220,7 @@ contract DeployScript is Script {
                 "\n"
             )
         );
-        vm.writeFile(".env", string(abi.encodePacked(addresses, addresses2)));
+        vm.writeFile(".env", string(abi.encodePacked(addresses)));
 
         console.log("Facets deployed");
 
@@ -208,38 +258,78 @@ contract DeployScript is Script {
         //     }
         // }
 
-        // ETHEREUM MAINNET
-        address[] memory assets = new address[](4);
-        assets[0] = USDC;
-        assets[1] = WETH;
-        assets[2] = RLUSD;
-        assets[3] = USDT;
-        address[] memory sources = new address[](4);
-        sources[0] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(USDC);
-        sources[1] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(WETH);
-        sources[2] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(RLUSD);
-        sources[3] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(USDT);
-        uint96[] memory confidence = new uint96[](4);
-        confidence[0] = 4 hours;
-        confidence[1] = 4 hours;
-        confidence[2] = 4 hours;
-        confidence[3] = 4 hours;
+        // // ETHEREUM MAINNET
+        // address[] memory assets = new address[](4);
+        // assets[0] = USDC;
+        // assets[1] = WETH;
+        // assets[2] = RLUSD;
+        // assets[3] = USDT;
+        // address[] memory sources = new address[](4);
+        // sources[0] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(USDC);
+        // sources[1] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(WETH);
+        // sources[2] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(RLUSD);
+        // sources[3] = IAaveOracle(config.aaveOracle()).getSourceOfAsset(USDT);
+        // uint96[] memory confidence = new uint96[](4);
+        // confidence[0] = 4 hours;
+        // confidence[1] = 4 hours;
+        // confidence[2] = 4 hours;
+        // confidence[3] = 4 hours;
 
+        // IOracleRegistry.OracleInfo[]
+        //     memory infos = new IOracleRegistry.OracleInfo[](4);
+        // for (uint i; i < assets.length; ) {
+        //     infos[i] = IOracleRegistry.OracleInfo({
+        //         aggregator: IAggregatorV2V3Interface(sources[i]),
+        //         stalenessThreshold: confidence[i]
+        //     });
+        //     unchecked {
+        //         ++i;
+        //     }
+        // }
+
+        // SEPOLIA TESTNET
+        address[] memory assets = new address[](1);
+        assets[0] = USDF;
+        address[] memory sources = new address[](1);
+        sources[0] = address(0x8A28ff02DDf0677A1f94ae05E52BEA48E273884e);
+        uint96[] memory confidence = new uint96[](1);
+        confidence[0] = 4 hours;
         IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](4);
-        for (uint i; i < assets.length; ) {
-            infos[i] = IOracleRegistry.OracleInfo({
-                aggregator: IAggregatorV2V3Interface(sources[i]),
-                stalenessThreshold: confidence[i]
-            });
-            unchecked {
-                ++i;
-            }
-        }
+            memory infos = new IOracleRegistry.OracleInfo[](1);
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(sources[0]),
+            stalenessThreshold: confidence[0]
+        });
+        // uint256 baseCurrencyUnit = 8;
 
         // Deploy oracle registry
-        oracleRegistry = new OracleRegistry();
-        oracleRegistry.initialize(assets, infos, address(0), 8);
+        OracleRegistry oracleRegistryImplementation = OracleRegistry(
+            CREATE3.deployDeterministic(
+                type(OracleRegistry).creationCode,
+                keccak256(abi.encode("oracleRegistryImplementation"))
+            )
+        );
+        oracleRegistry = OracleRegistry(
+            address(
+                CREATE3.deployDeterministic(
+                    abi.encodePacked(
+                        type(TransparentUpgradeableProxy).creationCode,
+                        abi.encode(
+                            oracleRegistryImplementation,
+                            PROTOCOL_OWNER,
+                            abi.encodeWithSelector(
+                                OracleRegistry.initialize.selector,
+                                assets,
+                                infos,
+                                address(0),
+                                8
+                            )
+                        )
+                    ),
+                    keccak256(abi.encode("oracleRegistry"))
+                )
+            )
+        );
         console.log("Oracle registry deployed at:", address(oracleRegistry));
 
         // Save registry address
@@ -267,17 +357,27 @@ contract DeployScript is Script {
         );
 
         // Deploy registry
-        address registryImplementation = address(new VaultsRegistry());
+        address registryImplementation = CREATE3.deployDeterministic(
+            type(VaultsRegistry).creationCode,
+            keccak256(abi.encode("registryImplementation"))
+        );
         registry = VaultsRegistry(
             address(
-                new TransparentUpgradeableProxy(
-                    registryImplementation,
-                    msg.sender,
-                    abi.encodeWithSelector(
-                        BaseVaultsRegistry.initialize.selector,
-                        oracleRegistry,
-                        config.usdce()
-                    )
+                CREATE3.deployDeterministic(
+                    abi.encodePacked(
+                        type(TransparentUpgradeableProxy).creationCode,
+                        abi.encode(
+                            registryImplementation,
+                            PROTOCOL_OWNER,
+                            abi.encodeWithSelector(
+                                BaseVaultsRegistry.initialize.selector,
+                                PROTOCOL_OWNER,
+                                oracleRegistry,
+                                config.usd()
+                            )
+                        )
+                    ),
+                    keccak256(abi.encode("registry"))
                 )
             )
         );
@@ -339,19 +439,33 @@ contract DeployScript is Script {
         console.log("Facets added to registry");
 
         // Deploy factory
-        address factoryImplementation = address(new VaultsFactory());
+        address factoryImplementation = address(
+            CREATE3.deployDeterministic(
+                type(VaultsFactory).creationCode,
+                keccak256(abi.encode("factoryImplementation"))
+            )
+        );
         factory = VaultsFactory(
             address(
-                new TransparentUpgradeableProxy(
-                    factoryImplementation,
-                    msg.sender,
-                    abi.encodeWithSelector(
-                        VaultsFactory.initialize.selector,
-                        address(registry),
-                        address(diamondCut),
-                        address(facetAddresses.accessControl),
-                        config.wrappedNative()
-                    )
+                CREATE3.deployDeterministic(
+                    abi.encodePacked(
+                        type(TransparentUpgradeableProxy).creationCode,
+                        abi.encode(
+                            factoryImplementation,
+                            PROTOCOL_OWNER,
+                            abi.encodeWithSelector(
+                                VaultsFactory.initialize.selector,
+                                PROTOCOL_OWNER,
+                                address(registry),
+                                address(diamondCut),
+                                address(facetAddresses.accessControl),
+                                config.wrappedNative(),
+                                address(1),
+                                1 minutes
+                            )
+                        )
+                    ),
+                    keccak256(abi.encode("factory"))
                 )
             )
         );
@@ -381,41 +495,40 @@ contract DeployScript is Script {
             )
         );
 
-        // Deploy vault
-        bytes memory accessControlFacetInitData = abi.encode(
-            config.owner(),
-            config.curator(),
-            config.guardian()
-        );
-        address vaultAddress = factory.deployVault(
-            cuts,
-            accessControlFacetInitData
-        );
-        console.log("Vault deployed at:", vaultAddress);
+        // // Deploy vault
+        // bytes memory accessControlFacetInitData = abi.encode(
+        //     config.owner(),
+        //     config.curator(),
+        //     config.guardian()
+        // );
+        // address vaultAddress = factory.deployVault(
+        //     cuts,
+        //     accessControlFacetInitData
+        // );
+        // console.log("Vault deployed at:", vaultAddress);
 
-        // Save factory address
-        vm.writeFile(
-            ".env.deployments",
-            string(
-                abi.encodePacked(
-                    vm.readFile(".env.deployments"),
-                    "VAULT_ADDRESS=",
-                    vm.toString(vaultAddress),
-                    "\n"
-                )
-            )
-        );
-        vm.writeFile(
-            ".env",
-            string(
-                abi.encodePacked(
-                    vm.readFile(".env"),
-                    "VAULT_ADDRESS=",
-                    vm.toString(vaultAddress),
-                    "\n"
-                )
-            )
-        );
+        // vm.writeFile(
+        //     ".env.deployments",
+        //     string(
+        //         abi.encodePacked(
+        //             vm.readFile(".env.deployments"),
+        //             "VAULT_ADDRESS=",
+        //             vm.toString(vaultAddress),
+        //             "\n"
+        //         )
+        //     )
+        // );
+        // vm.writeFile(
+        //     ".env",
+        //     string(
+        //         abi.encodePacked(
+        //             vm.readFile(".env"),
+        //             "VAULT_ADDRESS=",
+        //             vm.toString(vaultAddress),
+        //             "\n"
+        //         )
+        //     )
+        // );
 
         vm.stopBroadcast();
     }
