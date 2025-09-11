@@ -24,6 +24,8 @@ contract VaultsFactoryTest is Test {
     address public guardian = address(3);
     address public feeRecipient = address(4);
     address public oracle = address(5);
+    address public layerZeroEndpoint = address(6);
+    uint96 public maxFinalizationTime = 1 days;
     address public asset;
     address public wrappedNative;
 
@@ -55,10 +57,13 @@ contract VaultsFactoryTest is Test {
     function test_initialize_ShouldSetInitialValues() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         assertEq(
@@ -80,44 +85,59 @@ contract VaultsFactoryTest is Test {
     function test_initialize_ShouldRevertIfZeroAddress() public {
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
+            admin,
             address(0),
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
+            admin,
             registry,
             address(0),
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             address(0),
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            address(0)
+            address(0),
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
     }
 
     function test_setDiamondCutFacet_ShouldRevertWhenNotAdmin() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         address newFacet = address(5);
@@ -129,10 +149,13 @@ contract VaultsFactoryTest is Test {
     function test_setDiamondCutFacet_ShouldRevertWithZeroAddress() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         vm.prank(admin);
@@ -143,10 +166,13 @@ contract VaultsFactoryTest is Test {
     function test_setDiamondCutFacet_ShouldUpdateFacet() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         address newFacet = address(5);
@@ -162,10 +188,13 @@ contract VaultsFactoryTest is Test {
     function test_setAccessControlFacet_ShouldRevertWhenNotAdmin() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         address newFacet = address(5);
@@ -177,10 +206,13 @@ contract VaultsFactoryTest is Test {
     function test_setAccessControlFacet_ShouldRevertWithZeroAddress() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         vm.prank(admin);
@@ -191,10 +223,13 @@ contract VaultsFactoryTest is Test {
     function test_setAccessControlFacet_ShouldUpdateFacet() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         address newFacet = address(5);
@@ -218,10 +253,13 @@ contract VaultsFactoryTest is Test {
 
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         // Prepare facets
@@ -303,11 +341,6 @@ contract VaultsFactoryTest is Test {
             abi.encode(oracle)
         );
 
-        // IOracleRegistry.AssetSource memory assetSource = IOracleRegistry
-        //     .AssetSource({
-        //         aggregator: IAggregatorV2V3Interface(asset),
-        //         stalenessThreshold: 1000
-        //     });
         vm.mockCall(
             oracle,
             abi.encodeWithSelector(
@@ -324,7 +357,9 @@ contract VaultsFactoryTest is Test {
         );
         address vault = VaultsFactory(factory).deployVault(
             facets,
-            accessControlFacetInitData
+            accessControlFacetInitData,
+            true,
+            bytes32(0)
         );
 
         assertTrue(
@@ -396,10 +431,13 @@ contract VaultsFactoryTest is Test {
     function test_pauseFacet_ShouldAddFacetToRestricted() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         vm.prank(admin);
@@ -422,10 +460,13 @@ contract VaultsFactoryTest is Test {
 
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
 
         // Prepare facets
@@ -601,7 +642,9 @@ contract VaultsFactoryTest is Test {
 
         address vault1 = VaultsFactory(factory).deployVault(
             facets1,
-            accessControlFacetInitData
+            accessControlFacetInitData,
+            true,
+            bytes32(0)
         );
 
         // aloow mock 2
@@ -624,7 +667,9 @@ contract VaultsFactoryTest is Test {
 
         address vault2 = VaultsFactory(factory).deployVault(
             facets2,
-            accessControlFacetInitData
+            accessControlFacetInitData,
+            true,
+            bytes32(uint256(1))
         );
 
         // allow mock3
@@ -647,7 +692,9 @@ contract VaultsFactoryTest is Test {
 
         address vault3 = VaultsFactory(factory).deployVault(
             facets3,
-            accessControlFacetInitData
+            accessControlFacetInitData,
+            true,
+            bytes32(uint256(2))
         );
 
         vm.prank(admin);
@@ -672,10 +719,13 @@ contract VaultsFactoryTest is Test {
     function test_setFacetRestricted_shouldSetFacetToRestricted() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);
@@ -689,10 +739,13 @@ contract VaultsFactoryTest is Test {
     function test_setFacetRestricted_shouldSetFacetToNotRestricted() public {
         vm.prank(admin);
         factory.initialize(
+            admin,
             registry,
             diamondCutFacet,
             accessControlFacet,
-            wrappedNative
+            wrappedNative,
+            layerZeroEndpoint,
+            maxFinalizationTime
         );
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);

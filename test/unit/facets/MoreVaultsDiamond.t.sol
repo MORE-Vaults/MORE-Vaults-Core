@@ -16,6 +16,7 @@ contract MoreVaultsDiamondTest is Test {
     AccessControlFacet public accessControlFacet;
     address public registry;
     address public wrappedNative;
+    address public factory;
     IDiamondCut.FacetCut[] public cuts;
     address owner = address(1111);
     address curator = address(2222);
@@ -27,6 +28,7 @@ contract MoreVaultsDiamondTest is Test {
         accessControlFacet = new AccessControlFacet();
         registry = address(2);
         wrappedNative = address(3);
+        factory = address(4);
         cuts = new IDiamondCut.FacetCut[](0);
 
         vm.mockCall(
@@ -84,6 +86,8 @@ contract MoreVaultsDiamondTest is Test {
             address(accessControlFacet),
             registry,
             wrappedNative,
+            factory,
+            true,
             cuts,
             accessControlFacetInitData
         );
@@ -112,6 +116,11 @@ contract MoreVaultsDiamondTest is Test {
             MoreVaultsStorageHelper.getGuardian(address(diamond)),
             guardian,
             "guardian should be set correctly"
+        );
+        assertEq(
+            MoreVaultsStorageHelper.getFactory(address(diamond)),
+            factory,
+            "factory should be set correctly"
         );
     }
 

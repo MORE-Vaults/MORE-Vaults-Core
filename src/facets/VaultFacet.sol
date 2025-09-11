@@ -30,6 +30,7 @@ contract VaultFacet is
     error InvalidAssetsAmount();
     error CantProcessWithdrawRequest();
     error VaultIsUsingRestrictedFacet(address);
+    error NotAHub();
 
     event WithdrawRequestCreated(
         address requester,
@@ -452,6 +453,9 @@ contract VaultFacet is
     function clearRequest() public {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
 
         MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
             msg.sender
@@ -479,6 +483,9 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
 
         MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
             msg.sender
@@ -519,6 +526,9 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
 
         MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
             msg.sender
@@ -550,6 +560,9 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
         _validateCapacity(receiver, newTotalAssets, assets);
 
         ds.lastTotalAssets = newTotalAssets;
@@ -581,6 +594,9 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
 
         ds.lastTotalAssets = newTotalAssets;
 
@@ -611,6 +627,12 @@ contract VaultFacet is
         MoreVaultsLib.validateMulticall();
         uint256 newTotalAssets = _accrueInterest();
 
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
+            .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
+
         shares = _convertToSharesWithTotals(
             assets,
             totalSupply(),
@@ -629,8 +651,6 @@ contract VaultFacet is
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
         ds.lastTotalAssets = newTotalAssets > assets
             ? newTotalAssets - assets
             : 0;
@@ -655,6 +675,11 @@ contract VaultFacet is
         returns (uint256 assets)
     {
         MoreVaultsLib.validateMulticall();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
+            .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
         bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
         if (!isWithdrawable) {
@@ -675,8 +700,6 @@ contract VaultFacet is
             Math.Rounding.Floor
         );
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
         ds.lastTotalAssets = newTotalAssets > assets
             ? newTotalAssets - assets
             : 0;
@@ -697,6 +720,9 @@ contract VaultFacet is
         MoreVaultsLib.validateMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
         if (msg.value > 0) {
             ds.isNativeDeposit = true;
         }
@@ -752,6 +778,9 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
         uint256 newTotalAssets = _accrueInterest();
 
         ds.lastTotalAssets = newTotalAssets;

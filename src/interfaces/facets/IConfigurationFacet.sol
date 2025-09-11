@@ -129,6 +129,12 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function isDepositWhitelistEnabled() external view returns (bool);
 
     /**
+     * @notice Checks if vault is hub
+     * @return true if vault is hub
+     */
+    function isHub() external view returns (bool);
+
+    /**
      * @notice Gets list of all available assets
      * @return Array of available asset addresses
      */

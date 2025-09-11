@@ -19,6 +19,24 @@ interface IVaultsFactory {
     );
 
     event DiamondCutFacetUpdated(address indexed newDiamondCutFacet);
+    event AccessControlFacetUpdated(address indexed newAccessControlFacet);
+    event LayerZeroEndpointUpdated(address indexed newLayerZeroEndpoint);
+    event MaxFinalizationTimeUpdated(uint96 indexed newMaxFinalizationTime);
+    event TrustedFactoryUpdated(
+        uint16 indexed chainId,
+        address indexed factory
+    );
+    event CrossChainLinkRequested(
+        uint16 indexed dstChainId,
+        address indexed initiator,
+        address indexed vaultToLink,
+        address remoteVault
+    );
+    event CrossChainLinked(
+        uint16 indexed linkedVaultChainId,
+        address indexed linkedVault,
+        address indexed localVault
+    );
 
     event SetFacetRestricted(
         address indexed _facet,
@@ -27,15 +45,22 @@ interface IVaultsFactory {
 
     /**
      * @notice Initialize the factory
+     * @param _owner Owner address
      * @param _registry Registry contract address
      * @param _diamondCutFacet Diamond cut facet address
+     * @param _accessControlFacet Access control facet address
      * @param _wrappedNative Wrapped native token address
+     * @param _layerZeroEndpoint Layer zero endpoint address
+     * @param _maxFinalizationTime Maximum finalization time of block for a chain
      */
     function initialize(
+        address _owner,
         address _registry,
         address _diamondCutFacet,
         address _accessControlFacet,
-        address _wrappedNative
+        address _wrappedNative,
+        address _layerZeroEndpoint,
+        uint96 _maxFinalizationTime
     ) external;
 
     /**
@@ -66,7 +91,9 @@ interface IVaultsFactory {
      */
     function deployVault(
         IDiamondCut.FacetCut[] calldata facetCuts,
-        bytes memory accessControlFacetInitData
+        bytes memory accessControlFacetInitData,
+        bool isHub,
+        bytes32 salt
     ) external returns (address vault);
 
     /**

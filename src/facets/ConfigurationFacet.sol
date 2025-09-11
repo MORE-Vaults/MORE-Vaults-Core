@@ -226,4 +226,11 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function isDepositWhitelistEnabled() external view returns (bool) {
         return MoreVaultsLib.moreVaultsStorage().isWhitelistEnabled;
     }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function isHub() external view returns (bool) {
+        return MoreVaultsLib.moreVaultsStorage().isHub;
+    }
 }

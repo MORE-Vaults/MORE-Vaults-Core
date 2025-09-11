@@ -73,7 +73,7 @@ contract BaseVaultsRegistryTest is Test {
 
     function test_initialize_ShouldSetInitialValues() public {
         vm.prank(admin);
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
         assertEq(
             address(registry.oracle()),
             oracle,
@@ -92,14 +92,14 @@ contract BaseVaultsRegistryTest is Test {
 
     function test_initialize_ShouldRevertWithZeroOracle() public {
         vm.expectRevert(IMoreVaultsRegistry.ZeroAddress.selector);
-        registry.initialize(address(0), address(usdc));
+        registry.initialize(admin, address(0), address(usdc));
     }
 
     function test_updateOracle_ShouldUpdateOracle() public {
         address newOracle = address(5);
 
         vm.prank(admin);
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
         vm.prank(admin);
         registry.updateOracleRegistry(newOracle);
 
@@ -108,14 +108,14 @@ contract BaseVaultsRegistryTest is Test {
 
     function test_updateOracle_ShouldRevertWithZeroAddress() public {
         vm.prank(admin);
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
         vm.expectRevert(IMoreVaultsRegistry.ZeroAddress.selector);
         vm.prank(admin);
         registry.updateOracleRegistry(address(0));
     }
 
     function test_updateOracle_ShouldRevertWhenNotAdmin() public {
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
 
         vm.prank(user);
         vm.expectRevert();
@@ -123,7 +123,7 @@ contract BaseVaultsRegistryTest is Test {
     }
 
     function test_getDenominationAsset_ShouldReturnBaseCurrency() public {
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
 
         assertEq(
             registry.getDenominationAsset(),
@@ -135,7 +135,7 @@ contract BaseVaultsRegistryTest is Test {
     function test_getDenominationAsset_ShouldReturnUsdcWhenNoBaseCurrency()
         public
     {
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
 
         vm.mockCall(
             oracle,
@@ -153,7 +153,7 @@ contract BaseVaultsRegistryTest is Test {
     function test_getDenominationAssetDecimals_ShouldReturnBaseCurrencyDecimals()
         public
     {
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
 
         vm.mockCall(
             baseCurrency,
@@ -171,7 +171,7 @@ contract BaseVaultsRegistryTest is Test {
     function test_getDenominationAssetDecimals_ShouldReturnUsdcDecimalsWhenNoBaseCurrency()
         public
     {
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
 
         vm.mockCall(
             oracle,
@@ -184,5 +184,57 @@ contract BaseVaultsRegistryTest is Test {
             MockERC20(address(usdc)).decimals(),
             "Should return USDC decimals"
         );
+    }
+
+    function test_addBridgeAllowed_ShouldAddBridgeAllowed() public {
+        vm.startPrank(admin);
+        registry.initialize(admin, address(oracle), address(usdc));
+
+        registry.addBridgeAllowed(address(1111));
+
+        assertTrue(
+            registry.isBridgeAllowed(address(1111)),
+            "Should add bridge allowed"
+        );
+        vm.stopPrank();
+    }
+
+    function test_addBridgeAllowed_ShouldRevertWhenNotAdmin() public {
+        registry.initialize(admin, address(oracle), address(usdc));
+
+        vm.startPrank(user);
+        vm.expectRevert();
+        registry.addBridgeAllowed(address(1111));
+        vm.stopPrank();
+    }
+
+    function test_removeBridgeAllowed_ShouldRemoveBridgeAllowed() public {
+        vm.startPrank(admin);
+        registry.initialize(admin, address(oracle), address(usdc));
+
+        registry.addBridgeAllowed(address(1111));
+        vm.stopPrank();
+    }
+
+    function test_removeBridgeAllowed_ShouldRevertWhenNotAdmin() public {
+        registry.initialize(admin, address(oracle), address(usdc));
+
+        vm.startPrank(user);
+        vm.expectRevert();
+        registry.removeBridgeAllowed(address(1111));
+        vm.stopPrank();
+    }
+
+    function test_isBridgeAllowed_ShouldReturnCorrectValue() public {
+        vm.startPrank(admin);
+        registry.initialize(admin, address(oracle), address(usdc));
+
+        assertFalse(
+            registry.isBridgeAllowed(address(1111)),
+            "Should not allow unknown bridge"
+        );
+
+        registry.addBridgeAllowed(address(1111));
+        vm.stopPrank();
     }
 }

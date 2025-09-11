@@ -19,6 +19,8 @@ contract MoreVaultsDiamond {
         address _accessControlFacet,
         address _registry,
         address _wrappedNative,
+        address _factory,
+        bool _isHub,
         IDiamondCut.FacetCut[] memory _cuts,
         bytes memory accessControlFacetInitData
     ) payable {
@@ -47,12 +49,13 @@ contract MoreVaultsDiamond {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         ds.wrappedNative = _wrappedNative;
-        ds.factory = msg.sender;
+        ds.isHub = _isHub;
 
         MoreVaultsLib.diamondCut(cut);
         if (_cuts.length > 0) {
             MoreVaultsLib.diamondCut(_cuts);
         }
+        ds.factory = _factory;
     }
 
     // Find facet for function that is called and execute the

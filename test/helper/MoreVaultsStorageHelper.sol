@@ -49,6 +49,8 @@ library MoreVaultsStorageHelper {
     uint256 constant DEPOSIT_WHITELIST = 30;
     uint256 constant IS_NECESSARY_TO_CHECK_LOCK = 31;
     uint256 constant IS_WHITELIST_ENABLED = 32;
+    uint256 constant DEPOSITABLE_ASSETS = 33;
+    uint256 constant IS_HUB = 34;
 
     uint256 constant OWNER = 0;
     uint256 constant CURATOR = 1;
@@ -336,6 +338,14 @@ library MoreVaultsStorageHelper {
             FACTORY,
             (storedValue & ~mask) | bytes32(uint256(uint160(factory)) << 8)
         );
+    }
+
+    function getFactory(
+        address contractAddress
+    ) internal view returns (address) {
+        bytes32 storedValue = getStorageValue(contractAddress, FACTORY);
+        bytes32 mask = bytes32(type(uint256).max << 1);
+        return address(uint160(uint256(storedValue & mask)) >> 8);
     }
 
     function setAvailableAssets(
@@ -1020,5 +1030,17 @@ library MoreVaultsStorageHelper {
                     uint256(vm.load(contractAddress, ERC4626StorageLocation))
                 )
             );
+    }
+
+    function setIsHub(address contractAddress, bool isHub) internal {
+        setStorageValue(
+            contractAddress,
+            IS_HUB,
+            bytes32(uint256(isHub ? 1 : 0))
+        );
+    }
+
+    function getIsHub(address contractAddress) internal view returns (bool) {
+        return uint256(getStorageValue(contractAddress, IS_HUB)) != 0;
     }
 }

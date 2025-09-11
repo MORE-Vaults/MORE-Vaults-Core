@@ -104,6 +104,7 @@ contract VaultFacetTest is Test {
             user,
             10_000_000 ether
         );
+        MoreVaultsStorageHelper.setIsHub(facet, true);
 
         // Mint some assets to user for testing
         MockERC20(asset).mint(user, 1000 ether);
@@ -168,6 +169,10 @@ contract VaultFacetTest is Test {
                 type(IERC20).interfaceId
             ),
             "Should set supported interface"
+        );
+        assertTrue(
+            MoreVaultsStorageHelper.getIsHub(facet),
+            "Should set as hub"
         );
     }
 

@@ -73,11 +73,25 @@ interface IMoreVaultsRegistry {
     event AddressWhitelisted(address indexed protocol, bool whitelisted);
 
     /**
+     * @dev Emitted when bridge is allowed
+     * @param bridge Address of the bridge
+     */
+    event BridgeAllowed(address indexed bridge);
+
+    /**
+     * @dev Emitted when bridge is removed
+     * @param bridge Address of the bridge
+     */
+    event BridgeRemoved(address indexed bridge);
+
+    /**
      * @notice Initialize the registry
+     * @param _owner Address of the owner
      * @param _oracle Address of the oracle
      * @param _usdStableTokenAddress Address of the USD stable token
      */
     function initialize(
+        address _owner,
         address _oracle,
         address _usdStableTokenAddress
     ) external;
@@ -227,6 +241,25 @@ interface IMoreVaultsRegistry {
      * @return bool True if protocol is whitelisted
      */
     function isWhitelisted(address protocol) external view returns (bool);
+
+    /**
+     * @notice Add bridge to allowed list
+     * @param bridge Address of the bridge
+     */
+    function addBridgeAllowed(address bridge) external;
+
+    /**
+     * @notice Remove bridge from allowed list
+     * @param bridge Address of the bridge
+     */
+    function removeBridgeAllowed(address bridge) external;
+
+    /**
+     * @notice Check if bridge is allowed
+     * @param bridge Address of the bridge
+     * @return bool True if bridge is allowed
+     */
+    function isBridgeAllowed(address bridge) external view returns (bool);
 
     /**
      * @notice Check if selector is allowed

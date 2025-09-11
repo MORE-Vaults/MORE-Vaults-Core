@@ -150,6 +150,7 @@ library MoreVaultsLib {
         mapping(address => bool) isNecessaryToCheckLock;
         bool isWhitelistEnabled;
         address[] depositableAssets;
+        bool isHub;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -523,7 +524,8 @@ library MoreVaultsLib {
                 ++selectorIndex;
             }
         }
-        if (msg.sender != factoryAddress()) {
+        // if factory is not set, then it is deployment of diamond, so link will be done on factory side
+        if (factoryAddress() != address(0)) {
             IVaultsFactory(ds.factory).link(_facetAddress);
         }
     }

@@ -10,16 +10,49 @@ import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {IGenericMoreVaultFacetInitializable} from "../interfaces/facets/IGenericMoreVaultFacetInitializable.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
+import {ILayerZeroReceiver} from "../interfaces/LayerZero/ILayerZeroReceiver.sol";
+import {ILayerZeroEndpoint} from "../interfaces/LayerZero/ILayerZeroEndpoint.sol";
+import {CREATE3} from "@solady/src/utils/CREATE3.sol";
+import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
+import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
 
 /**
  * @title VaultsFactory
  * @notice Factory contract for deploying new vault instances
  */
-contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
+contract VaultsFactory is
+    IVaultsFactory,
+    AccessControlUpgradeable,
+    ILayerZeroReceiver
+{
     using EnumerableSet for EnumerableSet.AddressSet;
+
+    struct VaultInfo {
+        uint16 chainId;
+        address vault;
+    }
 
     /// @dev Thrown when non-vault tries to link or unlink facet.
     error NotAuthorizedToLinkFacets(address);
+    /// @dev Thrown when non-vault tries to request cross-chain link
+    error NotAVault(address);
+    /// @dev Thrown when non-owner of vault tries to request cross-chain link
+    error NotAnOwnerOfVault(address);
+    /// @dev Thrown when max finalization time is not exceeded
+    error MaxFinalizationTimeNotExceeded();
+    /// @dev Thrown when non-layer zero endpoint tries to receive message
+    error NotLayerZeroEndpoint(address);
+    /// @dev Thrown when factory is untrusted
+    error UntrustedFactory(uint16, bytes);
+    /// @dev Thrown when hub cannot initiate cross-chain link
+    error HubCannotInitiateLink();
+    /// @dev Thrown when hub vault is not found
+    error HubVaultNotFound(address);
+    /// @dev Thrown when facet is restricted
+    error RestrictedFacet(address);
+    /// @dev Thrown when vault is already linked
+    error VaultAlreadyLinked(address);
+
     /// @dev Registry contract address
     IMoreVaultsRegistry public registry;
 
@@ -35,8 +68,26 @@ contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
     /// @dev Array of all deployed vaults
     address[] public deployedVaults;
 
+    /// @dev Array of times of deployment of vaults
+    mapping(address => uint96) public deployedAt;
+
     /// @dev Address of the wrapped native token
     address public wrappedNative;
+
+    /// @dev Address of the layer zero endpoint
+    address public layerZeroEndpoint;
+
+    /// @dev Maximum finalization time of block for a chain
+    uint96 public maxFinalizationTime;
+
+    /// @dev Mapping chain id => trusted factory address
+    mapping(uint16 => address) public trustedFactory;
+
+    /// @dev Mapping chain id => spoke vault address => hub vault info
+    mapping(uint16 => mapping(address => VaultInfo)) public spokeToHub;
+
+    /// @dev Mapping chain id => hub vault info => spoke vault addresses
+    mapping(uint16 => mapping(address => VaultInfo[])) public hubToSpokes;
 
     /// @dev Address set of restricted facets
     EnumerableSet.AddressSet private _restrictedFacets;
@@ -45,25 +96,30 @@ contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
     mapping(address => EnumerableSet.AddressSet) private _linkedVaults;
 
     function initialize(
+        address _owner,
         address _registry,
         address _diamondCutFacet,
         address _accessControlFacet,
-        address _wrappedNative
+        address _wrappedNative,
+        address _layerZeroEndpoint,
+        uint96 _maxFinalizationTime
     ) external initializer {
         if (
+            _owner == address(0) ||
             _registry == address(0) ||
             _diamondCutFacet == address(0) ||
             _accessControlFacet == address(0) ||
-            _wrappedNative == address(0)
+            _wrappedNative == address(0) ||
+            _layerZeroEndpoint == address(0)
         ) revert ZeroAddress();
         _setDiamondCutFacet(_diamondCutFacet);
         _setAccessControlFacet(_accessControlFacet);
-
+        _setLayerZeroEndpoint(_layerZeroEndpoint);
+        _setMaxFinalizationTime(_maxFinalizationTime);
         wrappedNative = _wrappedNative;
-
         registry = IMoreVaultsRegistry(_registry);
 
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _owner);
     }
 
     /**
@@ -84,6 +140,33 @@ contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
         address _accessControlFacet
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setAccessControlFacet(_accessControlFacet);
+    }
+
+    /**
+     * @notice Set the layer zero endpoint address
+     * @param _layerZeroEndpoint The address of the layer zero endpoint
+     */
+    function setLayerZeroEndpoint(
+        address _layerZeroEndpoint
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setLayerZeroEndpoint(_layerZeroEndpoint);
+    }
+
+    /**
+     * @notice Set the maximum finalization time of block for a chain
+     * @param _maxFinalizationTime The maximum finalization time of block for a chain
+     */
+    function setMaxFinalizationTime(
+        uint96 _maxFinalizationTime
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setMaxFinalizationTime(_maxFinalizationTime);
+    }
+
+    function setTrustedFactory(
+        uint16 _chainId,
+        address _factory
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTrustedFactory(_chainId, _factory);
     }
 
     /**
@@ -141,30 +224,183 @@ contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
      */
     function deployVault(
         IDiamondCut.FacetCut[] calldata facets,
-        bytes memory accessControlFacetInitData
+        bytes memory accessControlFacetInitData,
+        bool isHub,
+        bytes32 salt
     ) external returns (address vault) {
-        // Deploy new MoreVaultsDiamond (vault)
-        vault = address(
-            new MoreVaultsDiamond(
-                diamondCutFacet,
-                accessControlFacet,
-                address(registry),
-                wrappedNative,
-                facets,
-                accessControlFacetInitData
-            )
+        // Deploy new MoreVaultsDiamond (vault) with CREATE3
+        vault = CREATE3.deployDeterministic(
+            0,
+            abi.encodePacked(
+                type(MoreVaultsDiamond).creationCode,
+                abi.encode(
+                    diamondCutFacet,
+                    accessControlFacet,
+                    address(registry),
+                    wrappedNative,
+                    address(this),
+                    isHub,
+                    facets,
+                    accessControlFacetInitData
+                )
+            ),
+            salt
         );
+
         isFactoryVault[vault] = true;
         deployedVaults.push(vault);
+        deployedAt[vault] = uint96(block.timestamp);
         _linkedVaults[diamondCutFacet].add(vault);
         _linkedVaults[accessControlFacet].add(vault);
+        _checkRestrictedFacet(diamondCutFacet);
+        _checkRestrictedFacet(accessControlFacet);
         for (uint256 i = 0; i < facets.length; ) {
+            _checkRestrictedFacet(facets[i].facetAddress);
             _linkedVaults[facets[i].facetAddress].add(vault);
             unchecked {
                 ++i;
             }
         }
         emit VaultDeployed(vault, address(registry), wrappedNative, facets);
+    }
+
+    /**
+     * @notice Predict the address of a vault deployed with given salt (CREATE3).
+     */
+    function predictVaultAddress(bytes32 salt) external view returns (address) {
+        return CREATE3.predictDeterministicAddress(salt, address(this));
+    }
+
+    /**
+     * @notice Request a cross-chain link
+     * @param _dstChainId The destination chain ID
+     * @param _dstFactory The destination factory address
+     * @param _vaultToLink The local vault address
+     * @param _originChainId Optional. The origin chain ID in case of hub requests link existing spoke to another spoke
+     */
+    function requestCrossChainLink(
+        uint16 _dstChainId,
+        bytes calldata _dstFactory,
+        address _vaultToLink,
+        address _localVault,
+        uint16 _originChainId
+    ) external payable {
+        if (!isFactoryVault[_vaultToLink]) revert NotAVault(_vaultToLink);
+        if (IAccessControlFacet(_vaultToLink).owner() != msg.sender)
+            revert NotAnOwnerOfVault(msg.sender);
+        if (block.timestamp - deployedAt[_vaultToLink] < maxFinalizationTime)
+            revert MaxFinalizationTimeNotExceeded();
+        if (trustedFactory[_dstChainId] != address(bytes20(_dstFactory)))
+            revert UntrustedFactory(_dstChainId, _dstFactory);
+
+        bool isHub = IConfigurationFacet(_localVault).isHub();
+
+        uint16 chainId = isHub ? _originChainId : uint16(block.chainid);
+
+        bytes memory payload = abi.encode(
+            msg.sender,
+            _vaultToLink,
+            _localVault,
+            chainId,
+            isHub
+        );
+
+        ILayerZeroEndpoint.MessagingParams memory params = ILayerZeroEndpoint
+            .MessagingParams(
+                _dstChainId,
+                bytes32(bytes20(_dstFactory)),
+                payload,
+                bytes(""),
+                false
+            );
+        ILayerZeroEndpoint(layerZeroEndpoint).send{value: msg.value}(
+            params,
+            payable(msg.sender)
+        );
+
+        if (!isHub) {
+            if (spokeToHub[_dstChainId][_vaultToLink].vault != address(0))
+                revert VaultAlreadyLinked(_vaultToLink);
+            VaultInfo memory hubVaultInfo = spokeToHub[uint16(block.chainid)][
+                _localVault
+            ];
+            spokeToHub[_dstChainId][_vaultToLink] = VaultInfo({
+                chainId: hubVaultInfo.chainId,
+                vault: hubVaultInfo.vault
+            });
+            hubToSpokes[hubVaultInfo.chainId][hubVaultInfo.vault].push(
+                VaultInfo({chainId: _dstChainId, vault: _vaultToLink})
+            );
+
+            emit CrossChainLinkRequested(
+                _dstChainId,
+                msg.sender,
+                _vaultToLink,
+                _localVault
+            );
+        } else if (isHub) {
+            if (spokeToHub[chainId][_vaultToLink].vault == address(0))
+                revert HubVaultNotFound(_vaultToLink);
+            spokeToHub[_dstChainId][_vaultToLink] = VaultInfo({
+                chainId: uint16(block.chainid),
+                vault: _localVault
+            });
+            hubToSpokes[uint16(block.chainid)][_localVault].push(
+                VaultInfo({chainId: _dstChainId, vault: _vaultToLink})
+            );
+        }
+    }
+
+    function lzReceive(
+        uint16 _srcChainId,
+        bytes calldata _srcAddress,
+        uint64 /*_nonce*/,
+        bytes calldata _payload
+    ) external {
+        if (msg.sender != address(layerZeroEndpoint))
+            revert NotLayerZeroEndpoint(msg.sender);
+        // check source equals trusted remote
+        if (trustedFactory[_srcChainId] != address(bytes20(_srcAddress)))
+            revert UntrustedFactory(_srcChainId, _srcAddress);
+
+        (
+            address initiator,
+            address vaultToLink, // vault on src chain
+            address localVault, // vault on dst chain
+            uint16 originChainId,
+            bool isSenderHub
+        ) = abi.decode(_payload, (address, address, address, uint16, bool));
+
+        // Ensure dstVault is actually deployed by this factory
+        if (!isFactoryVault[localVault]) revert NotAVault(localVault);
+
+        // if sender is hub, we need to link the spoke to the spoke
+        if (isSenderHub) {
+            VaultInfo memory hubVaultInfo = spokeToHub[uint16(block.chainid)][
+                localVault
+            ];
+            if (hubVaultInfo.vault == address(0))
+                revert HubVaultNotFound(localVault);
+
+            spokeToHub[originChainId][vaultToLink] = VaultInfo({
+                chainId: hubVaultInfo.chainId,
+                vault: hubVaultInfo.vault
+            });
+            hubToSpokes[hubVaultInfo.chainId][hubVaultInfo.vault].push(
+                VaultInfo({chainId: originChainId, vault: vaultToLink})
+            );
+            emit CrossChainLinked(originChainId, vaultToLink, localVault);
+        } else {
+            // if sender is spoke, we need to link the spoke to the hub
+            hubToSpokes[uint16(block.chainid)][localVault].push(
+                VaultInfo({chainId: originChainId, vault: vaultToLink})
+            );
+            spokeToHub[originChainId][vaultToLink] = VaultInfo({
+                chainId: uint16(block.chainid),
+                vault: localVault
+            });
+            emit CrossChainLinked(originChainId, vaultToLink, localVault);
+        }
     }
 
     /**
@@ -241,6 +477,23 @@ contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
     function _setAccessControlFacet(address _accessControlFacet) internal {
         if (_accessControlFacet == address(0)) revert ZeroAddress();
         accessControlFacet = _accessControlFacet;
+        emit AccessControlFacetUpdated(accessControlFacet);
+    }
+
+    function _setLayerZeroEndpoint(address _layerZeroEndpoint) internal {
+        if (_layerZeroEndpoint == address(0)) revert ZeroAddress();
+        layerZeroEndpoint = _layerZeroEndpoint;
+        emit LayerZeroEndpointUpdated(layerZeroEndpoint);
+    }
+
+    function _setMaxFinalizationTime(uint96 _maxFinalizationTime) internal {
+        maxFinalizationTime = _maxFinalizationTime;
+        emit MaxFinalizationTimeUpdated(_maxFinalizationTime);
+    }
+
+    function _setTrustedFactory(uint16 _chainId, address _factory) internal {
+        trustedFactory[_chainId] = _factory;
+        emit TrustedFactoryUpdated(_chainId, _factory);
     }
 
     function _setFacetRestricted(address _facet, bool _isRestricted) private {
@@ -248,5 +501,9 @@ contract VaultsFactory is IVaultsFactory, AccessControlUpgradeable {
         else _restrictedFacets.remove(_facet);
 
         emit SetFacetRestricted(_facet, _isRestricted);
+    }
+
+    function _checkRestrictedFacet(address _facet) internal view {
+        if (_restrictedFacets.contains(_facet)) revert RestrictedFacet(_facet);
     }
 }

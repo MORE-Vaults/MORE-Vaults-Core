@@ -24,7 +24,7 @@ contract VaultsRegistryTest is Test {
         vm.prank(admin);
         registry = new VaultsRegistry();
         vm.prank(admin);
-        registry.initialize(address(oracle), address(usdc));
+        registry.initialize(admin, address(oracle), address(usdc));
 
         // Mock oracle calls
         vm.mockCall(
