@@ -26,18 +26,20 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
      * @notice Initialize the OracleRegistry
      * @param assets The addresses of the assets
      * @param infos The infos of each asset
+     * @param owner The owner of the OracleRegistry
      * @param baseCurrency The base currency used for the price quotes. If USD is used, base currency is 0x0
      * @param baseCurrencyUnit The unit of the base currency
      */
     function initialize(
         address[] memory assets,
         OracleInfo[] memory infos,
+        address owner,
         address baseCurrency,
         uint256 baseCurrencyUnit
     ) external initializer {
         __AccessControl_init();
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ORACLE_MANAGER_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, owner);
+        _grantRole(ORACLE_MANAGER_ROLE, owner);
 
         _setOracleInfos(assets, infos);
         BASE_CURRENCY = baseCurrency;

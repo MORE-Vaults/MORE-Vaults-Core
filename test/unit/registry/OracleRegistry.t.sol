@@ -55,7 +55,13 @@ contract OracleRegistryTest is Test {
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(assets, infos, baseCurrency, baseCurrencyUnit);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
         assertEq(registry.BASE_CURRENCY(), baseCurrency);
         assertEq(registry.BASE_CURRENCY_UNIT(), baseCurrencyUnit);
         assertTrue(registry.hasRole(registry.DEFAULT_ADMIN_ROLE(), admin));
@@ -80,7 +86,13 @@ contract OracleRegistryTest is Test {
             stalenessThreshold: staleness
         });
         vm.startPrank(admin);
-        registry.initialize(assets, infos, baseCurrency, baseCurrencyUnit);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
         registry.setOracleInfos(assets, infos);
         IOracleRegistry.OracleInfo memory info = registry.getOracleInfo(asset);
         assertEq(address(info.aggregator), address(infos[0].aggregator));
@@ -96,6 +108,7 @@ contract OracleRegistryTest is Test {
         registry.initialize(
             assets,
             new IOracleRegistry.OracleInfo[](1),
+            admin,
             baseCurrency,
             baseCurrencyUnit
         );
@@ -116,7 +129,13 @@ contract OracleRegistryTest is Test {
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(assets, infos, baseCurrency, baseCurrencyUnit);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
         uint256 price = registry.getAssetPrice(asset);
         assertEq(price, 123);
     }
@@ -135,7 +154,13 @@ contract OracleRegistryTest is Test {
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(assets, infos, baseCurrency, baseCurrencyUnit);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
         uint256 price = registry.getAssetPrice(baseCurrency);
         assertEq(price, baseCurrencyUnit);
     }
@@ -154,7 +179,13 @@ contract OracleRegistryTest is Test {
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(assets, infos, baseCurrency, baseCurrencyUnit);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
         vm.expectRevert(IOracleRegistry.OraclePriceIsOld.selector);
         registry.getAssetPrice(asset);
     }
@@ -171,7 +202,13 @@ contract OracleRegistryTest is Test {
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(assets, infos, baseCurrency, baseCurrencyUnit);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
         vm.expectRevert(IOracleRegistry.PriceIsNotAvailable.selector);
         registry.getAssetPrice(asset);
     }

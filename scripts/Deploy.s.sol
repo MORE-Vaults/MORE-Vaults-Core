@@ -321,12 +321,13 @@ contract DeployScript is Script {
                                 OracleRegistry.initialize.selector,
                                 assets,
                                 infos,
+                                PROTOCOL_OWNER,
                                 address(0),
                                 8
                             )
                         )
                     ),
-                    keccak256(abi.encode("oracleRegistry"))
+                    keccak256(abi.encode("oracleRegistry2"))
                 )
             )
         );
