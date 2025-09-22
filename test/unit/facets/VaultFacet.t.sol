@@ -7,13 +7,6 @@ import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol"
 import {IVaultFacet} from "../../../src/interfaces/facets/IVaultFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
-import {IERC165} from "../../../src/interfaces/IERC165.sol";
-import {IERC173} from "../../../src/interfaces/IERC173.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
-import {IDiamondCut} from "../../../src/interfaces/facets/IDiamondCut.sol";
-import {IDiamondLoupe} from "../../../src/interfaces/facets/IDiamondLoupe.sol";
-import {IMulticallFacet} from "../../../src/interfaces/facets/IMulticallFacet.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {BaseFacetInitializer} from "../../../src/facets/BaseFacetInitializer.sol";

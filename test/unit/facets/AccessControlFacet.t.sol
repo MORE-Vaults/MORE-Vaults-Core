@@ -4,7 +4,6 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControlFacet, AccessControlFacet} from "../../../src/facets/AccessControlFacet.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
-import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";

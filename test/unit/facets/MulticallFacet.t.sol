@@ -2,10 +2,9 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
-import {BaseFacetInitializer, IMulticallFacet, MulticallFacet} from "../../../src/facets/MulticallFacet.sol";
+import {IMulticallFacet, MulticallFacet} from "../../../src/facets/MulticallFacet.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
-import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 
 contract MulticallFacetTest is Test {
     MulticallFacet public facet;

@@ -23,3 +23,5 @@ no_match_test = "test_skip"
 [rpc_endpoints]
 flow_testnet = "${FLOW_TESTNET_RPC_URL}"
 
+[lint]
+exclude_lints = ["pascal-case-struct","mixed-case-function","mixed-case-variable","screaming-snake-case-const","screaming-snake-case-immutable","asm-keccak256","erc20-unchecked-transfer"]

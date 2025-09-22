@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IGenericMoreVaultFacetInitializable} from "./IGenericMoreVaultFacetInitializable.sol";
 
 interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {

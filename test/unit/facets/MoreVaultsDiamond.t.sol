@@ -4,7 +4,6 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {MoreVaultsDiamond} from "../../../src/MoreVaultsDiamond.sol";
 import {IDiamondCut} from "../../../src/interfaces/facets/IDiamondCut.sol";
-import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
 import {DiamondCutFacet} from "../../../src/facets/DiamondCutFacet.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-
 /**
  * @title IERC4626Facet
  * @dev Interface for working with ERC4626 vault operations

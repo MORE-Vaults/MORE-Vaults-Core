@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {MoreVaultsLib} from "./MoreVaultsLib.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
-
 /**
  * @title AccessControlLib
  * @notice Library for managing access control in diamond proxy

@@ -5,7 +5,6 @@ import {MoreVaultsLib, BEFORE_ACCOUNTING_SELECTOR, BEFORE_ACCOUNTING_FAILED_ERRO
 import {AccessControlLib} from "../libraries/AccessControlLib.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IGenericMoreVaultFacet} from "../interfaces/facets/IGenericMoreVaultFacet.sol";
 import {ERC4626Upgradeable, SafeERC20} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";

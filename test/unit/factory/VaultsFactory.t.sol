@@ -7,7 +7,6 @@ import {DiamondCutFacet} from "../../../src/facets/DiamondCutFacet.sol";
 import {IAccessControlFacet, AccessControlFacet} from "../../../src/facets/AccessControlFacet.sol";
 import {IDiamondCut} from "../../../src/interfaces/facets/IDiamondCut.sol";
 import {IMoreVaultsRegistry, IOracleRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
-import {IAggregatorV2V3Interface} from "../../../src/interfaces/Chainlink/IAggregatorV2V3Interface.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
 import {MockFacet} from "../../mocks/MockFacet.sol";
