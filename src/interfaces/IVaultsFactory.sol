@@ -11,6 +11,11 @@ interface IVaultsFactory {
     error InvalidTimeLock();
     error InvalidFee();
 
+    struct VaultInfo {
+        uint16 chainId;
+        address vault;
+    }
+
     event VaultDeployed(
         address indexed vault,
         address registry,
@@ -163,4 +168,26 @@ interface IVaultsFactory {
      * @return facets addresses of the restricted facets
      */
     function getRestrictedFacets() external returns (address[] memory facets);
+
+    /**
+     * @notice Returns hub to spokes
+     * @param _chainId chain id
+     * @param _hubVault hub vault
+     * @return spokes info about spokes
+     */
+    function hubToSpokes(
+        uint16 _chainId,
+        address _hubVault
+    ) external view returns (VaultInfo[] memory);
+
+    /**
+     * @notice Returns spoke to hub
+     * @param _chainId chain id
+     * @param _spokeVault spoke vault
+     * @return hub info about hub
+     */
+    function spokeToHub(
+        uint16 _chainId,
+        address _spokeVault
+    ) external view returns (VaultInfo memory);
 }

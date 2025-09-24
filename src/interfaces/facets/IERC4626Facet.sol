@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IGenericMoreVaultFacetInitializable} from "./IGenericMoreVaultFacetInitializable.sol";
+
 /**
  * @title IERC4626Facet
  * @dev Interface for working with ERC4626 vault operations
  * ERC4626 is a standard for tokenized vaults that provide yield-bearing tokens
  */
-interface IERC4626Facet {
+interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
     /// @dev Errors
     /// @notice Error thrown when the selector is not allowed
     error SelectorNotAllowed(bytes4 selector);

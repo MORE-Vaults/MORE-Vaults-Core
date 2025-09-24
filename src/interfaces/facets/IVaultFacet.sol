@@ -37,6 +37,9 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /// @notice Returns the total amount of the underlying asset that is "managed" by Vault
     function totalAssets() external view override returns (uint256);
 
+    /// @notice Returns the total amount of the underlying asset that is "managed" by Vault in USD
+    function totalAssetsUsd() external view returns (uint256);
+
     /// @notice Get the lockedTokens amount of an asset
     /// @param asset The asset to get the lockedTokens amount of
     /// @return The lockedTokens amount of the asset

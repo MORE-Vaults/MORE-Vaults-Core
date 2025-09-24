@@ -44,7 +44,7 @@ library MoreVaultsLib {
     error AssetAlreadyAvailable();
     error InvalidAddress();
     error NoOracleForAsset();
-    error FacetHasBalance(address facet);
+    error FacetHasBalance(uint256 amount);
     error AccountingFailed(bytes32 selector);
     error UnsupportedProtocol(address protocol);
     error AccountingGasLimitExceeded(uint256 limit, uint256 consumption);
@@ -107,6 +107,25 @@ library MoreVaultsLib {
         StakingToken
     }
 
+    enum ActionType {
+        REQUEST_WITHDRAW,
+        REQUEST_REDEEM,
+        DEPOSIT,
+        MINT,
+        WITHDRAW,
+        REDEEM,
+        MULTI_ASSETS_DEPOSIT,
+        SET_FEE
+    }
+
+    struct CrossChainRequestInfo {
+        address initiator;
+        ActionType actionType;
+        bytes actionCallData;
+        bool fulfilled;
+        uint256 totalAssets;
+    }
+
     struct MoreVaultsStorage {
         // maps function selector to the facet address and
         // the position of the selector in the facetFunctionSelectors.selectors array
@@ -151,6 +170,10 @@ library MoreVaultsLib {
         bool isWhitelistEnabled;
         address[] depositableAssets;
         bool isHub;
+        bool oraclesCrossChainAccounting;
+        address crossChainAccountingManager;
+        mapping(uint64 => CrossChainRequestInfo) nonceToCrossChainRequestInfo;
+        uint64 finalizationNonce;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -207,7 +230,7 @@ library MoreVaultsLib {
         if (!ds.isAssetDepositable[asset]) revert UnsupportedAsset(asset);
     }
 
-    function validateMulticall() internal view {
+    function validateNotMulticall() internal view {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         if (ds.isMulticall) {
             revert RestrictedActionInsideMulticall();
@@ -280,6 +303,42 @@ library MoreVaultsLib {
         );
 
         return convertedAmount;
+    }
+
+    function convertUnderlyingToUsd(
+        uint amount,
+        Math.Rounding rounding
+    ) internal view returns (uint) {
+        IOracleRegistry oracle = IMoreVaultsRegistry(
+            AccessControlLib.vaultRegistry()
+        ).oracle();
+        address underlyingToken = address(getERC4626Storage()._asset);
+
+        return (
+            amount.mulDiv(
+                oracle.getAssetPrice(underlyingToken),
+                10 ** IERC20Metadata(underlyingToken).decimals(),
+                rounding
+            )
+        );
+    }
+
+    function convertUsdToUnderlying(
+        uint amount,
+        Math.Rounding rounding
+    ) internal view returns (uint) {
+        IOracleRegistry oracle = IMoreVaultsRegistry(
+            AccessControlLib.vaultRegistry()
+        ).oracle();
+        address underlyingToken = address(getERC4626Storage()._asset);
+
+        return (
+            amount.mulDiv(
+                10 ** IERC20Metadata(underlyingToken).decimals(),
+                oracle.getAssetPrice(underlyingToken),
+                rounding
+            )
+        );
     }
 
     function _setFeeRecipient(address recipient) internal {
@@ -695,7 +754,6 @@ library MoreVaultsLib {
                                 .onFacetRemoval
                                 .selector
                         ),
-                        _facetAddress,
                         _isReplacing
                     )
                 );
@@ -780,32 +838,20 @@ library MoreVaultsLib {
 
     function removeFromFacetsForAccounting(
         MoreVaultsStorage storage ds,
-        address _facetAddress,
+        bytes4 selector,
         bool _isReplacing
     ) internal {
-        (bool success, bytes memory result) = address(_facetAddress).staticcall(
-            abi.encodeWithSelector(IGenericMoreVaultFacet.facetName.selector)
-        );
-        if (!success) {
-            revert FacetNameFailed(_facetAddress);
-        }
-        string memory facetName = abi.decode(result, (string));
-
-        bytes4 selector = bytes4(
-            keccak256(abi.encodePacked("accounting", facetName, "()"))
-        );
         for (uint256 i; i < ds.facetsForAccounting.length; ) {
             if (ds.facetsForAccounting[i] == selector) {
                 if (!_isReplacing) {
-                    (success, result) = address(this).staticcall(
-                        abi.encodeWithSelector(selector)
-                    );
+                    (bool success, bytes memory result) = address(this)
+                        .staticcall(abi.encodeWithSelector(selector));
                     if (!success) {
                         revert AccountingFailed(selector);
                     }
                     uint256 decodedAmount = abi.decode(result, (uint256));
                     if (decodedAmount > 10e4) {
-                        revert FacetHasBalance(_facetAddress);
+                        revert FacetHasBalance(decodedAmount);
                     }
                 }
                 ds.facetsForAccounting[i] = ds.facetsForAccounting[
@@ -921,5 +967,29 @@ library MoreVaultsLib {
     function _setWhitelistFlag(bool isEnabled) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         ds.isWhitelistEnabled = isEnabled;
+    }
+
+    function _beforeAccounting(address[] storage _baf) internal {
+        assembly {
+            let freePtr := mload(0x40)
+            let length := sload(_baf.slot)
+            mstore(0, _baf.slot)
+            let slot := keccak256(0, 0x20)
+            mstore(freePtr, BEFORE_ACCOUNTING_SELECTOR)
+            for {
+                let i := 0
+            } lt(i, length) {
+                i := add(i, 1)
+            } {
+                let facet := sload(add(slot, i))
+                let res := delegatecall(gas(), facet, freePtr, 4, 0, 0) // call facets for acounting, ignore return values
+                // if delegatecall fails, revert with the error
+                if iszero(res) {
+                    mstore(freePtr, BEFORE_ACCOUNTING_FAILED_ERROR)
+                    mstore(add(freePtr, 0x04), facet)
+                    revert(freePtr, 0x24)
+                }
+            }
+        }
     }
 }

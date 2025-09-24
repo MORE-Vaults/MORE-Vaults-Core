@@ -41,7 +41,7 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
         ds.supportedInterfaces[type(IAccessControlFacet).interfaceId] = true; // AccessControlFacet
     }
 
-    function onFacetRemoval(address, bool) external {
+    function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         ds.supportedInterfaces[type(IAccessControlFacet).interfaceId] = false;

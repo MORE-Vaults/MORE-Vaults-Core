@@ -643,7 +643,7 @@ contract ERC4626FacetTest is Test {
             .getFacetsForAccounting(address(facet));
 
         // Remove facet
-        facet.onFacetRemoval(address(facet), false);
+        facet.onFacetRemoval(false);
 
         // Check that supported interface is removed
         assertFalse(

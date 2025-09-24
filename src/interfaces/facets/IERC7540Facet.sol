@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IGenericMoreVaultFacetInitializable} from "./IGenericMoreVaultFacetInitializable.sol";
+
 /**
  * @title IERC7540Facet
  * @dev Interface for working with asynchronous token operations (ERC7540)
  * ERC7540 is a standard for asynchronous token operations, including
  * creating deposit/withdrawal requests and their execution
  */
-interface IERC7540Facet {
+interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
     /// @dev Errors
     /// @notice Error thrown when amount is zero
     error ZeroAmount();

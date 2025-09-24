@@ -32,7 +32,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         ds.maxSlippagePercent = maxSlippagePercent;
     }
 
-    function onFacetRemoval(address, bool) external {
+    function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         ds.supportedInterfaces[type(IConfigurationFacet).interfaceId] = false;

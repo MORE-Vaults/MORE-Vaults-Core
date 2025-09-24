@@ -40,6 +40,12 @@ interface IOracleRegistry {
      */
     event OracleInfoUpdated(address indexed asset, OracleInfo info);
 
+    event SpokeOracleInfoUpdated(
+        address indexed hub,
+        uint16 indexed chaindId,
+        OracleInfo info
+    );
+
     /**
      * @notice Returns the base currency address used for price quotes
      * @return The address of the base currency (e.g., 0x0 for USD)
@@ -62,6 +68,22 @@ interface IOracleRegistry {
         address[] calldata assets,
         OracleInfo[] calldata infos
     ) external;
+
+    function setSpokeOracleInfos(
+        address hub,
+        uint16[] calldata chainIds,
+        OracleInfo[] calldata infos
+    ) external;
+
+    function getSpokeValue(
+        address hub,
+        uint16 chainId
+    ) external view returns (uint256);
+
+    function getSpokeOracleInfo(
+        address hub,
+        uint16 chainId
+    ) external view returns (OracleInfo memory);
 
     /**
      * @notice Returns the price of a given asset

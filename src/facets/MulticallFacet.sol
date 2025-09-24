@@ -43,7 +43,7 @@ contract MulticallFacet is
         MoreVaultsLib._setTimeLockPeriod(timeLockPeriod);
     }
 
-    function onFacetRemoval(address, bool) external {
+    function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         ds.supportedInterfaces[type(IMulticallFacet).interfaceId] = false;

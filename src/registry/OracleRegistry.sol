@@ -13,7 +13,10 @@ import {IOracleRegistry} from "../interfaces/IOracleRegistry.sol";
  */
 contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
     // Map of asset price sources (asset => priceSource)
-    mapping(address => OracleInfo) private oracleInfos;
+    mapping(address => OracleInfo) private _oracleInfos;
+    // Map of spoke value sources (hub => chainId => oracle)
+    mapping(address => mapping(uint16 => OracleInfo))
+        private _spokeVaultOracleInfos;
 
     address public override BASE_CURRENCY;
     uint256 public override BASE_CURRENCY_UNIT;
@@ -49,8 +52,16 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
     function setOracleInfos(
         address[] calldata assets,
         OracleInfo[] calldata infos
-    ) external override onlyRole(ORACLE_MANAGER_ROLE) {
+    ) external onlyRole(ORACLE_MANAGER_ROLE) {
         _setOracleInfos(assets, infos);
+    }
+
+    function setSpokeOracleInfos(
+        address hub,
+        uint16[] calldata chainIds,
+        OracleInfo[] calldata infos
+    ) external onlyRole(ORACLE_MANAGER_ROLE) {
+        _setSpokeOracleInfos(hub, chainIds, infos);
     }
 
     /**
@@ -66,8 +77,8 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
             revert InconsistentParamsLength();
         }
         for (uint256 i = 0; i < assets.length; ) {
-            oracleInfos[assets[i]].aggregator = infos[i].aggregator;
-            oracleInfos[assets[i]].stalenessThreshold = infos[i]
+            _oracleInfos[assets[i]].aggregator = infos[i].aggregator;
+            _oracleInfos[assets[i]].stalenessThreshold = infos[i]
                 .stalenessThreshold;
             emit OracleInfoUpdated(assets[i], infos[i]);
             unchecked {
@@ -76,10 +87,49 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
         }
     }
 
+    /**
+     * @notice Internal function to set the infos for spoke vaults
+     */
+    function _setSpokeOracleInfos(
+        address hub,
+        uint16[] calldata chainIds,
+        OracleInfo[] calldata infos
+    ) internal {
+        if (chainIds.length != infos.length) {
+            revert InconsistentParamsLength();
+        }
+        for (uint256 i = 0; i < chainIds.length; ) {
+            _spokeVaultOracleInfos[hub][chainIds[i]] = infos[i];
+            emit SpokeOracleInfoUpdated(hub, chainIds[i], infos[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function getSpokeValue(
+        address hub,
+        uint16 chainId
+    ) external view returns (uint256) {
+        OracleInfo memory info = _spokeVaultOracleInfos[hub][chainId];
+
+        (, int256 value, , uint256 updatedAt, ) = info
+            .aggregator
+            .latestRoundData();
+
+        // originally in nanoseconds for Stork oracles
+        // workaround to convert from Stork's format to Chainlink's one.
+        if (block.timestamp < updatedAt / 1e7) {
+            updatedAt /= 1e9;
+        }
+        _verifyAnswer(value, updatedAt, info.stalenessThreshold);
+        return uint256(value);
+    }
+
     function getAssetPrice(
         address asset
     ) public view override returns (uint256) {
-        OracleInfo memory info = oracleInfos[asset];
+        OracleInfo memory info = _oracleInfos[asset];
 
         if (asset == BASE_CURRENCY) {
             return BASE_CURRENCY_UNIT;
@@ -87,7 +137,7 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
             (, int256 price, , uint256 updatedAt, ) = info
                 .aggregator
                 .latestRoundData();
-            _verifyPrice(price, updatedAt, info.stalenessThreshold);
+            _verifyAnswer(price, updatedAt, info.stalenessThreshold);
             return uint256(price);
         }
     }
@@ -108,10 +158,17 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
     function getOracleInfo(
         address asset
     ) external view override returns (OracleInfo memory) {
-        return oracleInfos[asset];
+        return _oracleInfos[asset];
     }
 
-    function _verifyPrice(
+    function getSpokeOracleInfo(
+        address hub,
+        uint16 chainId
+    ) external view returns (OracleInfo memory) {
+        return _spokeVaultOracleInfos[hub][chainId];
+    }
+
+    function _verifyAnswer(
         int256 answer,
         uint256 updatedAt,
         uint96 stalenessThreshold

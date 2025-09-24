@@ -74,17 +74,16 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
     /**
      * @notice Handles facet removal and cleanup
-     * @param facetAddress The address of the facet being removed
      * @param isReplacing Whether the facet is being replaced
      */
-    function onFacetRemoval(address facetAddress, bool isReplacing) external {
+    function onFacetRemoval(bool isReplacing) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         ds.supportedInterfaces[type(IERC7540Facet).interfaceId] = false;
 
         MoreVaultsLib.removeFromFacetsForAccounting(
             ds,
-            facetAddress,
+            IERC7540Facet.accountingERC7540Facet.selector,
             isReplacing
         );
         if (!isReplacing) {

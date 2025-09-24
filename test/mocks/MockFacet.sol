@@ -30,7 +30,7 @@ contract MockFacet is
 
     function initialize(bytes calldata) external initializerFacet {}
 
-    function onFacetRemoval(address, bool) external {}
+    function onFacetRemoval(bool) external {}
 
     function mockFunciton1() external pure returns (bool) {
         return true;

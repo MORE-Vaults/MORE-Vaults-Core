@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
 import {IVaultFacet} from "../../../src/interfaces/facets/IVaultFacet.sol";
+import {IVaultsFactory} from "../../../src/interfaces/IVaultsFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -17,6 +18,7 @@ import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.s
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {console} from "forge-std/console.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -229,6 +231,14 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0)
         );
 
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
         vm.prank(user);
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
 
@@ -312,6 +322,13 @@ contract VaultFacetTest is Test {
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
 
         vm.prank(user);
@@ -419,6 +436,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
 
         vm.prank(user);
         uint256 depositAmountInNative = 100 ether;
@@ -491,6 +515,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
 
         vm.prank(user);
         uint256 assets = VaultFacet(facet).mint(mintAmount, user);
@@ -509,6 +540,14 @@ contract VaultFacetTest is Test {
 
     function test_mint_ShouldRevertinMulticall() public {
         MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
+
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
         VaultFacet(facet).mint(100 ether, user);
@@ -547,6 +586,13 @@ contract VaultFacetTest is Test {
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
 
         vm.prank(user);
@@ -600,6 +646,13 @@ contract VaultFacetTest is Test {
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
 
         // First deposit
@@ -722,6 +775,13 @@ contract VaultFacetTest is Test {
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
 
         // First deposit
@@ -915,6 +975,14 @@ contract VaultFacetTest is Test {
         vm.prank(user);
         IERC20(asset).approve(facet, type(uint256).max);
 
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
         // Try to deposit
         vm.prank(user);
         vm.expectRevert(
@@ -992,6 +1060,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
 
         deal(asset, user, 1000001 ether);
 
@@ -1061,6 +1136,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
 
         // Try to deposit
         vm.prank(user);
@@ -1102,7 +1184,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
         // Try to deposit
         vm.prank(user);
         vm.expectRevert(
@@ -1149,6 +1237,14 @@ contract VaultFacetTest is Test {
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(protocolFeeRecipient, protocolFee)
+        );
+
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1262,6 +1358,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0) // No protocol fee
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
         VaultFacet(facet).deposit(depositAmount, user);
 
         // Move time forward to accrue interest
@@ -1361,6 +1464,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1456,6 +1566,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1546,6 +1663,13 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1603,6 +1727,14 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0)
         );
 
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
         // Set new fee
         uint96 newFee = 200; // 2%
         IVaultFacet(facet).setFee(newFee);
@@ -1646,6 +1778,14 @@ contract VaultFacetTest is Test {
                 IMoreVaultsRegistry.protocolFeeInfo.selector
             ),
             abi.encode(address(0), 0)
+        );
+
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
 
         vm.startPrank(owner);
@@ -1707,6 +1847,15 @@ contract VaultFacetTest is Test {
                 10 ether
             )
         );
+
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
         VaultFacet(facet).deposit(100 ether, user2);
         vm.stopPrank();
     }
@@ -1750,6 +1899,14 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
         vm.startPrank(user2);
         MockERC20(asset).mint(user2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
@@ -1835,6 +1992,13 @@ contract VaultFacetTest is Test {
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
         );
         vm.startPrank(user2);
         MockERC20(asset).mint(user2, 100 ether);

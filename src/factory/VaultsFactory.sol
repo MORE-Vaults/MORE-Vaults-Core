@@ -25,11 +25,6 @@ contract VaultsFactory is
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    struct VaultInfo {
-        uint16 chainId;
-        address vault;
-    }
-
     /// @dev Thrown when non-vault tries to link or unlink facet.
     error NotAuthorizedToLinkFacets(address);
     /// @dev Thrown when non-vault tries to request cross-chain link
@@ -82,10 +77,10 @@ contract VaultsFactory is
     mapping(uint16 => address) public trustedFactory;
 
     /// @dev Mapping chain id => spoke vault address => hub vault info
-    mapping(uint16 => mapping(address => VaultInfo)) public spokeToHub;
+    mapping(uint16 => mapping(address => VaultInfo)) public _spokeToHub;
 
-    /// @dev Mapping chain id => hub vault info => spoke vault addresses
-    mapping(uint16 => mapping(address => VaultInfo[])) public hubToSpokes;
+    /// @dev Mapping chain id => hub vault address => spoke vault infos
+    mapping(uint16 => mapping(address => VaultInfo[])) public _hubToSpokes;
 
     /// @dev Address set of restricted facets
     EnumerableSet.AddressSet private _restrictedFacets;
@@ -317,16 +312,16 @@ contract VaultsFactory is
         );
 
         if (!isHub) {
-            if (spokeToHub[_dstChainId][_vaultToLink].vault != address(0))
+            if (_spokeToHub[_dstChainId][_vaultToLink].vault != address(0))
                 revert VaultAlreadyLinked(_vaultToLink);
-            VaultInfo memory hubVaultInfo = spokeToHub[uint16(block.chainid)][
+            VaultInfo memory hubVaultInfo = _spokeToHub[uint16(block.chainid)][
                 _localVault
             ];
-            spokeToHub[_dstChainId][_vaultToLink] = VaultInfo({
+            _spokeToHub[_dstChainId][_vaultToLink] = VaultInfo({
                 chainId: hubVaultInfo.chainId,
                 vault: hubVaultInfo.vault
             });
-            hubToSpokes[hubVaultInfo.chainId][hubVaultInfo.vault].push(
+            _hubToSpokes[hubVaultInfo.chainId][hubVaultInfo.vault].push(
                 VaultInfo({chainId: _dstChainId, vault: _vaultToLink})
             );
 
@@ -337,13 +332,13 @@ contract VaultsFactory is
                 _localVault
             );
         } else if (isHub) {
-            if (spokeToHub[chainId][_vaultToLink].vault == address(0))
+            if (_spokeToHub[chainId][_vaultToLink].vault == address(0))
                 revert HubVaultNotFound(_vaultToLink);
-            spokeToHub[_dstChainId][_vaultToLink] = VaultInfo({
+            _spokeToHub[_dstChainId][_vaultToLink] = VaultInfo({
                 chainId: uint16(block.chainid),
                 vault: _localVault
             });
-            hubToSpokes[uint16(block.chainid)][_localVault].push(
+            _hubToSpokes[uint16(block.chainid)][_localVault].push(
                 VaultInfo({chainId: _dstChainId, vault: _vaultToLink})
             );
         }
@@ -374,26 +369,26 @@ contract VaultsFactory is
 
         // if sender is hub, we need to link the spoke to the spoke
         if (isSenderHub) {
-            VaultInfo memory hubVaultInfo = spokeToHub[uint16(block.chainid)][
+            VaultInfo memory hubVaultInfo = _spokeToHub[uint16(block.chainid)][
                 localVault
             ];
             if (hubVaultInfo.vault == address(0))
                 revert HubVaultNotFound(localVault);
 
-            spokeToHub[originChainId][vaultToLink] = VaultInfo({
+            _spokeToHub[originChainId][vaultToLink] = VaultInfo({
                 chainId: hubVaultInfo.chainId,
                 vault: hubVaultInfo.vault
             });
-            hubToSpokes[hubVaultInfo.chainId][hubVaultInfo.vault].push(
+            _hubToSpokes[hubVaultInfo.chainId][hubVaultInfo.vault].push(
                 VaultInfo({chainId: originChainId, vault: vaultToLink})
             );
             emit CrossChainLinked(originChainId, vaultToLink, localVault);
         } else {
             // if sender is spoke, we need to link the spoke to the hub
-            hubToSpokes[uint16(block.chainid)][localVault].push(
+            _hubToSpokes[uint16(block.chainid)][localVault].push(
                 VaultInfo({chainId: originChainId, vault: vaultToLink})
             );
-            spokeToHub[originChainId][vaultToLink] = VaultInfo({
+            _spokeToHub[originChainId][vaultToLink] = VaultInfo({
                 chainId: uint16(block.chainid),
                 vault: localVault
             });
@@ -464,6 +459,26 @@ contract VaultsFactory is
         address _vault
     ) external view returns (bool) {
         return _linkedVaults[_facet].contains(_vault);
+    }
+
+    /**
+     * @inheritdoc IVaultsFactory
+     */
+    function hubToSpokes(
+        uint16 _chainId,
+        address _hubVault
+    ) external view returns (VaultInfo[] memory) {
+        return _hubToSpokes[_chainId][_hubVault];
+    }
+
+    /**
+     * @inheritdoc IVaultsFactory
+     */
+    function spokeToHub(
+        uint16 _chainId,
+        address _spokeVault
+    ) external view returns (VaultInfo memory) {
+        return _spokeToHub[_chainId][_spokeVault];
     }
 
     function _setDiamondCutFacet(address _diamondCutFacet) internal {

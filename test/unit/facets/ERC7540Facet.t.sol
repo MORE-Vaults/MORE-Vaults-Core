@@ -737,7 +737,7 @@ contract ERC7540FacetTest is Test {
 
     function test_onFacetRemoval_ShouldCleanupCorrectly() public {
         // Remove facet
-        facet.onFacetRemoval(address(facet), false);
+        facet.onFacetRemoval(false);
 
         // Check that supported interface is removed
         assertFalse(

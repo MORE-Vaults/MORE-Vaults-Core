@@ -31,7 +31,7 @@ contract DiamondLoupeFacet is BaseFacetInitializer, IDiamondLoupe, IERC165 {
         ds.supportedInterfaces[type(IERC165).interfaceId] = true;
     }
 
-    function onFacetRemoval(address, bool) external {
+    function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         ds.supportedInterfaces[type(IDiamondLoupe).interfaceId] = false;
