@@ -25,6 +25,7 @@ import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.s
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {console} from "forge-std/console.sol";
 
 contract VaultFacetTest is Test {
@@ -714,17 +715,15 @@ contract VaultFacetTest is Test {
     }
 
     function test_withdraw_ShouldBurnShares() public {
-        vm.prank(curator);
-        VaultFacet(facet).setWithdrawalTimelock(110);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 110);
         assertEq(
-            VaultFacet(facet).getWithdrawalTimelock(),
+            MoreVaultsStorageHelper.getWithdrawTimelock(facet),
             110,
             "Should set correct timelock duration"
         );
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         assertEq(
-            VaultFacet(facet).getWithdrawalQueueStatus(),
+            MoreVaultsStorageHelper.getIsWithdrawalQueueEnabled(facet),
             true,
             "Should set correct withdrawal queue status"
         );
@@ -850,17 +849,15 @@ contract VaultFacetTest is Test {
     }
 
     function test_redeem_ShouldBurnShares() public {
-        vm.prank(curator);
-        VaultFacet(facet).setWithdrawalTimelock(110);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 110);
         assertEq(
-            VaultFacet(facet).getWithdrawalTimelock(),
+            MoreVaultsStorageHelper.getWithdrawTimelock(facet),
             110,
             "Should set correct timelock duration"
         );
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         assertEq(
-            VaultFacet(facet).getWithdrawalQueueStatus(),
+            MoreVaultsStorageHelper.getIsWithdrawalQueueEnabled(facet),
             true,
             "Should set correct withdrawal queue status"
         );
@@ -976,8 +973,7 @@ contract VaultFacetTest is Test {
     }
 
     function test_requestRedeem_shouldRevertIfSharesIsZero() public {
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         vm.prank(user);
         vm.expectRevert(VaultFacet.InvalidSharesAmount.selector);
         VaultFacet(facet).requestRedeem(0);
@@ -2145,43 +2141,42 @@ contract VaultFacetTest is Test {
 
     // ============ Withdrawal Fee Tests ============
 
-    function test_setWithdrawalFee_ShouldUpdateFee() public {
-        uint96 newFee = 500; // 5%
+    // function test_setWithdrawalFee_ShouldUpdateFee() public {
+    //     uint96 newFee = 500; // 5%
 
-        vm.prank(owner);
-        VaultFacet(facet).setWithdrawalFee(newFee);
+    //     vm.prank(owner);
+    //     VaultFacet(facet).setWithdrawalFee(newFee);
 
-        assertEq(VaultFacet(facet).getWithdrawalFee(), newFee);
-    }
+    //     assertEq(VaultFacet(facet).getWithdrawalFee(), newFee);
+    // }
 
-    function test_setWithdrawalFee_ShouldRevertWhenUnauthorized() public {
-        uint96 newFee = 500;
+    // function test_setWithdrawalFee_ShouldRevertWhenUnauthorized() public {
+    //     uint96 newFee = 500;
 
-        vm.prank(user);
-        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
-        VaultFacet(facet).setWithdrawalFee(newFee);
-    }
+    //     vm.prank(user);
+    //     vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+    //     VaultFacet(facet).setWithdrawalFee(newFee);
+    // }
 
-    function test_getWithdrawalFee_ShouldReturnCurrentFee() public {
-        uint96 initialFee = VaultFacet(facet).getWithdrawalFee();
-        assertEq(initialFee, 0); // Should start at 0
+    // function test_getWithdrawalFee_ShouldReturnCurrentFee() public {
+    //     uint96 initialFee = VaultFacet(facet).getWithdrawalFee();
+    //     assertEq(initialFee, 0); // Should start at 0
 
-        uint96 newFee = 1000; // 10%
-        vm.prank(owner);
-        VaultFacet(facet).setWithdrawalFee(newFee);
+    //     uint96 newFee = 1000; // 10%
+    //     vm.prank(owner);
+    //     VaultFacet(facet).setWithdrawalFee(newFee);
 
-        assertEq(VaultFacet(facet).getWithdrawalFee(), newFee);
-    }
+    //     assertEq(VaultFacet(facet).getWithdrawalFee(), newFee);
+    // }
 
     function test_withdraw_ShouldApplyWithdrawalFee() public {
         // Setup withdrawal fee
         uint96 withdrawalFee = 1000; // 10%
-        vm.prank(owner);
-        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+        MoreVaultsStorageHelper.setWithdrawalFee(facet, withdrawalFee);
 
         // Setup withdrawal queue
         vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2239,12 +2234,11 @@ contract VaultFacetTest is Test {
     function test_redeem_ShouldApplyWithdrawalFee() public {
         // Setup withdrawal fee
         uint96 withdrawalFee = 1000; // 10%
-        vm.prank(owner);
-        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+        MoreVaultsStorageHelper.setWithdrawalFee(facet, withdrawalFee);
 
         // Setup withdrawal queue
         vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2294,6 +2288,8 @@ contract VaultFacetTest is Test {
         // Calculate expected fee (10% of assets)
         uint256 expectedFee = (assets * withdrawalFee) / 10000;
         uint256 expectedNetAmount = assets - expectedFee;
+        console.log("expectedFee", expectedFee);
+        console.log("expectedNetAmount", expectedNetAmount);
 
         assertEq(userBalanceAfter - userBalanceBefore, expectedNetAmount);
         assertGt(feeRecipientBalanceAfter, feeRecipientBalanceBefore);
@@ -2303,7 +2299,7 @@ contract VaultFacetTest is Test {
         // Setup withdrawal fee
         uint96 withdrawalFee = 1000; // 10%
         vm.prank(owner);
-        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+        MoreVaultsStorageHelper.setWithdrawalFee(facet, withdrawalFee);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2343,7 +2339,7 @@ contract VaultFacetTest is Test {
         // Setup withdrawal fee
         uint96 withdrawalFee = 1000; // 10%
         vm.prank(owner);
-        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+        MoreVaultsStorageHelper.setWithdrawalFee(facet, withdrawalFee);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2380,45 +2376,9 @@ contract VaultFacetTest is Test {
         assertTrue(expectedAssets < totalAssets); // Should be less due to fee
     }
 
-    // ============ Withdrawal Queue Tests ============
-
-    function test_updateWithdrawalQueueStatus_ShouldUpdateStatus() public {
-        // Initially should be false
-        assertFalse(VaultFacet(facet).getWithdrawalQueueStatus());
-
-        // Enable queue
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
-        assertTrue(VaultFacet(facet).getWithdrawalQueueStatus());
-
-        // Disable queue
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(false);
-        assertFalse(VaultFacet(facet).getWithdrawalQueueStatus());
-    }
-
-    function test_updateWithdrawalQueueStatus_ShouldRevertWhenUnauthorized()
-        public
-    {
-        vm.prank(user);
-        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
-    }
-
-    function test_getWithdrawalQueueStatus_ShouldReturnStatus() public {
-        // Test initial status
-        assertFalse(VaultFacet(facet).getWithdrawalQueueStatus());
-
-        // Change status and test
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
-        assertTrue(VaultFacet(facet).getWithdrawalQueueStatus());
-    }
-
     function test_requestRedeem_ShouldRevertWhenQueueDisabled() public {
         // Ensure queue is disabled
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(false);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false);
 
         uint256 shares = 100 ether;
         vm.prank(user);
@@ -2428,8 +2388,7 @@ contract VaultFacetTest is Test {
 
     function test_requestWithdraw_ShouldRevertWhenQueueDisabled() public {
         // Ensure queue is disabled
-        vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(false);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false);
 
         uint256 assets = 100 ether;
         vm.prank(user);
@@ -2633,7 +2592,7 @@ contract VaultFacetTest is Test {
     function test_clearRequest_ShouldClearWithdrawalRequest() public {
         // Setup withdrawal queue
         vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2683,11 +2642,11 @@ contract VaultFacetTest is Test {
 
     function test_withdraw_ShouldNotApplyFeeWhenZero() public {
         // Ensure withdrawal fee is 0
-        assertEq(VaultFacet(facet).getWithdrawalFee(), 0);
+        assertEq(MoreVaultsStorageHelper.getWithdrawalFee(facet), 0);
 
         // Setup withdrawal queue
         vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2733,11 +2692,11 @@ contract VaultFacetTest is Test {
 
     function test_redeem_ShouldNotApplyFeeWhenZero() public {
         // Ensure withdrawal fee is 0
-        assertEq(VaultFacet(facet).getWithdrawalFee(), 0);
+        assertEq(MoreVaultsStorageHelper.getWithdrawalFee(facet), 0);
 
         // Setup withdrawal queue
         vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2836,7 +2795,7 @@ contract VaultFacetTest is Test {
         assertEq(maxMint, 0);
     }
 
-    function test_facetVersion_ShouldReturnVersion() public {
+    function test_facetVersion_ShouldReturnVersion() public view {
         string memory version = VaultFacet(facet).facetVersion();
         assertEq(version, "1.0.0");
     }
@@ -2881,7 +2840,7 @@ contract VaultFacetTest is Test {
     function test_getWithdrawalRequest_ShouldReturnCorrectValues() public {
         // Setup withdrawal queue
         vm.prank(owner);
-        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
         vm.mockCall(
@@ -2922,13 +2881,13 @@ contract VaultFacetTest is Test {
     }
 
     function test_getWithdrawalTimelock_ShouldReturnCorrectValue() public {
-        uint64 timelock = VaultFacet(facet).getWithdrawalTimelock();
+        uint64 timelock = MoreVaultsStorageHelper.getWithdrawTimelock(facet);
         assertEq(timelock, 0); // Should start at 0
 
         // Update timelock
         uint64 newTimelock = 2 days;
         vm.prank(curator);
-        VaultFacet(facet).setWithdrawalTimelock(newTimelock);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, newTimelock);
         IVaultsFactory.VaultInfo[]
             memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
         vm.mockCall(
@@ -2936,58 +2895,60 @@ contract VaultFacetTest is Test {
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
             abi.encode(vaultsInfo)
         );
-        uint64 updatedTimelock = VaultFacet(facet).getWithdrawalTimelock();
+        uint64 updatedTimelock = MoreVaultsStorageHelper.getWithdrawTimelock(
+            facet
+        );
         assertEq(updatedTimelock, newTimelock);
     }
 
-    function test_lockedTokensAmountOfAsset_ShouldReturnCorrectValue() public {
-        // Test with the main asset
-        uint256 lockedAmount = VaultFacet(facet).lockedTokensAmountOfAsset(
-            asset
-        );
-        assertEq(lockedAmount, 0); // Should start at 0
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
-        );
-        // Test with a different asset
-        address otherAsset = address(0x123);
-        uint256 otherLockedAmount = VaultFacet(facet).lockedTokensAmountOfAsset(
-            otherAsset
-        );
-        assertEq(otherLockedAmount, 0);
-    }
+    // function test_lockedTokensAmountOfAsset_ShouldReturnCorrectValue() public {
+    //     // Test with the main asset
+    //     uint256 lockedAmount = VaultFacet(facet).lockedTokensAmountOfAsset(
+    //         asset
+    //     );
+    //     assertEq(lockedAmount, 0); // Should start at 0
+    //     IVaultsFactory.VaultInfo[]
+    //         memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+    //     vm.mockCall(
+    //         factory,
+    //         abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+    //         abi.encode(vaultsInfo)
+    //     );
+    //     // Test with a different asset
+    //     address otherAsset = address(0x123);
+    //     uint256 otherLockedAmount = VaultFacet(facet).lockedTokensAmountOfAsset(
+    //         otherAsset
+    //     );
+    //     assertEq(otherLockedAmount, 0);
+    // }
 
-    function test_getStakingAddresses_ShouldReturnCorrectValue() public {
-        bytes32 stakingFacetId = keccak256("TestStakingFacet");
-        address[] memory addresses = VaultFacet(facet).getStakingAddresses(
-            stakingFacetId
-        );
-        assertEq(addresses.length, 0);
-        address[] memory newAddresses = new address[](1);
-        newAddresses[0] = address(0x123);
-        MoreVaultsStorageHelper.setStakingAddresses(
-            facet,
-            stakingFacetId,
-            newAddresses
-        );
-        addresses = VaultFacet(facet).getStakingAddresses(stakingFacetId);
-        assertEq(addresses.length, 1);
-        assertEq(addresses[0], address(0x123));
-    }
+    // function test_getStakingAddresses_ShouldReturnCorrectValue() public {
+    //     bytes32 stakingFacetId = keccak256("TestStakingFacet");
+    //     address[] memory addresses = VaultFacet(facet).getStakingAddresses(
+    //         stakingFacetId
+    //     );
+    //     assertEq(addresses.length, 0);
+    //     address[] memory newAddresses = new address[](1);
+    //     newAddresses[0] = address(0x123);
+    //     MoreVaultsStorageHelper.setStakingAddresses(
+    //         facet,
+    //         stakingFacetId,
+    //         newAddresses
+    //     );
+    //     addresses = VaultFacet(facet).getStakingAddresses(stakingFacetId);
+    //     assertEq(addresses.length, 1);
+    //     assertEq(addresses[0], address(0x123));
+    // }
 
-    function test_tokensHeld_ShouldReturnCorrectValue() public {
-        bytes32 tokenId = keccak256("TestTokenId");
-        address[] memory tokens = VaultFacet(facet).tokensHeld(tokenId);
-        assertEq(tokens.length, 0);
-        address[] memory newTokens = new address[](1);
-        newTokens[0] = address(0x123);
-        MoreVaultsStorageHelper.setTokensHeld(facet, tokenId, newTokens);
-        tokens = VaultFacet(facet).tokensHeld(tokenId);
-        assertEq(tokens.length, 1);
-        assertEq(tokens[0], address(0x123));
-    }
+    // function test_tokensHeld_ShouldReturnCorrectValue() public {
+    //     bytes32 tokenId = keccak256("TestTokenId");
+    //     address[] memory tokens = VaultFacet(facet).tokensHeld(tokenId);
+    //     assertEq(tokens.length, 0);
+    //     address[] memory newTokens = new address[](1);
+    //     newTokens[0] = address(0x123);
+    //     MoreVaultsStorageHelper.setTokensHeld(facet, tokenId, newTokens);
+    //     tokens = VaultFacet(facet).tokensHeld(tokenId);
+    //     assertEq(tokens.length, 1);
+    //     assertEq(tokens[0], address(0x123));
+    // }
 }

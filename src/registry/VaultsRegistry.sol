@@ -24,6 +24,14 @@ contract VaultsRegistry is BaseVaultsRegistry {
     mapping(address => bool) private _allowedFacets;
     mapping(address => mapping(bytes4 => SelectorInfo)) private _selectorInfo;
 
+    /// @dev Mapping of bridge address => is allowed
+    mapping(address => bool) private _bridgeAllowed;
+    /// @dev Mapping of cross chain accounting manager address => is allowed
+    mapping(address => bool) private _isCrossChainAccountingManager;
+
+    /// @dev Cross chain accounting manager
+    address public defaultCrossChainAccountingManager;
+
     /// @dev Mapping of OFT address => is trusted
     mapping(address => bool) private _trustedOFTs;
     /// @dev Array of all trusted OFTs
@@ -234,34 +242,6 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function addTrustedOFT(
-        address oft
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setTrustedOFT(oft, true);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function removeTrustedOFT(
-        address oft
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setTrustedOFT(oft, false);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function setTrustedOFT(
-        address oft,
-        bool trusted
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
-        _setTrustedOFT(oft, trusted);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
     function setTrustedOFTs(
         address[] calldata ofts,
         bool[] calldata trusted
@@ -279,6 +259,55 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
+    function setBridge(
+        address bridge,
+        bool allowed
+    ) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
+        _bridgeAllowed[bridge] = allowed;
+        emit BridgeUpdated(bridge, allowed);
+    }
+
+    function setIsCrossChainAccountingManager(
+        address manager,
+        bool isManager
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _isCrossChainAccountingManager[manager] = isManager;
+
+        emit CrossChainAccountingManagerSet(manager, isManager);
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function setDefaultCrossChainAccountingManager(
+        address manager
+    ) external virtual {
+        defaultCrossChainAccountingManager = manager;
+
+        emit DefaultCrossChainAccountingManagerSet(manager);
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function isBridgeAllowed(
+        address bridge
+    ) external view virtual returns (bool) {
+        return _bridgeAllowed[bridge];
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function isCrossChainAccountingManager(
+        address manager
+    ) external view returns (bool) {
+        return _isCrossChainAccountingManager[manager];
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
     function isTrustedOFT(address oft) external view override returns (bool) {
         return _trustedOFTs[oft];
     }
@@ -286,15 +315,13 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function getTrustedOFTs() external view override returns (address[] memory) {
+    function getTrustedOFTs()
+        external
+        view
+        override
+        returns (address[] memory)
+    {
         return _trustedOFTsList;
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function getTrustedOFTsCount() external view override returns (uint256) {
-        return _trustedOFTsList.length;
     }
 
     /**

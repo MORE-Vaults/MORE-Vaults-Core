@@ -23,8 +23,6 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
 
     event AccrueInterest(uint256 newTotalAssets, uint256 interestAccrued);
 
-    event WithdrawalTimelockSet(uint64 duration);
-
     /// @notice Pauses all vault operations
     function pause() external;
 
@@ -38,28 +36,9 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     function totalAssets() external view override returns (uint256);
 
     /// @notice Returns the total amount of the underlying asset that is "managed" by Vault in USD
-    function totalAssetsUsd() external view returns (uint256);
-
-    /// @notice Get the lockedTokens amount of an asset
-    /// @param asset The asset to get the lockedTokens amount of
-    /// @return The lockedTokens amount of the asset
-    function lockedTokensAmountOfAsset(
-        address asset
-    ) external view returns (uint256);
-
-    /// @notice Get the staking addresses for a given staking facet
-    /// @param stakingFacetId The staking facet to get the staking addresses of
-    /// @return The staking addresses for the given staking facet
-    function getStakingAddresses(
-        bytes32 stakingFacetId
-    ) external view returns (address[] memory);
-
-    /// @notice Returns array of tokens held in the vault based on their IDs
-    /// @param tokenId token type ID
-    /// @return array of token addresses
-    function tokensHeld(
-        bytes32 tokenId
-    ) external view returns (address[] memory);
+    /// @return totalAssets The total amount of the underlying asset that is "managed" by Vault in USD
+    /// @return success Whether the totalAssetsUsd calculation was successful
+    function totalAssetsUsd() external view returns (uint256, bool success);
 
     /// @notice Returns the request for a given owner
     /// @param _owner The owner of the request
@@ -68,10 +47,6 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     function getWithdrawalRequest(
         address _owner
     ) external view returns (uint256 shares, uint256 timelockEndsAt);
-
-    /// @notice Returns the withdrawal timelock duration
-    /// @return duration The withdrawal timelock duration
-    function getWithdrawalTimelock() external view returns (uint64);
 
     /// @notice Allows deposit of multiple tokens in a single transaction
     /// @param tokens Array of token addresses to deposit
@@ -146,34 +121,4 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
      * @notice Clear a request
      */
     function clearRequest() external;
-
-    /**
-     * @notice Update the withdraw timelock duration
-     * @param duration New withdraw timelock duration
-     */
-    function setWithdrawalTimelock(uint64 duration) external;
-
-    /**
-     * @notice Set the withdrawal fee
-     * @param _fee New withdrawal fee
-     */
-    function setWithdrawalFee(uint96 _fee) external;
-
-    /**
-     * @notice Update the withdrawal queue status
-     * @param _status New withdrawal queue status
-     */
-    function updateWithdrawalQueueStatus(bool _status) external;
-
-    /**
-     * @notice Get the current withdrawal fee
-     * @return The current withdrawal fee in basis points
-     */
-    function getWithdrawalFee() external view returns (uint96);
-
-    /**
-     * @notice Get the current withdrawal queue status
-     * @return The current withdrawal queue status
-     */
-    function getWithdrawalQueueStatus() external view returns (bool);
 }

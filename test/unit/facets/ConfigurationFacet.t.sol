@@ -723,4 +723,35 @@ contract ConfigurationFacetTest is Test {
             "Depositable assets array should have asset1"
         );
     }
+
+    function test_getWithdrawalFee_ShouldReturnCorrectFee() public {
+        vm.startPrank(owner);
+        facet.setWithdrawalFee(1000);
+        vm.stopPrank();
+        assertEq(facet.getWithdrawalFee(), 1000);
+    }
+
+    function test_getWithdrawalQueueStatus_ShouldReturnCorrectStatus() public {
+        vm.startPrank(owner);
+        facet.updateWithdrawalQueueStatus(true);
+        vm.stopPrank();
+        assertTrue(facet.getWithdrawalQueueStatus());
+    }
+
+    function test_getWithdrawalFee2_ShouldReturnCorrectFee() public {
+        vm.startPrank(owner);
+        MoreVaultsStorageHelper.setWithdrawalFee(address(facet), uint96(1000));
+        vm.stopPrank();
+        assertEq(facet.getWithdrawalFee(), 1000);
+    }
+
+    function test_getWithdrawalQueueStatus2_ShouldReturnCorrectStatus() public {
+        vm.startPrank(owner);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(
+            address(facet),
+            true
+        );
+        vm.stopPrank();
+        assertTrue(facet.getWithdrawalQueueStatus());
+    }
 }

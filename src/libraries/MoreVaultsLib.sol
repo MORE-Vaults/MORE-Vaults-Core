@@ -120,6 +120,7 @@ library MoreVaultsLib {
 
     struct CrossChainRequestInfo {
         address initiator;
+        uint64 timestamp;
         ActionType actionType;
         bytes actionCallData;
         bool fulfilled;
@@ -159,7 +160,7 @@ library MoreVaultsLib {
         mapping(address => address) stakingTokenToMultiRewards;
         GasLimit gasLimit;
         mapping(TokenType => EnumerableSet.Bytes32Set) vaultExternalAssets;
-        uint64 timelockDuration;
+        uint64 witdrawTimelock;
         mapping(address => WithdrawRequest) withdrawalRequests;
         uint256 maxSlippagePercent;
         bool isMulticall;
@@ -176,6 +177,7 @@ library MoreVaultsLib {
         uint64 finalizationNonce;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
+        uint64 lastAccruedInterestTimestamp;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -945,10 +947,8 @@ library MoreVaultsLib {
         }
 
         if (
-            isWithdrawableRequest(
-                request.timelockEndsAt,
-                ds.timelockDuration
-            ) && request.shares >= _shares
+            isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) &&
+            request.shares >= _shares
         ) {
             request.shares -= _shares;
             return true;
@@ -959,9 +959,9 @@ library MoreVaultsLib {
 
     function isWithdrawableRequest(
         uint256 _timelockEndsAt,
-        uint256 _timelockDuration
+        uint256 _witdrawTimelock
     ) private view returns (bool) {
-        uint256 requestTimestamp = _timelockEndsAt - _timelockDuration;
+        uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
         return
             block.timestamp >= _timelockEndsAt ||
             block.timestamp - requestTimestamp > MAX_WITHDRAWAL_DELAY;
@@ -999,5 +999,18 @@ library MoreVaultsLib {
                 }
             }
         }
+    }
+
+    function _getCrossChainAccountingManager() internal view returns (address) {
+        MoreVaultsStorage storage ds = moreVaultsStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
+            .accessControlStorage();
+        if (ds.crossChainAccountingManager == address(0)) {
+            return
+                IMoreVaultsRegistry(acs.moreVaultsRegistry)
+                    .defaultCrossChainAccountingManager();
+        }
+
+        return ds.crossChainAccountingManager;
     }
 }

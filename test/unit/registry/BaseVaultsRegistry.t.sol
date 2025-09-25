@@ -32,6 +32,23 @@ contract TestBaseVaultsRegistry is BaseVaultsRegistry {
 
     function removeFromWhitelist(address) external override {}
 
+    function setBridge(address, bool) external override {}
+
+    function isBridgeAllowed(address) external view override returns (bool) {}
+
+    function defaultCrossChainAccountingManager()
+        external
+        view
+        override
+        returns (address)
+    {}
+
+    function isCrossChainAccountingManager(
+        address
+    ) external view override returns (bool) {}
+
+    function setDefaultCrossChainAccountingManager(address) external override {}
+
     function isWhitelisted(address) external view override returns (bool) {}
 
     function setSelectorAndMask(
@@ -46,19 +63,19 @@ contract TestBaseVaultsRegistry is BaseVaultsRegistry {
         bytes4
     ) external view override returns (bool, bytes memory) {}
 
-    function addTrustedOFT(address) external override {}
-
-    function removeTrustedOFT(address) external override {}
-
-    function setTrustedOFT(address, bool) external override {}
-
-    function setTrustedOFTs(address[] calldata, bool[] calldata) external override {}
+    function setTrustedOFTs(
+        address[] calldata,
+        bool[] calldata
+    ) external override {}
 
     function isTrustedOFT(address) external view override returns (bool) {}
 
-    function getTrustedOFTs() external view override returns (address[] memory) {}
-
-    function getTrustedOFTsCount() external view override returns (uint256) {}
+    function getTrustedOFTs()
+        external
+        view
+        override
+        returns (address[] memory)
+    {}
 }
 
 contract BaseVaultsRegistryTest is Test {
@@ -200,45 +217,6 @@ contract BaseVaultsRegistryTest is Test {
         );
     }
 
-    function test_addBridgeAllowed_ShouldAddBridgeAllowed() public {
-        vm.startPrank(admin);
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        registry.addBridgeAllowed(address(1111));
-
-        assertTrue(
-            registry.isBridgeAllowed(address(1111)),
-            "Should add bridge allowed"
-        );
-        vm.stopPrank();
-    }
-
-    function test_addBridgeAllowed_ShouldRevertWhenNotAdmin() public {
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        vm.startPrank(user);
-        vm.expectRevert();
-        registry.addBridgeAllowed(address(1111));
-        vm.stopPrank();
-    }
-
-    function test_removeBridgeAllowed_ShouldRemoveBridgeAllowed() public {
-        vm.startPrank(admin);
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        registry.addBridgeAllowed(address(1111));
-        vm.stopPrank();
-    }
-
-    function test_removeBridgeAllowed_ShouldRevertWhenNotAdmin() public {
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        vm.startPrank(user);
-        vm.expectRevert();
-        registry.removeBridgeAllowed(address(1111));
-        vm.stopPrank();
-    }
-
     function test_isBridgeAllowed_ShouldReturnCorrectValue() public {
         vm.startPrank(admin);
         registry.initialize(admin, address(oracle), address(usdc));
@@ -248,7 +226,7 @@ contract BaseVaultsRegistryTest is Test {
             "Should not allow unknown bridge"
         );
 
-        registry.addBridgeAllowed(address(1111));
+        registry.setBridge(address(1111), true);
         vm.stopPrank();
     }
 }

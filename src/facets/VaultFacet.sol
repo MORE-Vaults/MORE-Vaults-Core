@@ -51,8 +51,6 @@ contract VaultFacet is
         uint256 assetAmount
     );
     event WithdrawRequestDeleted(address requester);
-    event WithdrawalFeeSet(uint96 fee);
-    event WithdrawalQueueStatusSet(bool status);
 
     function INITIALIZABLE_STORAGE_SLOT()
         internal
@@ -167,8 +165,10 @@ contract VaultFacet is
         mapping(address => uint256) storage _lockedTokens,
         address _wrappedNative,
         bool _isNativeDeposit,
-        uint256 _freePtr
-    ) private view returns (uint256 _totalAssets) {
+        uint256 _freePtr,
+        bool _allowFailure
+    ) private view returns (uint256 _totalAssets, bool success) {
+        success = true;
         assembly {
             mstore(_freePtr, BALANCE_OF_SELECTOR)
         }
@@ -191,9 +191,15 @@ contract VaultFacet is
                     0x20
                 )
                 if iszero(res) {
-                    mstore(_freePtr, ACCOUNTING_FAILED_ERROR)
-                    mstore(add(_freePtr, 0x04), asset)
-                    revert(_freePtr, 0x24)
+                    switch _allowFailure
+                    case 1 {
+                        mstore(_freePtr, ACCOUNTING_FAILED_ERROR)
+                        mstore(add(_freePtr, 0x04), asset)
+                        revert(_freePtr, 0x24)
+                    }
+                    case 0 {
+                        success := 0
+                    }
                 }
                 toConvert := mload(retOffset)
 
@@ -217,6 +223,9 @@ contract VaultFacet is
                     }
                 }
             }
+            if (!success) {
+                return (0, false);
+            }
             // convert to underlying
             // this function will use new free mem ptr
             _totalAssets += MoreVaultsLib.convertToUnderlying(
@@ -233,8 +242,9 @@ contract VaultFacet is
     function _accountFacets(
         bytes32[] storage _selectors,
         uint256 _totalAssets,
-        uint256 _freePtr
-    ) private view returns (uint256 totalAssets_) {
+        uint256 _freePtr,
+        bool _allowFailure
+    ) private view returns (uint256 newTotalAssets, bool success) {
         assembly {
             // put a debt variable on the stack
             let debt := 0
@@ -264,9 +274,16 @@ contract VaultFacet is
                 )
                 // if staticcall fails, revert with the error
                 if iszero(res) {
-                    mstore(_freePtr, ACCOUNTING_FAILED_ERROR)
-                    mstore(add(_freePtr, 0x04), selector)
-                    revert(_freePtr, 0x24)
+                    switch _allowFailure
+                    case 1 {
+                        mstore(_freePtr, ACCOUNTING_FAILED_ERROR)
+                        mstore(add(_freePtr, 0x04), selector)
+                        revert(_freePtr, 0x24)
+                    }
+                    case 0 {
+                        success := 0
+                        break
+                    }
                 }
                 // decode return values
                 let decodedAmount := mload(retOffset)
@@ -283,7 +300,7 @@ contract VaultFacet is
             // after accounting is done check if total assets are greater than debt
             // else leave totalAssets unassigned as "lower" and "equal" should return 0
             if gt(_totalAssets, debt) {
-                totalAssets_ := sub(_totalAssets, debt)
+                newTotalAssets := sub(_totalAssets, debt)
             }
         }
     }
@@ -306,28 +323,66 @@ contract VaultFacet is
             freePtr := 0x60
         }
         // account available assets
-        _totalAssets = _accountAvailableAssets(
+        (_totalAssets, ) = _accountAvailableAssets(
             ds.availableAssets,
             ds.lockedTokens,
             ds.wrappedNative,
             ds.isNativeDeposit,
-            freePtr
+            freePtr,
+            true
         );
         // account facets
-        _totalAssets = _accountFacets(
+        (_totalAssets, ) = _accountFacets(
             ds.facetsForAccounting,
             _totalAssets,
-            freePtr
+            freePtr,
+            true
         );
     }
 
-    function totalAssetsUsd() public view returns (uint256) {
-        uint256 totalAssets_ = totalAssets();
-        return
+    function totalAssetsUsd()
+        public
+        view
+        returns (uint256 _totalAssets, bool success)
+    {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
+            .moreVaultsStorage();
+
+        // get free mem ptr for efficient calls
+        uint256 freePtr;
+        assembly {
+            freePtr := 0x60
+        }
+        // account available assets
+        (_totalAssets, success) = _accountAvailableAssets(
+            ds.availableAssets,
+            ds.lockedTokens,
+            ds.wrappedNative,
+            ds.isNativeDeposit,
+            freePtr,
+            false
+        );
+        if (!success) {
+            return (0, false);
+        }
+        // account facets
+        (_totalAssets, success) = _accountFacets(
+            ds.facetsForAccounting,
+            _totalAssets,
+            freePtr,
+            false
+        );
+        if (!success) {
+            return (0, false);
+        }
+
+        return (
             MoreVaultsLib.convertUnderlyingToUsd(
-                totalAssets_,
+                _totalAssets,
                 Math.Rounding.Floor
-            );
+            ),
+            true
+        );
     }
 
     /**
@@ -350,38 +405,7 @@ contract VaultFacet is
         }
     }
 
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function lockedTokensAmountOfAsset(
-        address asset
-    ) external view returns (uint256) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        return ds.lockedTokens[asset];
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function getStakingAddresses(
-        bytes32 stakingFacetId
-    ) external view returns (address[] memory) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        return EnumerableSet.values(ds.stakingAddresses[stakingFacetId]);
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function tokensHeld(
-        bytes32 tokenId
-    ) external view returns (address[] memory) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        return EnumerableSet.values(ds.tokensHeld[tokenId]);
-    }
+    // TODO: add maxWithdraw and maxRedeem?
 
     /**
      * @notice override maxMint to check if the deposit capacity is exceeded
@@ -421,28 +445,6 @@ contract VaultFacet is
         ];
 
         return (request.shares, request.timelockEndsAt);
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function getWithdrawalTimelock() external view returns (uint64) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        return ds.timelockDuration;
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function setWithdrawalTimelock(uint64 _duration) external {
-        AccessControlLib.validateCurator(msg.sender); // TODO: only owner can set timelock
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-
-        ds.timelockDuration = _duration;
-        // TODO: add timelock to change timelock duration
-        emit WithdrawalTimelockSet(_duration);
     }
 
     /**
@@ -494,7 +496,7 @@ contract VaultFacet is
             msg.sender
         ];
         request.shares = _shares;
-        uint256 endsAt = block.timestamp + ds.timelockDuration;
+        uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
 
         emit WithdrawRequestCreated(msg.sender, _shares, endsAt);
@@ -508,9 +510,6 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
         if (!ds.isWithdrawalQueueEnabled) {
             revert WithdrawalQueueDisabled();
         }
@@ -518,9 +517,12 @@ contract VaultFacet is
             revert InvalidAssetsAmount();
         }
 
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
         _beforeAccounting(ds.beforeAccountingFacets);
-        uint256 totalAssets_ = totalAssets();
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        uint256 newTotalAssets = totalAssets();
+        _accrueInterest(newTotalAssets, uint64(block.timestamp));
 
         uint256 shares = _convertToSharesWithTotals(
             _assets,
@@ -544,7 +546,7 @@ contract VaultFacet is
 
         request.shares = shares;
 
-        uint256 endsAt = block.timestamp + ds.timelockDuration;
+        uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
 
         emit WithdrawRequestCreated(msg.sender, shares, endsAt);
@@ -567,34 +569,13 @@ contract VaultFacet is
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
 
-        uint256 totalAssets_;
-        address msgSender;
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
-        if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
-            !ds.oraclesCrossChainAccounting
-        ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
-                revert SyncActionsDisabledInCrossChainVaults();
-            } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-            }
-        } else {
-            _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
-            msgSender = _msgSender();
-        }
+        (
+            uint256 newTotalAssets,
+            address msgSender,
+            uint64 timestamp
+        ) = _getInfoForAction(ds);
 
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        _accrueInterest(newTotalAssets, timestamp);
         _validateCapacity(receiver, newTotalAssets, assets);
 
         ds.lastTotalAssets = newTotalAssets;
@@ -625,34 +606,13 @@ contract VaultFacet is
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
 
-        uint256 totalAssets_;
-        address msgSender;
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
-        if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
-            !ds.oraclesCrossChainAccounting
-        ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
-                revert SyncActionsDisabledInCrossChainVaults();
-            } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-            }
-        } else {
-            _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
-            msgSender = _msgSender();
-        }
+        (
+            uint256 newTotalAssets,
+            address msgSender,
+            uint64 timestamp
+        ) = _getInfoForAction(ds);
 
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        _accrueInterest(newTotalAssets, timestamp);
         ds.lastTotalAssets = newTotalAssets;
 
         assets = _convertToAssetsWithTotals(
@@ -662,7 +622,7 @@ contract VaultFacet is
             Math.Rounding.Ceil
         );
         _validateCapacity(receiver, newTotalAssets, assets);
-        _deposit(_msgSender(), receiver, assets, shares);
+        _deposit(msgSender, receiver, assets, shares);
     }
 
     /**
@@ -683,34 +643,13 @@ contract VaultFacet is
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        uint256 totalAssets_;
-        address msgSender;
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
-        if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
-            !ds.oraclesCrossChainAccounting
-        ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
-                revert SyncActionsDisabledInCrossChainVaults();
-            } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-            }
-        } else {
-            _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
-            msgSender = _msgSender();
-        }
+        (
+            uint256 newTotalAssets,
+            address msgSender,
+            uint64 timestamp
+        ) = _getInfoForAction(ds);
 
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        _accrueInterest(newTotalAssets, timestamp);
 
         shares = _convertToSharesWithTotals(
             assets,
@@ -730,36 +669,15 @@ contract VaultFacet is
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        // calculate withdrawal fee
-        uint256 withdrawalFeeAmount = 0;
-        if (ds.withdrawalFee > 0) {
-            withdrawalFeeAmount = assets.mulDiv(
-                ds.withdrawalFee,
-                MoreVaultsLib.FEE_BASIS_POINT,
-                Math.Rounding.Floor
-            );
-        }
-
-        uint256 netAssets = assets - withdrawalFeeAmount;
-
-        ds.lastTotalAssets = newTotalAssets > assets
-            ? newTotalAssets - assets
-            : 0;
-
-        _withdraw(msgSender, receiver, owner, netAssets, shares);
-
-        // mint fee shares to fee recipient if withdrawal fee is applied
-        if (withdrawalFeeAmount > 0) {
-            uint256 feeShares = _convertToSharesWithTotals(
-                withdrawalFeeAmount,
-                totalSupply(),
-                newTotalAssets,
-                Math.Rounding.Floor
-            );
-            _mint(ds.feeRecipient, feeShares);
-        }
-
-        emit WithdrawRequestFulfilled(owner, receiver, shares, netAssets);
+        _handleWithdrawal(
+            ds,
+            newTotalAssets,
+            msgSender,
+            receiver,
+            owner,
+            assets,
+            shares
+        );
     }
 
     /**
@@ -780,11 +698,6 @@ contract VaultFacet is
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
 
-        uint256 totalAssets_;
-        address msgSender;
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
         bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
         if (!isWithdrawable) {
@@ -795,29 +708,13 @@ contract VaultFacet is
         if (shares > maxRedeem_) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
-        if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
-            !ds.oraclesCrossChainAccounting
-        ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
-                revert SyncActionsDisabledInCrossChainVaults();
-            } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-            }
-        } else {
-            _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
-            msgSender = _msgSender();
-        }
 
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        (
+            uint256 newTotalAssets,
+            address msgSender,
+            uint64 timestamp
+        ) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets, timestamp);
 
         assets = _convertToAssetsWithTotals(
             shares,
@@ -826,36 +723,15 @@ contract VaultFacet is
             Math.Rounding.Floor
         );
 
-        // Calculate withdrawal fee
-        uint256 withdrawalFeeAmount = 0;
-        if (ds.withdrawalFee > 0) {
-            withdrawalFeeAmount = assets.mulDiv(
-                ds.withdrawalFee,
-                MoreVaultsLib.FEE_BASIS_POINT,
-                Math.Rounding.Floor
-            );
-        }
-
-        uint256 netAssets = assets - withdrawalFeeAmount;
-
-        ds.lastTotalAssets = newTotalAssets > assets
-            ? newTotalAssets - assets
-            : 0;
-
-        _withdraw(msgSender, receiver, owner, netAssets, shares);
-
-        // Mint fee shares to fee recipient if withdrawal fee is applied
-        if (withdrawalFeeAmount > 0) {
-            uint256 feeShares = _convertToSharesWithTotals(
-                withdrawalFeeAmount,
-                totalSupply(),
-                newTotalAssets,
-                Math.Rounding.Floor
-            );
-            _mint(ds.feeRecipient, feeShares);
-        }
-
-        emit WithdrawRequestFulfilled(owner, receiver, shares, netAssets);
+        _handleWithdrawal(
+            ds,
+            newTotalAssets,
+            msgSender,
+            receiver,
+            owner,
+            assets,
+            shares
+        );
     }
 
     /**
@@ -869,36 +745,15 @@ contract VaultFacet is
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        uint256 totalAssets_;
-        address msgSender;
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
         if (msg.value > 0) {
             ds.isNativeDeposit = true;
         }
-        if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
-            !ds.oraclesCrossChainAccounting
-        ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
-                revert SyncActionsDisabledInCrossChainVaults();
-            } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-            }
-        } else {
-            _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
-            msgSender = _msgSender();
-        }
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        (
+            uint256 newTotalAssets,
+            address msgSender,
+            uint64 timestamp
+        ) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets, timestamp);
 
         ds.lastTotalAssets = newTotalAssets;
 
@@ -945,78 +800,13 @@ contract VaultFacet is
     /**
      * @inheritdoc IVaultFacet
      */
-    function setWithdrawalFee(uint96 _fee) external {
-        AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        ds.withdrawalFee = _fee;
-        emit WithdrawalFeeSet(_fee);
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function updateWithdrawalQueueStatus(bool _status) external {
-        AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = _status;
-        emit WithdrawalQueueStatusSet(_status);
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function getWithdrawalFee() external view returns (uint96) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        return ds.withdrawalFee;
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
-    function getWithdrawalQueueStatus() external view returns (bool) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        return ds.isWithdrawalQueueEnabled;
-    }
-
-    /**
-     * @inheritdoc IVaultFacet
-     */
     function setFee(uint96 _fee) external {
         AccessControlLib.validateOwner(msg.sender);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        uint256 totalAssets_;
-        address msgSender;
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
-        if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
-            !ds.oraclesCrossChainAccounting
-        ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
-                revert SyncActionsDisabledInCrossChainVaults();
-            } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-            }
-        } else {
-            _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
-            msgSender = _msgSender();
-        }
-        uint256 newTotalAssets = _accrueInterest(totalAssets_);
+        (uint256 newTotalAssets, , uint64 timestamp) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets, timestamp);
 
         ds.lastTotalAssets = newTotalAssets;
 
@@ -1125,22 +915,26 @@ contract VaultFacet is
     /**
      * @notice Accrue the interest of the vault
      * @dev Calculate the interest of the vault and mint the fee shares
-     * @return newTotalAssets The new total assets of the vault
+     * @param _totalAssets The total assets of the vault
      */
-    function _accrueInterest(
-        uint256 totalAssets_
-    ) internal returns (uint256 newTotalAssets) {
+    function _accrueInterest(uint256 _totalAssets, uint64 _timestamp) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
 
         uint256 feeShares;
-        (feeShares, newTotalAssets) = _accruedFeeShares(totalAssets_);
-        _checkVaultHealth(newTotalAssets, totalSupply());
+        feeShares = _accruedFeeShares(_totalAssets);
+        _checkVaultHealth(_totalAssets, totalSupply());
 
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib
             .accessControlStorage();
 
-        ds.lastTotalAssets = newTotalAssets;
+        // if the timestamp is less than the last accrued interest timestamp, that means the interest has already been accrued
+        // it needs to prevent multiple fee accruals if cross chain accounting is used
+        if (_timestamp < ds.lastAccruedInterestTimestamp) {
+            return;
+        }
+        ds.lastAccruedInterestTimestamp = _timestamp;
+        ds.lastTotalAssets = _totalAssets;
 
         (
             address protocolFeeRecipient,
@@ -1149,9 +943,9 @@ contract VaultFacet is
                 address(this)
             );
 
-        emit AccrueInterest(newTotalAssets, feeShares);
+        emit AccrueInterest(_totalAssets, feeShares);
 
-        if (feeShares == 0) return newTotalAssets;
+        if (feeShares == 0) return;
 
         if (protocolFee != 0) {
             uint256 protocolFeeShares = feeShares.mulDiv(
@@ -1170,19 +964,18 @@ contract VaultFacet is
     /**
      * @notice Accrue the interest of the vault
      * @dev Calculate the interest of the vault and the fee shares
+     * @param _totalAssets The total assets of the vault
      * @return feeShares The fee shares
-     * @return newTotalAssets The new total assets of the vault
      */
     function _accruedFeeShares(
-        uint256 totalAssets_
-    ) internal view returns (uint256 feeShares, uint256 newTotalAssets) {
+        uint256 _totalAssets
+    ) internal view returns (uint256 feeShares) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        newTotalAssets = totalAssets_;
 
         uint256 lastTotalAssets = ds.lastTotalAssets;
-        uint256 totalInterest = newTotalAssets > lastTotalAssets
-            ? newTotalAssets - lastTotalAssets
+        uint256 totalInterest = _totalAssets > lastTotalAssets
+            ? _totalAssets - lastTotalAssets
             : 0;
 
         uint96 fee = ds.fee;
@@ -1193,7 +986,7 @@ contract VaultFacet is
             );
             feeShares = feeAssets.mulDiv(
                 totalSupply() + 10 ** _decimalsOffset(),
-                newTotalAssets - feeAssets,
+                _totalAssets - feeAssets,
                 Math.Rounding.Floor
             );
         }
@@ -1436,5 +1229,80 @@ contract VaultFacet is
         }
 
         return assets - withdrawalFeeAmount;
+    }
+
+    function _getInfoForAction(
+        MoreVaultsLib.MoreVaultsStorage storage ds
+    )
+        internal
+        returns (uint256 totalAssets_, address msgSender_, uint64 timestamp_)
+    {
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
+        if (
+            IVaultsFactory(ds.factory)
+                .hubToSpokes(uint16(block.chainid), address(this))
+                .length !=
+            0 &&
+            !ds.oraclesCrossChainAccounting
+        ) {
+            uint64 nonce = ds.finalizationNonce;
+            if (nonce == type(uint64).max) {
+                revert SyncActionsDisabledInCrossChainVaults();
+            } else {
+                totalAssets_ = ds
+                    .nonceToCrossChainRequestInfo[nonce]
+                    .totalAssets;
+                msgSender_ = ds.nonceToCrossChainRequestInfo[nonce].initiator;
+                timestamp_ = ds.nonceToCrossChainRequestInfo[nonce].timestamp;
+            }
+        } else {
+            _beforeAccounting(ds.beforeAccountingFacets);
+            totalAssets_ = totalAssets();
+            msgSender_ = _msgSender();
+            timestamp_ = uint64(block.timestamp);
+        }
+    }
+
+    function _handleWithdrawal(
+        MoreVaultsLib.MoreVaultsStorage storage ds,
+        uint256 newTotalAssets,
+        address msgSender,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    ) internal {
+        // calculate withdrawal fee
+        uint256 withdrawalFeeAmount;
+        if (ds.withdrawalFee > 0) {
+            withdrawalFeeAmount = assets.mulDiv(
+                ds.withdrawalFee,
+                MoreVaultsLib.FEE_BASIS_POINT,
+                Math.Rounding.Floor
+            );
+        }
+
+        uint256 netAssets = assets - withdrawalFeeAmount;
+
+        ds.lastTotalAssets = newTotalAssets > assets
+            ? newTotalAssets - assets
+            : 0;
+
+        _withdraw(msgSender, receiver, owner, netAssets, shares);
+
+        // mint fee shares to fee recipient if withdrawal fee is applied
+        if (withdrawalFeeAmount > 0) {
+            uint256 feeShares = _convertToSharesWithTotals(
+                withdrawalFeeAmount,
+                totalSupply(),
+                newTotalAssets,
+                Math.Rounding.Floor
+            );
+            _mint(ds.feeRecipient, feeShares);
+        }
+
+        emit WithdrawRequestFulfilled(owner, receiver, shares, netAssets);
     }
 }

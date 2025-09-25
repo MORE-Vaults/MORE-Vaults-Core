@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {Vm} from "forge-std/Test.sol";
 import {MoreVaultsLib} from "../../src/libraries/MoreVaultsLib.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {console} from "forge-std/console.sol";
 
 library MoreVaultsStorageHelper {
     Vm constant vm =
@@ -40,8 +41,8 @@ library MoreVaultsStorageHelper {
     uint256 constant STAKING_TOKEN_TO_MULTI_REWARDS = 21;
     uint256 constant GAS_LIMIT = 22;
     uint256 constant VAULT_EXTERNAL_ASSETS = 24;
-    uint256 constant TIMELOCK_DURATION = 25;
-    uint256 constant WITHDRAWABLE_REQUESTS = 26;
+    uint256 constant WITHDRAW_TIMELOCK = 25;
+    uint256 constant WITHDRAWAL_REQUESTS = 26;
     uint256 constant MAX_SLIPPAGE_PERCENT = 27;
     uint256 constant IS_MULTICALL = 28;
     uint256 constant FACTORY = 28;
@@ -57,6 +58,7 @@ library MoreVaultsStorageHelper {
     uint256 constant FINALIZATION_NONCE = 36;
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 36;
     uint256 constant WITHDRAWAL_FEE = 36;
+    uint256 constant LAST_ACCRUED_INTEREST_TIMESTAMP = 36;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -1206,5 +1208,157 @@ library MoreVaultsStorageHelper {
                     uint256(getStorageValue(contractAddress, GAS_LIMIT))
                 )
             });
+    }
+
+    // Functions for variables in slot 36
+    function setFinalizationNonce(
+        address contractAddress,
+        uint64 value
+    ) internal {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            FINALIZATION_NONCE
+        );
+        bytes32 mask = bytes32(uint256(type(uint64).max));
+        setStorageValue(
+            contractAddress,
+            FINALIZATION_NONCE,
+            (storedValue & ~mask) | bytes32(uint256(value))
+        );
+    }
+
+    function getFinalizationNonce(
+        address contractAddress
+    ) internal view returns (uint64) {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            FINALIZATION_NONCE
+        );
+        bytes32 mask = bytes32(uint256(type(uint64).max));
+        return uint64(uint256(storedValue & mask));
+    }
+
+    function setIsWithdrawalQueueEnabled(
+        address contractAddress,
+        bool value
+    ) internal {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            IS_WITHDRAWAL_QUEUE_ENABLED
+        );
+        bytes32 mask = bytes32(uint256(type(uint8).max) << 64);
+        setStorageValue(
+            contractAddress,
+            IS_WITHDRAWAL_QUEUE_ENABLED,
+            (storedValue & ~mask) | bytes32(uint256(value ? 1 : 0) << 64)
+        );
+    }
+
+    function getIsWithdrawalQueueEnabled(
+        address contractAddress
+    ) internal view returns (bool) {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            IS_WITHDRAWAL_QUEUE_ENABLED
+        );
+        bytes32 mask = bytes32(uint256(type(uint8).max) << 64);
+        return uint8(uint256((storedValue & mask) >> 64)) != 0;
+    }
+
+    function setWithdrawalFee(address contractAddress, uint96 value) internal {
+        bytes32 storedValue = getStorageValue(contractAddress, WITHDRAWAL_FEE);
+        bytes32 mask = bytes32(uint256(type(uint96).max) << 72);
+        setStorageValue(
+            contractAddress,
+            WITHDRAWAL_FEE,
+            (storedValue & ~mask) | bytes32(uint256(value) << 72)
+        );
+    }
+
+    function getWithdrawalFee(
+        address contractAddress
+    ) internal view returns (uint96) {
+        bytes32 storedValue = getStorageValue(contractAddress, WITHDRAWAL_FEE);
+        bytes32 mask = bytes32(uint256(type(uint96).max) << 72);
+        return uint96(uint256((storedValue & mask) >> 72));
+    }
+
+    function setLastAccruedInterestTimestamp(
+        address contractAddress,
+        uint64 value
+    ) internal {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            LAST_ACCRUED_INTEREST_TIMESTAMP
+        );
+        bytes32 mask = bytes32(uint256(type(uint64).max) << 168);
+        setStorageValue(
+            contractAddress,
+            LAST_ACCRUED_INTEREST_TIMESTAMP,
+            (storedValue & ~mask) | bytes32(uint256(value) << 168)
+        );
+    }
+
+    function getLastAccruedInterestTimestamp(
+        address contractAddress
+    ) internal view returns (uint64) {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            LAST_ACCRUED_INTEREST_TIMESTAMP
+        );
+        bytes32 mask = bytes32(uint256(type(uint64).max) << 168);
+        return uint64(uint256((storedValue & mask) >> 168));
+    }
+
+    // Functions for WITHDRAW_TIMELOCK (slot 25)
+    function setWithdrawTimelock(
+        address contractAddress,
+        uint64 value
+    ) internal {
+        setStorageValue(
+            contractAddress,
+            WITHDRAW_TIMELOCK,
+            bytes32(uint256(value))
+        );
+    }
+
+    function getWithdrawTimelock(
+        address contractAddress
+    ) internal view returns (uint64) {
+        return
+            uint64(
+                uint256(getStorageValue(contractAddress, WITHDRAW_TIMELOCK))
+            );
+    }
+
+    // Functions for WITHDRAWAL_REQUESTS (slot 26) - mapping(address => WithdrawRequest)
+    function setWithdrawRequest(
+        address contractAddress,
+        address user,
+        uint256 timelockEndsAt,
+        uint256 shares
+    ) internal {
+        // WithdrawRequest struct has two uint256 fields: timelockEndsAt and shares
+        // Each field takes one storage slot
+        bytes32 key = keccak256(abi.encode(user, WITHDRAWAL_REQUESTS));
+
+        // Store timelockEndsAt in first slot
+        vm.store(contractAddress, key, bytes32(timelockEndsAt));
+
+        // Store shares in second slot
+        vm.store(contractAddress, bytes32(uint256(key) + 1), bytes32(shares));
+    }
+
+    function getWithdrawRequest(
+        address contractAddress,
+        address user
+    ) internal view returns (uint256 timelockEndsAt, uint256 shares) {
+        bytes32 key = keccak256(abi.encode(user, WITHDRAWAL_REQUESTS));
+
+        // Get timelockEndsAt from first slot
+        timelockEndsAt = uint256(vm.load(contractAddress, key));
+
+        // Get shares from second slot
+        shares = uint256(vm.load(contractAddress, bytes32(uint256(key) + 1)));
     }
 }

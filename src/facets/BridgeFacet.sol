@@ -187,6 +187,7 @@ contract BridgeFacet is
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib
             .CrossChainRequestInfo({
                 initiator: msg.sender,
+                timestamp: uint64(block.timestamp),
                 actionType: actionType,
                 actionCallData: actionCallData,
                 fulfilled: false,
@@ -232,29 +233,28 @@ contract BridgeFacet is
                     receiver
                 )
             );
-
             // TODO: think about this in terms native depostis, most likely they don't work since You need OFT to bridge assets and OFT will be for wrapped native, not native itself
-            // } else if (
-            //     requestInfo.actionType ==
-            //     MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT
-            // ) {
-            //     (
-            //         address[] memory tokens,
-            //         uint256[] memory assets,
-            //         address receiver,
-            //         uint256 value
-            //     ) = abi.decode(
-            //             requestInfo.actionCallData,
-            //             (address[], uint256[], address, uint256)
-            //         );
-            //     (success, ) = address(this).call{value: value}(
-            //         abi.encodeWithSelector(
-            //             bytes4(keccak256("deposit(address[],uint256[],address)")),
-            //             tokens,
-            //             assets,
-            //             receiver
-            //         )
-            //     );
+        } else if (
+            requestInfo.actionType ==
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT
+        ) {
+            (
+                address[] memory tokens,
+                uint256[] memory assets,
+                address receiver,
+                uint256 value
+            ) = abi.decode(
+                    requestInfo.actionCallData,
+                    (address[], uint256[], address, uint256)
+                );
+            (success, ) = address(this).call{value: value}(
+                abi.encodeWithSelector(
+                    bytes4(keccak256("deposit(address[],uint256[],address)")),
+                    tokens,
+                    assets,
+                    receiver
+                )
+            );
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
             (uint256 shares, address receiver) = abi.decode(
                 requestInfo.actionCallData,

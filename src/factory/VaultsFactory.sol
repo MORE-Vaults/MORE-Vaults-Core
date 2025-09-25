@@ -357,12 +357,11 @@ contract VaultsFactory is
             revert UntrustedFactory(_srcChainId, _srcAddress);
 
         (
-            address initiator,
             address vaultToLink, // vault on src chain
             address localVault, // vault on dst chain
             uint16 originChainId,
             bool isSenderHub
-        ) = abi.decode(_payload, (address, address, address, uint16, bool));
+        ) = abi.decode(_payload, (address, address, uint16, bool));
 
         // Ensure dstVault is actually deployed by this factory
         if (!isFactoryVault[localVault]) revert NotAVault(localVault);

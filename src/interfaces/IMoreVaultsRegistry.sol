@@ -75,14 +75,19 @@ interface IMoreVaultsRegistry {
     /**
      * @dev Emitted when bridge is allowed
      * @param bridge Address of the bridge
+     * @param allowed True if bridge is allowed, false otherwise
      */
-    event BridgeAllowed(address indexed bridge);
+    event BridgeUpdated(address indexed bridge, bool allowed);
 
     /**
-     * @dev Emitted when bridge is removed
-     * @param bridge Address of the bridge
+     * @dev Emitted when cross chain accounting manager is updated
+     * @param manager Address of the cross chain accounting manager
+     * @param isManager True if cross chain accounting manager is allowed, false otherwise
      */
-    event BridgeRemoved(address indexed bridge);
+    event CrossChainAccountingManagerSet(
+        address indexed manager,
+        bool isManager
+    );
 
     /**
      * @dev Emitted when trusted OFT status is updated
@@ -90,6 +95,12 @@ interface IMoreVaultsRegistry {
      * @param trusted True if OFT is trusted, false otherwise
      */
     event TrustedOFTUpdated(address indexed oft, bool trusted);
+
+    /**
+     * @dev Emitted when default cross chain accounting manager is set
+     * @param manager Address of the default cross chain accounting manager
+     */
+    event DefaultCrossChainAccountingManagerSet(address indexed manager);
 
     /**
      * @notice Initialize the registry
@@ -165,6 +176,8 @@ interface IMoreVaultsRegistry {
         bool allowed,
         bytes memory mask
     ) external;
+
+    function setDefaultCrossChainAccountingManager(address manager) external;
 
     /**
      * @notice Get all selectors for facet
@@ -252,14 +265,9 @@ interface IMoreVaultsRegistry {
     /**
      * @notice Add bridge to allowed list
      * @param bridge Address of the bridge
+     * @param allowed True if bridge is allowed, false otherwise
      */
-    function addBridgeAllowed(address bridge) external;
-
-    /**
-     * @notice Remove bridge from allowed list
-     * @param bridge Address of the bridge
-     */
-    function removeBridgeAllowed(address bridge) external;
+    function setBridge(address bridge, bool allowed) external;
 
     /**
      * @notice Check if bridge is allowed
@@ -281,30 +289,14 @@ interface IMoreVaultsRegistry {
     ) external view returns (bool, bytes memory);
 
     /**
-     * @notice Add OFT to trusted list
-     * @param oft Address of the OFT
-     */
-    function addTrustedOFT(address oft) external;
-
-    /**
-     * @notice Remove OFT from trusted list
-     * @param oft Address of the OFT
-     */
-    function removeTrustedOFT(address oft) external;
-
-    /**
-     * @notice Set trust status for an OFT token
-     * @param oft Address of the OFT token
-     * @param trusted True to trust the token, false to remove trust
-     */
-    function setTrustedOFT(address oft, bool trusted) external;
-
-    /**
      * @notice Batch set trust status for multiple OFT tokens
      * @param ofts Array of OFT token addresses
      * @param trusted Array of trust statuses (must match ofts length)
      */
-    function setTrustedOFTs(address[] calldata ofts, bool[] calldata trusted) external;
+    function setTrustedOFTs(
+        address[] calldata ofts,
+        bool[] calldata trusted
+    ) external;
 
     /**
      * @notice Check if an OFT token is trusted for bridging
@@ -320,8 +312,20 @@ interface IMoreVaultsRegistry {
     function getTrustedOFTs() external view returns (address[] memory);
 
     /**
-     * @notice Get the number of trusted OFTs
-     * @return uint256 Count of trusted tokens
+     * @notice Check if an address is a cross chain accounting manager
+     * @param manager Address of the manager to check
+     * @return bool True if the address is a cross chain accounting manager, false otherwise
      */
-    function getTrustedOFTsCount() external view returns (uint256);
+    function isCrossChainAccountingManager(
+        address manager
+    ) external view returns (bool);
+
+    /**
+     * @notice Get default cross chain accounting manager
+     * @return address Default cross chain accounting manager
+     */
+    function defaultCrossChainAccountingManager()
+        external
+        view
+        returns (address);
 }

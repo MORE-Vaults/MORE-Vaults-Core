@@ -38,9 +38,6 @@ abstract contract BaseVaultsRegistry is
     /// @dev Whitelisted addresses of protocols that vault can interact with
     mapping(address => bool) private _whitelisted;
 
-    /// @dev Bridge allowed addresses
-    mapping(address => bool) private _bridgeAllowed;
-
     /// @dev Initialize function
     function initialize(
         address _owner,
@@ -179,35 +176,6 @@ abstract contract BaseVaultsRegistry is
     function isWhitelisted(
         address protocol
     ) external view virtual returns (bool);
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function addBridgeAllowed(
-        address bridge
-    ) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
-        _bridgeAllowed[bridge] = true;
-        emit BridgeAllowed(bridge);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function removeBridgeAllowed(
-        address bridge
-    ) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
-        _bridgeAllowed[bridge] = false;
-        emit BridgeRemoved(bridge);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function isBridgeAllowed(
-        address bridge
-    ) external view virtual returns (bool) {
-        return _bridgeAllowed[bridge];
-    }
 
     /**
      * @notice Set whitelisted status for protocol
