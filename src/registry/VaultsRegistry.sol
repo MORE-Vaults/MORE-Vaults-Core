@@ -26,6 +26,11 @@ contract VaultsRegistry is BaseVaultsRegistry {
     mapping(address => bool) private _allowedFacets;
     mapping(address => mapping(bytes4 => SelectorInfo)) private _selectorInfo;
 
+    /// @dev Mapping of OFT address => is trusted
+    mapping(address => bool) private _trustedOFTs;
+    /// @dev Array of all trusted OFTs
+    address[] private _trustedOFTsList;
+
     uint96 private constant MAX_PROTOCOL_FEE = 5000; // 50%
 
     /**
@@ -226,6 +231,108 @@ contract VaultsRegistry is BaseVaultsRegistry {
             _selectorInfo[vault][selector].allowed,
             _selectorInfo[vault][selector].mask
         );
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function addTrustedOFT(
+        address oft
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTrustedOFT(oft, true);
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function removeTrustedOFT(
+        address oft
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTrustedOFT(oft, false);
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function setTrustedOFT(
+        address oft,
+        bool trusted
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTrustedOFT(oft, trusted);
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function setTrustedOFTs(
+        address[] calldata ofts,
+        bool[] calldata trusted
+    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (ofts.length != trusted.length) revert ArrayLengthMismatch();
+
+        for (uint256 i = 0; i < ofts.length; ) {
+            _setTrustedOFT(ofts[i], trusted[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function isTrustedOFT(address oft) external view override returns (bool) {
+        return _trustedOFTs[oft];
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function getTrustedOFTs() external view override returns (address[] memory) {
+        return _trustedOFTsList;
+    }
+
+    /**
+     * @inheritdoc IMoreVaultsRegistry
+     */
+    function getTrustedOFTsCount() external view override returns (uint256) {
+        return _trustedOFTsList.length;
+    }
+
+    /**
+     * @notice Internal function to set trusted OFT status
+     * @param oft Address of the OFT
+     * @param trusted True to trust the OFT, false to remove trust
+     */
+    function _setTrustedOFT(address oft, bool trusted) internal {
+        if (oft == address(0)) revert ZeroAddress();
+
+        bool currentlyTrusted = _trustedOFTs[oft];
+        if (currentlyTrusted == trusted) {
+            return; // No change needed
+        }
+
+        _trustedOFTs[oft] = trusted;
+
+        if (trusted) {
+            _trustedOFTsList.push(oft);
+        } else {
+            // Remove from list
+            for (uint256 i = 0; i < _trustedOFTsList.length; ) {
+                if (_trustedOFTsList[i] == oft) {
+                    _trustedOFTsList[i] = _trustedOFTsList[
+                        _trustedOFTsList.length - 1
+                    ];
+                    _trustedOFTsList.pop();
+                    break;
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+
+        emit TrustedOFTUpdated(oft, trusted);
     }
 
     /**

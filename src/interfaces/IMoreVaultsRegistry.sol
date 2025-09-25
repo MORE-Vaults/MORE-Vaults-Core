@@ -85,6 +85,13 @@ interface IMoreVaultsRegistry {
     event BridgeRemoved(address indexed bridge);
 
     /**
+     * @dev Emitted when trusted OFT status is updated
+     * @param oft Address of the OFT
+     * @param trusted True if OFT is trusted, false otherwise
+     */
+    event TrustedOFTUpdated(address indexed oft, bool trusted);
+
+    /**
      * @notice Initialize the registry
      * @param _owner Address of the owner
      * @param _oracle Address of the oracle
@@ -272,4 +279,49 @@ interface IMoreVaultsRegistry {
         address vault,
         bytes4 selector
     ) external view returns (bool, bytes memory);
+
+    /**
+     * @notice Add OFT to trusted list
+     * @param oft Address of the OFT
+     */
+    function addTrustedOFT(address oft) external;
+
+    /**
+     * @notice Remove OFT from trusted list
+     * @param oft Address of the OFT
+     */
+    function removeTrustedOFT(address oft) external;
+
+    /**
+     * @notice Set trust status for an OFT token
+     * @param oft Address of the OFT token
+     * @param trusted True to trust the token, false to remove trust
+     */
+    function setTrustedOFT(address oft, bool trusted) external;
+
+    /**
+     * @notice Batch set trust status for multiple OFT tokens
+     * @param ofts Array of OFT token addresses
+     * @param trusted Array of trust statuses (must match ofts length)
+     */
+    function setTrustedOFTs(address[] calldata ofts, bool[] calldata trusted) external;
+
+    /**
+     * @notice Check if an OFT token is trusted for bridging
+     * @param oft Address of the OFT token to check
+     * @return bool True if the token is trusted, false otherwise
+     */
+    function isTrustedOFT(address oft) external view returns (bool);
+
+    /**
+     * @notice Get all trusted OFT tokens
+     * @return address[] Array of trusted OFT addresses
+     */
+    function getTrustedOFTs() external view returns (address[] memory);
+
+    /**
+     * @notice Get the number of trusted OFTs
+     * @return uint256 Count of trusted tokens
+     */
+    function getTrustedOFTsCount() external view returns (uint256);
 }
