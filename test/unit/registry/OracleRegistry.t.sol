@@ -117,6 +117,36 @@ contract OracleRegistryTest is Test {
         registry.setOracleInfos(assets, infos);
     }
 
+    function test_setOracleInfos_revert_ifAggregatorNotSet() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[]
+            memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(
+                address(new MockAggregator(123, block.timestamp))
+            ),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
+        vm.prank(admin);
+        IOracleRegistry.OracleInfo[]
+            memory incorrectInfos = new IOracleRegistry.OracleInfo[](1);
+        incorrectInfos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(0)),
+            stalenessThreshold: staleness
+        });
+        vm.expectRevert(IOracleRegistry.AggregatorNotSet.selector);
+        registry.setOracleInfos(assets, incorrectInfos);
+    }
+
     function test_getAssetPrice_returnsCorrectPrice() public {
         address[] memory assets = new address[](1);
         IOracleRegistry.OracleInfo[]
@@ -138,6 +168,30 @@ contract OracleRegistryTest is Test {
         );
         uint256 price = registry.getAssetPrice(asset);
         assertEq(price, 123);
+    }
+
+    function test_getAssetsPrices_returnsCorrectPrices() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[]
+            memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(
+                address(new MockAggregator(123, block.timestamp))
+            ),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(
+            assets,
+            infos,
+            admin,
+            baseCurrency,
+            baseCurrencyUnit
+        );
+        uint256[] memory prices = registry.getAssetsPrices(assets);
+        assertEq(prices.length, 1);
+        assertEq(prices[0], 123);
     }
 
     function test_getAssetPrice_returnsBaseCurrencyUnitForBaseCurrency()

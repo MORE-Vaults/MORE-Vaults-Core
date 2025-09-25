@@ -92,6 +92,75 @@ contract ConfigurationFacetTest is Test {
         );
     }
 
+    function test_facetVersion_ShouldReturnCorrectVersion() public view {
+        assertEq(
+            facet.facetVersion(),
+            "1.0.0",
+            "Facet version should be correct"
+        );
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        facet.onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(
+                address(facet),
+                type(IConfigurationFacet).interfaceId
+            )
+        );
+    }
+
+    function test_setMaxSlippagePercent_ShouldUpdateMaxSlippagePercent()
+        public
+    {
+        vm.startPrank(owner);
+        facet.setMaxSlippagePercent(10000);
+        vm.stopPrank();
+        assertEq(
+            MoreVaultsStorageHelper.getSlippagePercent(address(facet)),
+            10000,
+            "Max slippage percent should be updated"
+        );
+    }
+
+    function test_setGasLimitForAccounting_ShouldUpdateGasLimitForAccounting()
+        public
+    {
+        vm.startPrank(owner);
+        facet.setGasLimitForAccounting(10000, 10000, 10000, 10000);
+        vm.stopPrank();
+        MoreVaultsLib.GasLimit memory gasLimit = MoreVaultsStorageHelper
+            .getGasLimitForAccounting(address(facet));
+        assertEq(gasLimit.availableTokenAccountingGas, 10000);
+        assertEq(gasLimit.heldTokenAccountingGas, 10000);
+        assertEq(gasLimit.facetAccountingGas, 10000);
+        assertEq(gasLimit.stakingTokenAccountingGas, 10000);
+        assertEq(gasLimit.nestedVaultsGas, 10000);
+        assertEq(gasLimit.value, 10000);
+    }
+
+    function test_fee_shouldReturnCorrectFee() public view {
+        assertEq(facet.fee(), 100);
+    }
+
+    function test_feeRecipient_shouldReturnCorrectFeeRecipient() public view {
+        assertEq(facet.feeRecipient(), address(1));
+    }
+
+    function test_depositCapacity_shouldReturnCorrectDepositCapacity()
+        public
+        view
+    {
+        assertEq(facet.depositCapacity(), 0);
+    }
+
+    function test_timeLockPeriod_shouldReturnCorrectTimeLockPeriod()
+        public
+        view
+    {
+        assertEq(facet.timeLockPeriod(), 1 days);
+    }
+
     function test_setFeeRecipient_ShouldUpdateRecipient() public {
         vm.startPrank(owner);
 
@@ -598,6 +667,20 @@ contract ConfigurationFacetTest is Test {
 
         vm.startPrank(unauthorized);
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setDepositWhitelist(depositors, undelyingAssetCaps);
+        vm.stopPrank();
+    }
+
+    function test_setDepositWhitelist_ShouldRevertWhenArraysLengthsMismatch()
+        public
+    {
+        address[] memory depositors = new address[](1);
+        depositors[0] = address(1);
+        uint256[] memory undelyingAssetCaps = new uint256[](2);
+        undelyingAssetCaps[0] = 10 ether;
+        undelyingAssetCaps[1] = 20 ether;
+        vm.startPrank(curator);
+        vm.expectRevert(IConfigurationFacet.ArraysLengthsMismatch.selector);
         facet.setDepositWhitelist(depositors, undelyingAssetCaps);
         vm.stopPrank();
     }

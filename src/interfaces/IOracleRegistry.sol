@@ -12,6 +12,7 @@ interface IOracleRegistry {
     error PriceIsNotAvailable();
     error InconsistentParamsLength();
     error OraclePriceIsOld();
+    error AggregatorNotSet();
 
     /**
      * @notice Struct describing the asset price source and staleness threshold

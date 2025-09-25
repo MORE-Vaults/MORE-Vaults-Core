@@ -174,6 +174,8 @@ library MoreVaultsLib {
         address crossChainAccountingManager;
         mapping(uint64 => CrossChainRequestInfo) nonceToCrossChainRequestInfo;
         uint64 finalizationNonce;
+        bool isWithdrawalQueueEnabled;
+        uint96 withdrawalFee;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -936,6 +938,12 @@ library MoreVaultsLib {
     ) internal returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         WithdrawRequest storage request = ds.withdrawalRequests[_requester];
+        // if withdrawal queue is disabled, request can be processed immediately
+        if (!ds.isWithdrawalQueueEnabled) {
+            // only allow for the shares owner to withdraw in this case
+            return msg.sender == _requester;
+        }
+
         if (
             isWithdrawableRequest(
                 request.timelockEndsAt,

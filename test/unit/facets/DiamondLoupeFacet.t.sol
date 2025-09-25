@@ -84,6 +84,24 @@ contract DiamondLoupeFacetTest is Test {
         );
     }
 
+    function test_facetVersion_ShouldReturnCorrectVersion() public view {
+        assertEq(
+            DiamondLoupeFacet(facet).facetVersion(),
+            "1.0.0",
+            "Facet version should be correct"
+        );
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        DiamondLoupeFacet(facet).onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(
+                address(facet),
+                type(IDiamondLoupe).interfaceId
+            )
+        );
+    }
+
     function test_initialize_ShouldSetSupportedInterfaces() public {
         DiamondLoupeFacet(facet).initialize("");
         assertEq(

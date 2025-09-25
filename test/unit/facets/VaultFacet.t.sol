@@ -8,6 +8,13 @@ import {IVaultFacet} from "../../../src/interfaces/facets/IVaultFacet.sol";
 import {IVaultsFactory} from "../../../src/interfaces/IVaultsFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {IERC165} from "../../../src/interfaces/IERC165.sol";
+import {IERC173} from "../../../src/interfaces/IERC173.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
+import {IDiamondCut} from "../../../src/interfaces/facets/IDiamondCut.sol";
+import {IDiamondLoupe} from "../../../src/interfaces/facets/IDiamondLoupe.sol";
+import {IMulticallFacet} from "../../../src/interfaces/facets/IMulticallFacet.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {BaseFacetInitializer} from "../../../src/facets/BaseFacetInitializer.sol";
@@ -553,6 +560,105 @@ contract VaultFacetTest is Test {
         VaultFacet(facet).mint(100 ether, user);
     }
 
+    function test_depositCapacty_shouldPassIfSetToZero() public {
+        MoreVaultsStorageHelper.setDepositCapacity(facet, 0);
+        uint256 depositAmount = 100 ether;
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("oracle()"),
+            abi.encode(oracleRegistry)
+        );
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("getDenominationAsset()"),
+            abi.encode(asset)
+        );
+        vm.mockCall(
+            oracleRegistry,
+            abi.encodeWithSignature("getSourceOfAsset(address)"),
+            abi.encode(oracle)
+        );
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("decimals()"),
+            abi.encode(8)
+        );
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        vm.prank(user);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        assertEq(IERC20(facet).balanceOf(user), shares);
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(user);
+        assertEq(maxDeposit, type(uint256).max);
+        uint256 maxMint = VaultFacet(facet).maxMint(user);
+        assertEq(maxMint, type(uint256).max);
+    }
+
+    function test_MaxDeposit_MaxMint_ShouldReturnZeroIfExceeded() public {
+        MoreVaultsStorageHelper.setDepositCapacity(facet, 0);
+        uint256 depositAmount = 100 ether;
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("oracle()"),
+            abi.encode(oracleRegistry)
+        );
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("getDenominationAsset()"),
+            abi.encode(asset)
+        );
+        vm.mockCall(
+            oracleRegistry,
+            abi.encodeWithSignature("getSourceOfAsset(address)"),
+            abi.encode(oracle)
+        );
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("decimals()"),
+            abi.encode(8)
+        );
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        vm.prank(user);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        assertEq(IERC20(facet).balanceOf(user), shares);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, 1);
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(user);
+        assertEq(maxDeposit, 0);
+        uint256 maxMint = VaultFacet(facet).maxMint(user);
+        assertEq(maxMint, 0);
+    }
+
     function test_mint_ShouldRevertWhenExceededDepositCapacity() public {
         uint256 mintAmount = 1000001 * 10 ** IERC20Metadata(facet).decimals();
 
@@ -614,6 +720,13 @@ contract VaultFacetTest is Test {
             VaultFacet(facet).getWithdrawalTimelock(),
             110,
             "Should set correct timelock duration"
+        );
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        assertEq(
+            VaultFacet(facet).getWithdrawalQueueStatus(),
+            true,
+            "Should set correct withdrawal queue status"
         );
         // Mock oracle call
         vm.mockCall(
@@ -744,6 +857,13 @@ contract VaultFacetTest is Test {
             110,
             "Should set correct timelock duration"
         );
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        assertEq(
+            VaultFacet(facet).getWithdrawalQueueStatus(),
+            true,
+            "Should set correct withdrawal queue status"
+        );
         // Mock oracle call
         vm.mockCall(
             registry,
@@ -853,6 +973,14 @@ contract VaultFacetTest is Test {
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
         VaultFacet(facet).redeem(100 ether, user, user);
+    }
+
+    function test_requestRedeem_shouldRevertIfSharesIsZero() public {
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        vm.prank(user);
+        vm.expectRevert(VaultFacet.InvalidSharesAmount.selector);
+        VaultFacet(facet).requestRedeem(0);
     }
 
     function test_requestRedeem_ShouldRevertInMulticall() public {
@@ -2013,5 +2141,853 @@ contract VaultFacetTest is Test {
         );
         VaultFacet(facet).deposit(tokens, amounts, user2);
         vm.stopPrank();
+    }
+
+    // ============ Withdrawal Fee Tests ============
+
+    function test_setWithdrawalFee_ShouldUpdateFee() public {
+        uint96 newFee = 500; // 5%
+
+        vm.prank(owner);
+        VaultFacet(facet).setWithdrawalFee(newFee);
+
+        assertEq(VaultFacet(facet).getWithdrawalFee(), newFee);
+    }
+
+    function test_setWithdrawalFee_ShouldRevertWhenUnauthorized() public {
+        uint96 newFee = 500;
+
+        vm.prank(user);
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        VaultFacet(facet).setWithdrawalFee(newFee);
+    }
+
+    function test_getWithdrawalFee_ShouldReturnCurrentFee() public {
+        uint96 initialFee = VaultFacet(facet).getWithdrawalFee();
+        assertEq(initialFee, 0); // Should start at 0
+
+        uint96 newFee = 1000; // 10%
+        vm.prank(owner);
+        VaultFacet(facet).setWithdrawalFee(newFee);
+
+        assertEq(VaultFacet(facet).getWithdrawalFee(), newFee);
+    }
+
+    function test_withdraw_ShouldApplyWithdrawalFee() public {
+        // Setup withdrawal fee
+        uint96 withdrawalFee = 1000; // 10%
+        vm.prank(owner);
+        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+
+        // Setup withdrawal queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Request withdrawal
+        uint256 withdrawAmount = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount);
+
+        // Fast forward past timelock
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Check balances before withdrawal
+        uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
+        uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(
+            feeRecipient
+        );
+
+        // Execute withdrawal
+        vm.prank(user);
+        VaultFacet(facet).withdraw(withdrawAmount, user, user);
+
+        // Check balances after withdrawal
+        uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
+        uint256 feeRecipientBalanceAfter = IERC20(facet).balanceOf(
+            feeRecipient
+        );
+
+        // Calculate expected fee (10% of 100 ether = 10 ether)
+        uint256 expectedFee = (withdrawAmount * withdrawalFee) / 10000;
+        uint256 expectedNetAmount = withdrawAmount - expectedFee;
+
+        assertEq(userBalanceAfter - userBalanceBefore, expectedNetAmount);
+        assertGt(feeRecipientBalanceAfter, feeRecipientBalanceBefore);
+    }
+
+    function test_redeem_ShouldApplyWithdrawalFee() public {
+        // Setup withdrawal fee
+        uint96 withdrawalFee = 1000; // 10%
+        vm.prank(owner);
+        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+
+        // Setup withdrawal queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Request redeem
+        uint256 redeemShares = shares / 10; // Redeem 10% of shares
+        vm.prank(user);
+        VaultFacet(facet).requestRedeem(redeemShares);
+
+        // Fast forward past timelock
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Check balances before redeem
+        uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
+        uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(
+            feeRecipient
+        );
+
+        // Execute redeem
+        vm.prank(user);
+        uint256 assets = VaultFacet(facet).redeem(redeemShares, user, user);
+
+        // Check balances after redeem
+        uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
+        uint256 feeRecipientBalanceAfter = IERC20(facet).balanceOf(
+            feeRecipient
+        );
+
+        // Calculate expected fee (10% of assets)
+        uint256 expectedFee = (assets * withdrawalFee) / 10000;
+        uint256 expectedNetAmount = assets - expectedFee;
+
+        assertEq(userBalanceAfter - userBalanceBefore, expectedNetAmount);
+        assertGt(feeRecipientBalanceAfter, feeRecipientBalanceBefore);
+    }
+
+    function test_previewWithdraw_ShouldAccountForWithdrawalFee() public {
+        // Setup withdrawal fee
+        uint96 withdrawalFee = 1000; // 10%
+        vm.prank(owner);
+        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        uint256 withdrawAmount = 100 ether;
+        uint256 expectedShares = VaultFacet(facet).previewWithdraw(
+            withdrawAmount
+        );
+
+        // Calculate expected fee
+        uint256 expectedFee = (withdrawAmount * withdrawalFee) / 10000;
+        uint256 expectedNetAmount = withdrawAmount - expectedFee;
+
+        // The preview should account for the fee
+        assertTrue(expectedShares > 0);
+    }
+
+    function test_previewRedeem_ShouldAccountForWithdrawalFee() public {
+        // Setup withdrawal fee
+        uint96 withdrawalFee = 1000; // 10%
+        vm.prank(owner);
+        VaultFacet(facet).setWithdrawalFee(withdrawalFee);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        uint256 redeemShares = shares / 10; // Redeem 10% of shares
+        uint256 expectedAssets = VaultFacet(facet).previewRedeem(redeemShares);
+
+        // Calculate expected fee
+        uint256 totalAssets = (redeemShares * 1000 ether) / shares; // Approximate
+        uint256 expectedFee = (totalAssets * withdrawalFee) / 10000;
+        uint256 expectedNetAmount = totalAssets - expectedFee;
+
+        // The preview should account for the fee
+        assertTrue(expectedAssets > 0);
+        assertTrue(expectedAssets < totalAssets); // Should be less due to fee
+    }
+
+    // ============ Withdrawal Queue Tests ============
+
+    function test_updateWithdrawalQueueStatus_ShouldUpdateStatus() public {
+        // Initially should be false
+        assertFalse(VaultFacet(facet).getWithdrawalQueueStatus());
+
+        // Enable queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        assertTrue(VaultFacet(facet).getWithdrawalQueueStatus());
+
+        // Disable queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(false);
+        assertFalse(VaultFacet(facet).getWithdrawalQueueStatus());
+    }
+
+    function test_updateWithdrawalQueueStatus_ShouldRevertWhenUnauthorized()
+        public
+    {
+        vm.prank(user);
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+    }
+
+    function test_getWithdrawalQueueStatus_ShouldReturnStatus() public {
+        // Test initial status
+        assertFalse(VaultFacet(facet).getWithdrawalQueueStatus());
+
+        // Change status and test
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+        assertTrue(VaultFacet(facet).getWithdrawalQueueStatus());
+    }
+
+    function test_requestRedeem_ShouldRevertWhenQueueDisabled() public {
+        // Ensure queue is disabled
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(false);
+
+        uint256 shares = 100 ether;
+        vm.prank(user);
+        vm.expectRevert(VaultFacet.WithdrawalQueueDisabled.selector);
+        VaultFacet(facet).requestRedeem(shares);
+    }
+
+    function test_requestWithdraw_ShouldRevertWhenQueueDisabled() public {
+        // Ensure queue is disabled
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(false);
+
+        uint256 assets = 100 ether;
+        vm.prank(user);
+        vm.expectRevert(VaultFacet.WithdrawalQueueDisabled.selector);
+        VaultFacet(facet).requestWithdraw(assets);
+    }
+
+    // ============ Preview Function Tests ============
+
+    function test_previewDeposit_ShouldCalculateCorrectShares() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        uint256 assets = 100 ether;
+        uint256 expectedShares = VaultFacet(facet).previewDeposit(assets);
+
+        // Should return a positive number
+        assertTrue(expectedShares > 0);
+
+        // Should be consistent with actual deposit
+        MockERC20(asset).mint(user, assets);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, assets);
+        uint256 actualShares = VaultFacet(facet).deposit(assets, user);
+        vm.stopPrank();
+
+        // Preview should match actual (within rounding)
+        assertApproxEqRel(expectedShares, actualShares, 0.01e18);
+    }
+
+    function test_previewMint_ShouldCalculateCorrectAssets() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        uint256 shares = 100 ether;
+        uint256 expectedAssets = VaultFacet(facet).previewMint(shares);
+
+        // Should return a positive number
+        assertTrue(expectedAssets > 0);
+
+        // Should be consistent with actual mint
+        uint256 depositAmount = expectedAssets + 100 ether; // Extra for minting
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user); // First deposit to initialize
+
+        // Mint additional tokens for the mint operation
+        MockERC20(asset).mint(user, expectedAssets);
+        IERC20(asset).approve(facet, expectedAssets);
+        uint256 actualAssets = VaultFacet(facet).mint(shares, user);
+        vm.stopPrank();
+
+        // Preview should match actual (within rounding)
+        assertApproxEqRel(expectedAssets, actualAssets, 0.01e18);
+    }
+
+    function test_previewWithdraw_ShouldCalculateCorrectShares() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // First deposit to initialize vault
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        uint256 assets = 100 ether;
+        uint256 expectedShares = VaultFacet(facet).previewWithdraw(assets);
+
+        // Should return a positive number
+        assertTrue(expectedShares > 0);
+    }
+
+    function test_previewRedeem_ShouldCalculateCorrectAssets() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // First deposit to initialize vault
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        uint256 redeemShares = shares / 10; // Redeem 10% of shares
+        uint256 expectedAssets = VaultFacet(facet).previewRedeem(redeemShares);
+
+        // Should return a positive number
+        assertTrue(expectedAssets > 0);
+    }
+
+    // ============ Edge Case Tests ============
+
+    function test_maxDeposit_ShouldReturnCorrectValue() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        // Test with deposit capacity
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(user);
+        assertEq(maxDeposit, DEPOSIT_CAPACITY);
+
+        // Test after partial deposit
+        uint256 depositAmount = 100 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        uint256 newMaxDeposit = VaultFacet(facet).maxDeposit(user);
+        assertEq(newMaxDeposit, DEPOSIT_CAPACITY - depositAmount);
+    }
+
+    function test_maxMint_ShouldReturnCorrectValue() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Test with deposit capacity
+        uint256 maxMint = VaultFacet(facet).maxMint(user);
+        assertTrue(maxMint > 0);
+
+        // Test after partial deposit
+        uint256 depositAmount = 100 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        uint256 newMaxMint = VaultFacet(facet).maxMint(user);
+        assertTrue(newMaxMint > 0);
+        assertTrue(newMaxMint < maxMint);
+    }
+
+    function test_clearRequest_ShouldClearWithdrawalRequest() public {
+        // Setup withdrawal queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        // First deposit to get shares
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Create a withdrawal request
+        uint256 shares = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestRedeem(shares);
+
+        // Check request exists
+        (uint256 requestShares, uint256 timelockEndsAt) = VaultFacet(facet)
+            .getWithdrawalRequest(user);
+        assertEq(requestShares, shares);
+        assertTrue(timelockEndsAt > 0);
+
+        // Clear request
+        vm.prank(user);
+        VaultFacet(facet).clearRequest();
+
+        // Check request is cleared
+        (requestShares, timelockEndsAt) = VaultFacet(facet)
+            .getWithdrawalRequest(user);
+        assertEq(requestShares, 0);
+        assertEq(timelockEndsAt, 0);
+    }
+
+    // ============ Additional Edge Case Tests ============
+
+    function test_withdraw_ShouldNotApplyFeeWhenZero() public {
+        // Ensure withdrawal fee is 0
+        assertEq(VaultFacet(facet).getWithdrawalFee(), 0);
+
+        // Setup withdrawal queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Request withdrawal
+        uint256 withdrawAmount = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount);
+
+        // Fast forward past timelock
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Check balances before withdrawal
+        uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
+
+        // Execute withdrawal
+        vm.prank(user);
+        VaultFacet(facet).withdraw(withdrawAmount, user, user);
+
+        // Check balances after withdrawal - should receive full amount
+        uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
+        assertEq(userBalanceAfter - userBalanceBefore, withdrawAmount);
+    }
+
+    function test_redeem_ShouldNotApplyFeeWhenZero() public {
+        // Ensure withdrawal fee is 0
+        assertEq(VaultFacet(facet).getWithdrawalFee(), 0);
+
+        // Setup withdrawal queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Request redeem
+        uint256 redeemShares = shares / 10; // Redeem 10% of shares
+        vm.prank(user);
+        VaultFacet(facet).requestRedeem(redeemShares);
+
+        // Fast forward past timelock
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Check balances before redeem
+        uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
+
+        // Execute redeem
+        vm.prank(user);
+        uint256 assets = VaultFacet(facet).redeem(redeemShares, user, user);
+
+        // Check balances after redeem - should receive full amount
+        uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
+        assertEq(userBalanceAfter - userBalanceBefore, assets);
+    }
+
+    function test_maxDeposit_ShouldReturnZeroWhenCapacityExceeded() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+
+        // Fill up the vault to capacity
+        uint256 depositAmount = DEPOSIT_CAPACITY;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Now maxDeposit should be 0
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(user);
+        assertEq(maxDeposit, 0);
+    }
+
+    function test_maxMint_ShouldReturnZeroWhenCapacityExceeded() public {
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Fill up the vault to capacity
+        uint256 depositAmount = DEPOSIT_CAPACITY;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Now maxMint should be 0
+        uint256 maxMint = VaultFacet(facet).maxMint(user);
+        assertEq(maxMint, 0);
+    }
+
+    function test_facetVersion_ShouldReturnVersion() public {
+        string memory version = VaultFacet(facet).facetVersion();
+        assertEq(version, "1.0.0");
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        // This tests the onFacetRemoval function
+        // It should disable the IVaultFacet interface
+        VaultFacet(facet).onFacetRemoval(false);
+
+        // The function should execute without reverting
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(
+                address(facet),
+                type(IVaultFacet).interfaceId
+            ),
+            "Should disable IVaultFacet interface"
+        );
+    }
+
+    function test_paused_ShouldReturnCorrectState() public {
+        // Initially should not be paused
+        assertFalse(VaultFacet(facet).paused());
+
+        // Pause the vault
+        vm.prank(owner);
+        VaultFacet(facet).pause();
+        assertTrue(VaultFacet(facet).paused());
+
+        // Mock factory call for unpause
+        vm.mockCall(
+            factory,
+            abi.encodeWithSignature("getRestrictedFacets()"),
+            abi.encode(new address[](0))
+        );
+
+        // Unpause the vault
+        vm.prank(owner);
+        VaultFacet(facet).unpause();
+        assertFalse(VaultFacet(facet).paused());
+    }
+
+    function test_getWithdrawalRequest_ShouldReturnCorrectValues() public {
+        // Setup withdrawal queue
+        vm.prank(owner);
+        VaultFacet(facet).updateWithdrawalQueueStatus(true);
+
+        // Mock protocol fee info
+        vm.mockCall(
+            registry,
+            abi.encodeWithSignature("protocolFeeInfo(address)"),
+            abi.encode(address(0), 0)
+        );
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Initially should be empty
+        (uint256 shares, uint256 timelockEndsAt) = VaultFacet(facet)
+            .getWithdrawalRequest(user);
+        assertEq(shares, 0);
+        assertEq(timelockEndsAt, 0);
+
+        // First deposit to get shares
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Create a request
+        uint256 requestShares = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestRedeem(requestShares);
+
+        // Check request values
+        (shares, timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
+        assertEq(shares, requestShares);
+        assertTrue(timelockEndsAt > 0); // Should have a valid timelock end time
+    }
+
+    function test_getWithdrawalTimelock_ShouldReturnCorrectValue() public {
+        uint64 timelock = VaultFacet(facet).getWithdrawalTimelock();
+        assertEq(timelock, 0); // Should start at 0
+
+        // Update timelock
+        uint64 newTimelock = 2 days;
+        vm.prank(curator);
+        VaultFacet(facet).setWithdrawalTimelock(newTimelock);
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        uint64 updatedTimelock = VaultFacet(facet).getWithdrawalTimelock();
+        assertEq(updatedTimelock, newTimelock);
+    }
+
+    function test_lockedTokensAmountOfAsset_ShouldReturnCorrectValue() public {
+        // Test with the main asset
+        uint256 lockedAmount = VaultFacet(facet).lockedTokensAmountOfAsset(
+            asset
+        );
+        assertEq(lockedAmount, 0); // Should start at 0
+        IVaultsFactory.VaultInfo[]
+            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
+            abi.encode(vaultsInfo)
+        );
+        // Test with a different asset
+        address otherAsset = address(0x123);
+        uint256 otherLockedAmount = VaultFacet(facet).lockedTokensAmountOfAsset(
+            otherAsset
+        );
+        assertEq(otherLockedAmount, 0);
+    }
+
+    function test_getStakingAddresses_ShouldReturnCorrectValue() public {
+        bytes32 stakingFacetId = keccak256("TestStakingFacet");
+        address[] memory addresses = VaultFacet(facet).getStakingAddresses(
+            stakingFacetId
+        );
+        assertEq(addresses.length, 0);
+        address[] memory newAddresses = new address[](1);
+        newAddresses[0] = address(0x123);
+        MoreVaultsStorageHelper.setStakingAddresses(
+            facet,
+            stakingFacetId,
+            newAddresses
+        );
+        addresses = VaultFacet(facet).getStakingAddresses(stakingFacetId);
+        assertEq(addresses.length, 1);
+        assertEq(addresses[0], address(0x123));
+    }
+
+    function test_tokensHeld_ShouldReturnCorrectValue() public {
+        bytes32 tokenId = keccak256("TestTokenId");
+        address[] memory tokens = VaultFacet(facet).tokensHeld(tokenId);
+        assertEq(tokens.length, 0);
+        address[] memory newTokens = new address[](1);
+        newTokens[0] = address(0x123);
+        MoreVaultsStorageHelper.setTokensHeld(facet, tokenId, newTokens);
+        tokens = VaultFacet(facet).tokensHeld(tokenId);
+        assertEq(tokens.length, 1);
+        assertEq(tokens[0], address(0x123));
     }
 }

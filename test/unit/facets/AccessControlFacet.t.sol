@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {IAccessControlFacet, AccessControlFacet} from "../../../src/facets/AccessControlFacet.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
+import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
@@ -104,6 +105,10 @@ contract AccessControlFacetTest is Test {
             "AccessControlFacet",
             "Facet name should be correct"
         );
+    }
+
+    function test_version_shouldReturnCorrectVersion() public view {
+        assertEq(facet.facetVersion(), "1.0.0", "Version should be correct");
     }
 
     function test_transferCuratorship_ShouldUpdateCurator() public {
@@ -483,5 +488,23 @@ contract AccessControlFacetTest is Test {
         facet.setMoreVaultsRegistry(newRegistry);
 
         vm.stopPrank();
+    }
+
+    function test_moreVaultRegistry_shouldReturnCorrectRegistry() public view {
+        assertEq(
+            facet.moreVaultsRegistry(),
+            registry,
+            "Registry should be correct in storage"
+        );
+    }
+
+    function test_onFacetRemoval_shouldDisableInterface() public {
+        facet.onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(
+                address(facet),
+                type(IAccessControlFacet).interfaceId
+            )
+        );
     }
 }

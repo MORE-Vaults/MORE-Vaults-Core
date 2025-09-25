@@ -51,6 +51,9 @@ abstract contract BaseVaultsRegistry is
 
         __AccessControl_init();
         oracle = IOracleRegistry(_oracle);
+        if (address(oracle.BASE_CURRENCY()) == address(0)) {
+            if (_usdStableTokenAddress == address(0)) revert ZeroAddress();
+        }
         usdStableTokenAddress = _usdStableTokenAddress;
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
     }

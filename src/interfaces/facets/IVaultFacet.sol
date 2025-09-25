@@ -152,4 +152,28 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
      * @param duration New withdraw timelock duration
      */
     function setWithdrawalTimelock(uint64 duration) external;
+
+    /**
+     * @notice Set the withdrawal fee
+     * @param _fee New withdrawal fee
+     */
+    function setWithdrawalFee(uint96 _fee) external;
+
+    /**
+     * @notice Update the withdrawal queue status
+     * @param _status New withdrawal queue status
+     */
+    function updateWithdrawalQueueStatus(bool _status) external;
+
+    /**
+     * @notice Get the current withdrawal fee
+     * @return The current withdrawal fee in basis points
+     */
+    function getWithdrawalFee() external view returns (uint96);
+
+    /**
+     * @notice Get the current withdrawal queue status
+     * @return The current withdrawal queue status
+     */
+    function getWithdrawalQueueStatus() external view returns (bool);
 }

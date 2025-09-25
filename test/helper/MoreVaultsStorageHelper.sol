@@ -51,6 +51,13 @@ library MoreVaultsStorageHelper {
     uint256 constant IS_WHITELIST_ENABLED = 32;
     uint256 constant DEPOSITABLE_ASSETS = 33;
     uint256 constant IS_HUB = 34;
+    uint256 constant ORACLES_CROSS_CHAIN_ACCOUNTING = 34;
+    uint256 constant CROSS_CHAIN_ACCOUNTING_MANAGER = 34;
+    uint256 constant NONCE_TO_CROSS_CHAIN_REQUEST_INFO = 35;
+    uint256 constant FINALIZATION_NONCE = 36;
+    uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 36;
+    uint256 constant WITHDRAWAL_FEE = 36;
+    uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
     uint256 constant CURATOR = 1;
@@ -1033,14 +1040,171 @@ library MoreVaultsStorageHelper {
     }
 
     function setIsHub(address contractAddress, bool isHub) internal {
+        bytes32 storedValue = getStorageValue(contractAddress, IS_HUB);
+        bytes32 mask = bytes32(uint256(1)); // маска для первого бита
         setStorageValue(
             contractAddress,
             IS_HUB,
-            bytes32(uint256(isHub ? 1 : 0))
+            (storedValue & ~mask) | bytes32(uint256(isHub ? 1 : 0))
         );
     }
 
     function getIsHub(address contractAddress) internal view returns (bool) {
-        return uint256(getStorageValue(contractAddress, IS_HUB)) != 0;
+        bytes32 storedValue = getStorageValue(contractAddress, IS_HUB);
+        bytes32 mask = bytes32(uint256(1));
+        return uint256(storedValue & mask) != 0;
+    }
+
+    function setOraclesCrossChainAccounting(
+        address contractAddress,
+        bool oraclesCrossChainAccounting
+    ) internal {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            ORACLES_CROSS_CHAIN_ACCOUNTING
+        );
+        bytes32 mask = bytes32(uint256(2));
+        setStorageValue(
+            contractAddress,
+            ORACLES_CROSS_CHAIN_ACCOUNTING,
+            (storedValue & ~mask) |
+                bytes32(uint256(oraclesCrossChainAccounting ? 2 : 0))
+        );
+    }
+
+    function getOraclesCrossChainAccounting(
+        address contractAddress
+    ) internal view returns (bool) {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            ORACLES_CROSS_CHAIN_ACCOUNTING
+        );
+        bytes32 mask = bytes32(uint256(2));
+        return uint256(storedValue & mask) != 0;
+    }
+
+    function setCrossChainAccountingManager(
+        address contractAddress,
+        address crossChainAccountingManager
+    ) internal {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            CROSS_CHAIN_ACCOUNTING_MANAGER
+        );
+        bytes32 mask = bytes32(uint256(type(uint160).max) << 2);
+        setStorageValue(
+            contractAddress,
+            CROSS_CHAIN_ACCOUNTING_MANAGER,
+            (storedValue & ~mask) |
+                bytes32(uint256(uint160(crossChainAccountingManager)) << 2)
+        );
+    }
+
+    function getCrossChainAccountingManager(
+        address contractAddress
+    ) internal view returns (address) {
+        bytes32 storedValue = getStorageValue(
+            contractAddress,
+            CROSS_CHAIN_ACCOUNTING_MANAGER
+        );
+        bytes32 mask = bytes32(uint256(type(uint160).max) << 2);
+        return address(uint160(uint256((storedValue & mask) >> 2)));
+    }
+
+    function setStakingAddresses(
+        address contractAddress,
+        bytes32 key,
+        address[] memory addresses
+    ) internal {
+        bytes32 mappingSlot = keccak256(
+            abi.encode(
+                key,
+                bytes32(
+                    uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) +
+                        STAKING_ADDRESSES
+                )
+            )
+        );
+
+        // EnumerableSet stores:
+        // 1. _values (address[])
+        // 2. _positions (mapping(address => uint256))
+
+        vm.store(contractAddress, mappingSlot, bytes32(addresses.length));
+
+        bytes32 valuesSlot = keccak256(abi.encode(mappingSlot));
+        for (uint256 i = 0; i < addresses.length; ) {
+            vm.store(
+                contractAddress,
+                bytes32(uint256(valuesSlot) + i),
+                bytes32(uint256(uint160(addresses[i])))
+            );
+            unchecked {
+                ++i;
+            }
+        }
+
+        bytes32 positionsSlot = bytes32(uint256(mappingSlot) + 1);
+        for (uint256 i = 0; i < addresses.length; ) {
+            bytes32 positionSlot = keccak256(
+                abi.encode(
+                    bytes32(uint256(uint160(addresses[i]))),
+                    positionsSlot
+                )
+            );
+            vm.store(contractAddress, positionSlot, bytes32(i + 1));
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function setSlippagePercent(
+        address contractAddress,
+        uint256 value
+    ) internal {
+        setStorageValue(contractAddress, MAX_SLIPPAGE_PERCENT, bytes32(value));
+    }
+
+    function getSlippagePercent(
+        address contractAddress
+    ) internal view returns (uint256) {
+        return uint256(getStorageValue(contractAddress, MAX_SLIPPAGE_PERCENT));
+    }
+
+    function setScratchSpace(address contractAddress, uint256 value) internal {
+        setStorageValue(contractAddress, SCRATCH_SPACE, bytes32(value));
+    }
+
+    function getScratchSpace(
+        address contractAddress
+    ) internal view returns (uint256) {
+        return uint256(getStorageValue(contractAddress, SCRATCH_SPACE));
+    }
+
+    function getGasLimitForAccounting(
+        address contractAddress
+    ) internal view returns (MoreVaultsLib.GasLimit memory) {
+        return
+            MoreVaultsLib.GasLimit({
+                availableTokenAccountingGas: uint48(
+                    uint256(getStorageValue(contractAddress, GAS_LIMIT))
+                ),
+                heldTokenAccountingGas: uint48(
+                    uint256(getStorageValue(contractAddress, GAS_LIMIT))
+                ),
+                facetAccountingGas: uint48(
+                    uint256(getStorageValue(contractAddress, GAS_LIMIT))
+                ),
+                stakingTokenAccountingGas: uint48(
+                    uint256(getStorageValue(contractAddress, GAS_LIMIT))
+                ),
+                nestedVaultsGas: uint48(
+                    uint256(getStorageValue(contractAddress, GAS_LIMIT))
+                ),
+                value: uint48(
+                    uint256(getStorageValue(contractAddress, GAS_LIMIT))
+                )
+            });
     }
 }

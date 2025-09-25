@@ -2,9 +2,11 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
-import {IMulticallFacet, MulticallFacet} from "../../../src/facets/MulticallFacet.sol";
+import {BaseFacetInitializer, IMulticallFacet, MulticallFacet} from "../../../src/facets/MulticallFacet.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
+import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {console} from "forge-std/console.sol";
 
 contract MulticallFacetTest is Test {
     MulticallFacet public facet;
@@ -50,6 +52,20 @@ contract MulticallFacetTest is Test {
             facet.facetName(),
             "MulticallFacet",
             "Facet name should be correct"
+        );
+    }
+
+    function test_version_ShouldReturnCorrectVersion() public view {
+        assertEq(facet.facetVersion(), "1.0.0", "Version should be correct");
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        facet.onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(
+                address(facet),
+                type(IMulticallFacet).interfaceId
+            )
         );
     }
 
@@ -343,5 +359,40 @@ contract MulticallFacetTest is Test {
             currentNonce,
             "Current nonce should match"
         );
+    }
+
+    function test_shouldRevertWhenSlippageExceeded() public {
+        TotalAssetsMock mock = new TotalAssetsMock();
+
+        // Set roles
+        MoreVaultsStorageHelper.setCurator(address(mock), curator);
+        MoreVaultsStorageHelper.setGuardian(address(mock), guardian);
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(mock), 0);
+
+        bytes[] memory newActionsData = new bytes[](1);
+        newActionsData[0] = abi.encodeWithSignature("increaseCounter()");
+        vm.prank(curator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MulticallFacet.SlippageExceeded.selector,
+                9999,
+                1
+            )
+        );
+        MoreVaultsStorageHelper.setSlippagePercent(address(mock), 1);
+        uint256 nonce = mock.submitActions(newActionsData);
+    }
+}
+
+contract TotalAssetsMock is MulticallFacet {
+    function totalAssets() external view returns (uint256) {
+        uint256 counter = MoreVaultsStorageHelper.getScratchSpace(
+            address(this)
+        );
+        return counter == 0 ? 1e18 : 1e1;
+    }
+
+    function increaseCounter() external {
+        MoreVaultsStorageHelper.setScratchSpace(address(this), 1);
     }
 }

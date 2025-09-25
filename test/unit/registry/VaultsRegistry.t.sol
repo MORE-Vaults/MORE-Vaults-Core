@@ -24,7 +24,6 @@ contract VaultsRegistryTest is Test {
         vm.prank(admin);
         registry = new VaultsRegistry();
         vm.prank(admin);
-        registry.initialize(admin, address(oracle), address(usdc));
 
         // Mock oracle calls
         vm.mockCall(
@@ -32,6 +31,7 @@ contract VaultsRegistryTest is Test {
             abi.encodeWithSignature("BASE_CURRENCY()"),
             abi.encode(baseCurrency)
         );
+        registry.initialize(admin, address(oracle), address(usdc));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("getSourceOfAsset(address)"),

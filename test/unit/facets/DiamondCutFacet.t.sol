@@ -61,6 +61,24 @@ contract DiamondCutFacetTest is Test {
         );
     }
 
+    function test_facetVersion_ShouldReturnCorrectVersion() public view {
+        assertEq(
+            IDiamondCut(facet).facetVersion(),
+            "1.0.0",
+            "Facet version should be correct"
+        );
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        IDiamondCut(facet).onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(
+                address(facet),
+                type(IDiamondCut).interfaceId
+            )
+        );
+    }
+
     function test_diamondCut_ShouldAddNewFacet() public {
         // Mock registry functions
         vm.mockCall(
@@ -218,10 +236,7 @@ contract DiamondCutFacetTest is Test {
 
         vm.mockCall(
             address(0), // unassigned factory
-            abi.encodeWithSelector(
-                IVaultsFactory.link.selector,
-                newTestFacet
-            ),
+            abi.encodeWithSelector(IVaultsFactory.link.selector, newTestFacet),
             ""
         );
 
