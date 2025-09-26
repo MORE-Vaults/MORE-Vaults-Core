@@ -89,12 +89,6 @@ interface IMoreVaultsRegistry {
         bool isManager
     );
 
-    /**
-     * @dev Emitted when trusted OFT status is updated
-     * @param oft Address of the OFT
-     * @param trusted True if OFT is trusted, false otherwise
-     */
-    event TrustedOFTUpdated(address indexed oft, bool trusted);
 
     /**
      * @dev Emitted when default cross chain accounting manager is set
@@ -288,28 +282,8 @@ interface IMoreVaultsRegistry {
         bytes4 selector
     ) external view returns (bool, bytes memory);
 
-    /**
-     * @notice Batch set trust status for multiple OFT tokens
-     * @param ofts Array of OFT token addresses
-     * @param trusted Array of trust statuses (must match ofts length)
-     */
-    function setTrustedOFTs(
-        address[] calldata ofts,
-        bool[] calldata trusted
-    ) external;
 
-    /**
-     * @notice Check if an OFT token is trusted for bridging
-     * @param oft Address of the OFT token to check
-     * @return bool True if the token is trusted, false otherwise
-     */
-    function isTrustedOFT(address oft) external view returns (bool);
 
-    /**
-     * @notice Get all trusted OFT tokens
-     * @return address[] Array of trusted OFT addresses
-     */
-    function getTrustedOFTs() external view returns (address[] memory);
 
     /**
      * @notice Check if an address is a cross chain accounting manager

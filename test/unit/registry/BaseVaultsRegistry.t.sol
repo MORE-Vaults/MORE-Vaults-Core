@@ -63,19 +63,6 @@ contract TestBaseVaultsRegistry is BaseVaultsRegistry {
         bytes4
     ) external view override returns (bool, bytes memory) {}
 
-    function setTrustedOFTs(
-        address[] calldata,
-        bool[] calldata
-    ) external override {}
-
-    function isTrustedOFT(address) external view override returns (bool) {}
-
-    function getTrustedOFTs()
-        external
-        view
-        override
-        returns (address[] memory)
-    {}
 }
 
 contract BaseVaultsRegistryTest is Test {

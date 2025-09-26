@@ -38,6 +38,8 @@ contract LzAdapter is
     error InvalidLayerZeroEid();
     error NoResponses();
     error UnsupportedChain(uint16);
+    error ZeroAddress();
+    error ArrayLengthMismatch();
 
     struct CallInfo {
         address vault;
@@ -51,6 +53,8 @@ contract LzAdapter is
     event ComposerUpdated(address indexed composer);
 
     event ChainIdToEidUpdated(uint16 indexed chainId, uint32 indexed eid);
+
+    event TrustedOFTUpdated(address indexed oft, bool trusted);
 
     event BridgeExecuted(
         address indexed sender,
@@ -80,9 +84,11 @@ contract LzAdapter is
     uint256 public slippageBps = 100; // 1% default slippage
 
     // Chain management
-    mapping(uint256 => bool) public supportedChains;
     mapping(uint256 => bool) public chainPaused;
-    uint256[] public configuredChains;
+
+    // OFT management
+    mapping(address => bool) private _trustedOFTs;
+    address[] private _trustedOFTsList;
 
     /**
      * @notice Constructor to initialize the OAppRead contract.
@@ -135,12 +141,38 @@ contract LzAdapter is
         view
         returns (uint256[] memory chains, bool[] memory statuses)
     {
-        uint256[] memory allChains = new uint256[](configuredChains.length);
-        bool[] memory allStatuses = new bool[](configuredChains.length);
+        // We need to track configured chains for efficiency
+        // For now, iterate through common chain IDs
+        uint256[] memory commonChainIds = new uint256[](10);
+        commonChainIds[0] = 1; // Ethereum
+        commonChainIds[1] = 137; // Polygon
+        commonChainIds[2] = 56; // BSC
+        commonChainIds[3] = 43114; // Avalanche
+        commonChainIds[4] = 250; // Fantom
+        commonChainIds[5] = 42161; // Arbitrum
+        commonChainIds[6] = 10; // Optimism
+        commonChainIds[7] = 8453; // Base
+        commonChainIds[8] = 324; // zkSync
+        commonChainIds[9] = 59144; // Linea
 
-        for (uint256 i = 0; i < configuredChains.length; i++) {
-            allChains[i] = configuredChains[i];
-            allStatuses[i] = supportedChains[configuredChains[i]];
+        // Count supported chains
+        uint256 count = 0;
+        for (uint256 i = 0; i < commonChainIds.length; i++) {
+            if (_chainIdToEid[uint16(commonChainIds[i])] != 0) {
+                count++;
+            }
+        }
+
+        uint256[] memory allChains = new uint256[](count);
+        bool[] memory allStatuses = new bool[](count);
+
+        uint256 index = 0;
+        for (uint256 i = 0; i < commonChainIds.length; i++) {
+            if (_chainIdToEid[uint16(commonChainIds[i])] != 0) {
+                allChains[index] = commonChainIds[i];
+                allStatuses[index] = !chainPaused[commonChainIds[i]];
+                index++;
+            }
         }
 
         return (allChains, allStatuses);
@@ -156,7 +188,8 @@ contract LzAdapter is
         view
         returns (bool supported, bool isPaused, string memory additionalInfo)
     {
-        return (supportedChains[chainId], chainPaused[chainId], "");
+        bool isSupported = _chainIdToEid[uint16(chainId)] != 0;
+        return (isSupported, chainPaused[chainId], "");
     }
 
     /**
@@ -238,23 +271,14 @@ contract LzAdapter is
         uint256 chainId,
         bool supported
     ) external onlyOwner {
-        bool wasSupported = supportedChains[chainId];
-        supportedChains[chainId] = supported;
-
-        if (supported && !wasSupported) {
-            // Adding new chain
-            configuredChains.push(chainId);
-        } else if (!supported && wasSupported) {
-            // Removing chain from configuredChains array
-            for (uint256 i = 0; i < configuredChains.length; i++) {
-                if (configuredChains[i] == chainId) {
-                    configuredChains[i] = configuredChains[
-                        configuredChains.length - 1
-                    ];
-                    configuredChains.pop();
-                    break;
-                }
-            }
+        if (supported) {
+            // Chain is supported if it has an EID, nothing to set here
+            // Use setChainIdToEid instead to enable chains
+            return;
+        } else {
+            // To remove support, set EID to 0
+            _chainIdToEid[uint16(chainId)] = 0;
+            emit ChainIdToEidUpdated(uint16(chainId), 0);
         }
     }
 
@@ -376,6 +400,42 @@ contract LzAdapter is
         }
     }
 
+    /**
+     * @notice Batch set trust status for multiple OFT tokens
+     * @param ofts Array of OFT token addresses
+     * @param trusted Array of trust statuses (must match ofts length)
+     */
+    function setTrustedOFTs(
+        address[] calldata ofts,
+        bool[] calldata trusted
+    ) external onlyOwner {
+        if (ofts.length != trusted.length) revert ArrayLengthMismatch();
+
+        for (uint256 i = 0; i < ofts.length; ) {
+            _setTrustedOFT(ofts[i], trusted[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /**
+     * @notice Check if an OFT token is trusted for bridging
+     * @param oft Address of the OFT token to check
+     * @return bool True if the token is trusted, false otherwise
+     */
+    function isTrustedOFT(address oft) external view returns (bool) {
+        return _trustedOFTs[oft];
+    }
+
+    /**
+     * @notice Get all trusted OFT tokens
+     * @return address[] Array of trusted OFT addresses
+     */
+    function getTrustedOFTs() external view returns (address[] memory) {
+        return _trustedOFTsList;
+    }
+
     function _getCmd(
         IVaultsFactory.VaultInfo[] memory vaultInfos
     ) internal view returns (bytes memory cmd) {
@@ -477,7 +537,7 @@ contract LzAdapter is
         if (layerZeroEid == 0) revert InvalidLayerZeroEid();
 
         // Chain conditions
-        if (!supportedChains[destChainId])
+        if (_chainIdToEid[uint16(destChainId)] == 0)
             revert UnsupportedChain(uint16(destChainId));
         if (chainPaused[destChainId]) revert ChainPaused();
     }
@@ -494,7 +554,7 @@ contract LzAdapter is
         if (!vaultsFactory.isVault(msg.sender)) revert UnauthorizedVault();
 
         // Validate OFT token is trusted
-        if (!vaultsRegistry.isTrustedOFT(oftTokenAddress))
+        if (!_trustedOFTs[oftTokenAddress])
             revert UntrustedOFT();
 
         _validateBridgeParams(dstChainId, oftTokenAddress, lzEid, amount);
@@ -586,5 +646,41 @@ contract LzAdapter is
         }
 
         return fee.nativeFee;
+    }
+
+    /**
+     * @notice Internal function to set trusted OFT status
+     * @param oft Address of the OFT
+     * @param trusted True to trust the OFT, false to remove trust
+     */
+    function _setTrustedOFT(address oft, bool trusted) internal {
+        if (oft == address(0)) revert ZeroAddress();
+
+        bool currentlyTrusted = _trustedOFTs[oft];
+        if (currentlyTrusted == trusted) {
+            return; // No change needed
+        }
+
+        _trustedOFTs[oft] = trusted;
+
+        if (trusted) {
+            _trustedOFTsList.push(oft);
+        } else {
+            // Remove from list
+            for (uint256 i = 0; i < _trustedOFTsList.length; ) {
+                if (_trustedOFTsList[i] == oft) {
+                    _trustedOFTsList[i] = _trustedOFTsList[
+                        _trustedOFTsList.length - 1
+                    ];
+                    _trustedOFTsList.pop();
+                    break;
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+
+        emit TrustedOFTUpdated(oft, trusted);
     }
 }

@@ -103,6 +103,7 @@ interface IBridgeAdapter {
      * @notice Set supported chain (admin only)
      * @param chainId Chain ID to set
      * @param supported Whether chain is supported
+     * @dev If supported=true, use setChainIdToEid instead. If false, removes EID mapping.
      */
     function setSupportedChain(uint256 chainId, bool supported) external;
 
@@ -159,4 +160,27 @@ interface IBridgeAdapter {
      * @return eid The LayerZero EID for the chain
      */
     function chainIdToEid(uint16 chainId) external view returns (uint32);
+
+    /**
+     * @notice Batch set trust status for multiple OFT tokens
+     * @param ofts Array of OFT token addresses
+     * @param trusted Array of trust statuses (must match ofts length)
+     */
+    function setTrustedOFTs(
+        address[] calldata ofts,
+        bool[] calldata trusted
+    ) external;
+
+    /**
+     * @notice Check if an OFT token is trusted for bridging
+     * @param oft Address of the OFT token to check
+     * @return bool True if the token is trusted, false otherwise
+     */
+    function isTrustedOFT(address oft) external view returns (bool);
+
+    /**
+     * @notice Get all trusted OFT tokens
+     * @return address[] Array of trusted OFT addresses
+     */
+    function getTrustedOFTs() external view returns (address[] memory);
 }
