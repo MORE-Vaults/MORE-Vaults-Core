@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.20;
 
 import {IVaultsFactory} from "./IVaultsFactory.sol";
 import {MessagingReceipt, MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
@@ -165,6 +165,8 @@ interface IBridgeAdapter {
      * @notice Batch set trust status for multiple OFT tokens
      * @param ofts Array of OFT token addresses
      * @param trusted Array of trust statuses (must match ofts length)
+     * @dev Moved from VaultsRegistry to adapter for better separation of concerns
+     *      Protected against reentrancy in implementations
      */
     function setTrustedOFTs(
         address[] calldata ofts,
