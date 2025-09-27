@@ -260,53 +260,65 @@ library MoreVaultsLib {
         Math.Rounding rounding
     ) internal view returns (uint) {
         if (amount == 0) return 0;
-        MoreVaultsStorage storage ds = moreVaultsStorage();
 
-        if (_token == address(0)) {
-            _token = address(ds.wrappedNative);
+        // Scope 1: Token validation and setup
+        address resolvedToken;
+        address underlyingToken;
+        {
+            MoreVaultsStorage storage ds = moreVaultsStorage();
+            resolvedToken = _token == address(0) ? address(ds.wrappedNative) : _token;
+            underlyingToken = address(getERC4626Storage()._asset);
+
+            if (resolvedToken == underlyingToken) {
+                return amount;
+            }
         }
-        address underlyingToken = address(getERC4626Storage()._asset);
-        if (_token == underlyingToken) {
-            return amount;
+
+        // Scope 2: Oracle setup and input token price
+        uint256 inputTokenPrice;
+        uint8 inputTokenOracleDecimals;
+        address oracleDenominationAsset;
+        {
+            IMoreVaultsRegistry registry = IMoreVaultsRegistry(
+                AccessControlLib.vaultRegistry()
+            );
+            IOracleRegistry oracle = registry.oracle();
+            oracleDenominationAsset = registry.getDenominationAsset();
+
+            IAggregatorV2V3Interface aggregator = IAggregatorV2V3Interface(
+                oracle.getOracleInfo(resolvedToken).aggregator
+            );
+            inputTokenPrice = oracle.getAssetPrice(resolvedToken);
+            inputTokenOracleDecimals = aggregator.decimals();
         }
 
-        IMoreVaultsRegistry registry = IMoreVaultsRegistry(
-            AccessControlLib.vaultRegistry()
-        );
-        IOracleRegistry oracle = registry.oracle();
-        address oracleDenominationAsset = registry.getDenominationAsset();
-        IAggregatorV2V3Interface aggregator = IAggregatorV2V3Interface(
-            oracle.getOracleInfo(_token).aggregator
-        );
-        uint256 inputTokenPrice = oracle.getAssetPrice(_token);
-        uint8 inputTokenOracleDecimals = aggregator.decimals();
-
+        // Scope 3: Price conversion calculation
         uint256 finalPriceForConversion = inputTokenPrice;
         if (underlyingToken != oracleDenominationAsset) {
-            aggregator = IAggregatorV2V3Interface(
+            IMoreVaultsRegistry registry = IMoreVaultsRegistry(
+                AccessControlLib.vaultRegistry()
+            );
+            IOracleRegistry oracle = registry.oracle();
+
+            IAggregatorV2V3Interface aggregator = IAggregatorV2V3Interface(
                 oracle.getOracleInfo(underlyingToken).aggregator
             );
-            uint256 underlyingTokenPrice = oracle.getAssetPrice(
-                underlyingToken
-            );
+            uint256 underlyingTokenPrice = oracle.getAssetPrice(underlyingToken);
             uint8 underlyingTokenOracleDecimals = aggregator.decimals();
-            uint256 inputToUnderlyingPrice = inputTokenPrice.mulDiv(
+
+            finalPriceForConversion = inputTokenPrice.mulDiv(
                 10 ** underlyingTokenOracleDecimals,
                 underlyingTokenPrice,
                 rounding
             );
-            finalPriceForConversion = inputToUnderlyingPrice;
         }
 
-        uint256 convertedAmount = amount.mulDiv(
-            finalPriceForConversion *
-                10 ** IERC20Metadata(underlyingToken).decimals(),
-            10 **
-                (inputTokenOracleDecimals + IERC20Metadata(_token).decimals()),
+        // Final conversion calculation
+        return amount.mulDiv(
+            finalPriceForConversion * 10 ** IERC20Metadata(underlyingToken).decimals(),
+            10 ** (inputTokenOracleDecimals + IERC20Metadata(resolvedToken).decimals()),
             rounding
         );
-
-        return convertedAmount;
     }
 
     function convertUnderlyingToUsd(
