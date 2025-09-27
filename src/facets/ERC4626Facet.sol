@@ -27,6 +27,30 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     /// @dev Constant identifier for ERC4626 operations
     bytes32 constant ERC4626_ID = keccak256("ERC4626_ID");
 
+    /// @dev Structs to reduce stack depth in genericAsyncActionExecution
+    struct ValidationContext {
+        bytes4 selector;
+        bool allowed;
+        bytes maskForData;
+    }
+
+    struct BalanceSnapshot {
+        uint256 sharesBefore;
+        uint256 assetsBefore;
+        uint256 totalSupplyBefore;
+        uint256 sharesAfter;
+        uint256 assetsAfter;
+        uint256 totalSupplyAfter;
+        address asset;
+    }
+
+    struct ExecutionContext {
+        bytes32 diamondAddress;
+        bytes fixedData;
+        bool success;
+        bytes result;
+    }
+
     /**
      * @notice Returns the storage slot for this facet's initializable storage
      * @return bytes32 The storage slot identifier
@@ -279,66 +303,66 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib
             .accessControlStorage();
 
-        bytes4 selector = bytes4(data[:4]);
-        (bool allowed, bytes memory maskForData) = IMoreVaultsRegistry(
+        ValidationContext memory validation;
+        validation.selector = bytes4(data[:4]);
+        (validation.allowed, validation.maskForData) = IMoreVaultsRegistry(
             acs.moreVaultsRegistry
-        ).selectorInfo(vault, selector);
-        if (!allowed) {
-            revert SelectorNotAllowed(selector);
+        ).selectorInfo(vault, validation.selector);
+        if (!validation.allowed) {
+            revert SelectorNotAllowed(validation.selector);
         }
 
-        // Check if upon request execution, the amount of assets will increase or decrease, to handle possible locks on request step
-        uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
-        uint256 totalSupplyBefore = IERC4626(vault).totalSupply();
-        address asset = IERC4626(vault).asset();
+        BalanceSnapshot memory balances;
+        balances.asset = IERC4626(vault).asset();
+        balances.sharesBefore = IERC4626(vault).balanceOf(address(this));
+        balances.assetsBefore = IERC20(balances.asset).balanceOf(address(this));
+        balances.totalSupplyBefore = IERC4626(vault).totalSupply();
 
-        IERC20(asset).forceApprove(vault, type(uint256).max);
-        bytes32 diamondAddress = bytes32(uint256(uint160(address(this))));
-        bytes memory fixedData = _replaceBytesInData(
+        ExecutionContext memory execution;
+        IERC20(balances.asset).forceApprove(vault, type(uint256).max);
+        execution.diamondAddress = bytes32(uint256(uint160(address(this))));
+        execution.fixedData = _replaceBytesInData(
             data,
-            maskForData,
-            diamondAddress
+            validation.maskForData,
+            execution.diamondAddress
         );
 
-        (bool success, bytes memory result) = vault.call(fixedData);
-        if (!success) revert AsyncActionExecutionFailed(result);
-        IERC20(asset).forceApprove(vault, 0);
+        (execution.success, execution.result) = vault.call(execution.fixedData);
+        if (!execution.success) revert AsyncActionExecutionFailed(execution.result);
+        IERC20(balances.asset).forceApprove(vault, 0);
 
-        uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceAfter = IERC20(asset).balanceOf(address(this));
+        balances.sharesAfter = IERC4626(vault).balanceOf(address(this));
+        balances.assetsAfter = IERC20(balances.asset).balanceOf(address(this));
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         // Case when upon deposit request assets will be transferred to the vault, but shares will not be minted back until request is executed
         if (
-            sharesBalanceAfter == sharesBalanceBefore &&
-            assetsBalanceAfter < assetsBalanceBefore
+            balances.sharesAfter == balances.sharesBefore &&
+            balances.assetsAfter < balances.assetsBefore
         ) {
-            ds.lockedTokens[asset] += assetsBalanceBefore - assetsBalanceAfter;
+            ds.lockedTokens[balances.asset] += balances.assetsBefore - balances.assetsAfter;
             return;
         }
         // Case when upon withdrawal request shares will be transferred to the vault, but assets will not be transferred back until request is executed
         if (
-            sharesBalanceAfter < sharesBalanceBefore &&
-            assetsBalanceAfter == assetsBalanceBefore
+            balances.sharesAfter < balances.sharesBefore &&
+            balances.assetsAfter == balances.assetsBefore
         ) {
-            ds.lockedTokens[vault] += sharesBalanceBefore - sharesBalanceAfter;
+            ds.lockedTokens[vault] += balances.sharesBefore - balances.sharesAfter;
             return;
         }
 
-        uint256 totalSupplyAfter = IERC4626(vault).totalSupply();
+        balances.totalSupplyAfter = IERC4626(vault).totalSupply();
         // Case when upon deposit finalization shares will be transferred to the reciever and assets already were locked on request
         if (
-            sharesBalanceBefore < sharesBalanceAfter &&
-            assetsBalanceAfter == assetsBalanceBefore
+            balances.sharesBefore < balances.sharesAfter &&
+            balances.assetsAfter == balances.assetsBefore
         ) {
             // If total supply increased, it means that deposit request was executed, otherwise withdrawal request was cancelled
-            if (totalSupplyAfter > totalSupplyBefore) {
-                ds.lockedTokens[asset] -=
-                    sharesBalanceAfter -
-                    sharesBalanceBefore;
+            if (balances.totalSupplyAfter > balances.totalSupplyBefore) {
+                ds.lockedTokens[balances.asset] -=
+                    balances.sharesAfter -
+                    balances.sharesBefore;
             } else {
                 delete ds.lockedTokens[vault];
             }
@@ -346,31 +370,31 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         }
         // Case when upon withdrawal finalization assets will be transferred to the reciever and shares already were locked on request
         if (
-            sharesBalanceAfter == sharesBalanceBefore &&
-            assetsBalanceBefore < assetsBalanceAfter
+            balances.sharesAfter == balances.sharesBefore &&
+            balances.assetsBefore < balances.assetsAfter
         ) {
             // If total supply decreased, it means that withdrawal request was executed, otherwise deposit request was cancelled
-            if (totalSupplyBefore > totalSupplyAfter) {
+            if (balances.totalSupplyBefore > balances.totalSupplyAfter) {
                 ds.lockedTokens[vault] -=
-                    assetsBalanceAfter -
-                    assetsBalanceBefore;
+                    balances.assetsAfter -
+                    balances.assetsBefore;
                 MoreVaultsLib.removeTokenIfnecessary(
                     ds.tokensHeld[ERC4626_ID],
                     vault
                 );
             } else {
-                delete ds.lockedTokens[asset];
+                delete ds.lockedTokens[balances.asset];
             }
             return;
         }
         // Cases for request without locks
         if (
-            (sharesBalanceAfter == sharesBalanceBefore && // request was created without locks
-                assetsBalanceAfter == assetsBalanceBefore) ||
-            (sharesBalanceAfter > sharesBalanceBefore && // withdrawal request was finalized without locks
-                assetsBalanceAfter < assetsBalanceBefore) ||
-            (sharesBalanceAfter < sharesBalanceBefore && // deposit request was finalized without locks
-                assetsBalanceAfter > assetsBalanceBefore)
+            (balances.sharesAfter == balances.sharesBefore && // request was created without locks
+                balances.assetsAfter == balances.assetsBefore) ||
+            (balances.sharesAfter > balances.sharesBefore && // withdrawal request was finalized without locks
+                balances.assetsAfter < balances.assetsBefore) ||
+            (balances.sharesAfter < balances.sharesBefore && // deposit request was finalized without locks
+                balances.assetsAfter > balances.assetsBefore)
         ) {
             return;
         } else {
