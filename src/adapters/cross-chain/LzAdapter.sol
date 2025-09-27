@@ -404,7 +404,7 @@ contract LzAdapter is
     ) external pure returns (bytes memory) {
         if (_responses.length == 0) revert BridgeErrors.NoResponses();
         uint256 sum;
-        for (uint i = 0; i < _responses.length; ) {
+        for (uint i = 0; i < _responses.length; i++) {
             sum += abi.decode(_responses[i], (uint256));
         }
         return abi.encode(sum);
@@ -418,7 +418,7 @@ contract LzAdapter is
         address payable to,
         uint256 amount
     ) external onlyOwner {
-        if (token != address(0)) {
+        if (token == address(0)) {
             to.transfer(amount);
         } else {
             IERC20(token).safeTransfer(to, amount);
