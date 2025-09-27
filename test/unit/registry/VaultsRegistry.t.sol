@@ -726,4 +726,81 @@ contract VaultsRegistryTest is Test {
         assertTrue(isAllowed, "Should allow selector");
         assertEq(mask, fetchedMask, "Should set mask");
     }
+
+    function test_isPermissionless_ShouldReturnFalse() public {
+        assertFalse(registry.isPermissionless());
+    }
+
+    function test_setBridge_ShouldSetBridgeAllowed() public {
+        address bridge = address(0x1234);
+
+        vm.prank(admin);
+        registry.setBridge(bridge, true);
+
+        assertTrue(registry.isBridgeAllowed(bridge));
+    }
+
+    function test_setIsCrossChainAccountingManager_ShouldSetManager() public {
+        address manager = address(0x5678);
+
+        vm.prank(admin);
+        registry.setIsCrossChainAccountingManager(manager, true);
+
+        assertTrue(registry.isCrossChainAccountingManager(manager));
+    }
+
+    function test_setDefaultCrossChainAccountingManager_ShouldSetDefaultManager() public {
+        address manager = address(0x9ABC);
+
+        registry.setDefaultCrossChainAccountingManager(manager);
+
+        assertEq(registry.defaultCrossChainAccountingManager(), manager);
+    }
+
+    function test_isBridgeAllowed_ShouldReturnCorrectValue() public {
+        address bridge = address(0xDEF0);
+
+        assertFalse(registry.isBridgeAllowed(bridge));
+
+        vm.prank(admin);
+        registry.setBridge(bridge, true);
+
+        assertTrue(registry.isBridgeAllowed(bridge));
+    }
+
+    function test_isCrossChainAccountingManager_ShouldReturnCorrectValue() public {
+        address manager = address(0x1111);
+
+        assertFalse(registry.isCrossChainAccountingManager(manager));
+
+        vm.prank(admin);
+        registry.setIsCrossChainAccountingManager(manager, true);
+
+        assertTrue(registry.isCrossChainAccountingManager(manager));
+    }
+
+    function test_editFacet_ShouldRemoveSelectorFromMiddleOfArray() public {
+        bytes4[] memory selectors = new bytes4[](3);
+
+        // Add 3 selectors first using addFacet
+        selectors[0] = bytes4(keccak256("test1()"));
+        selectors[1] = bytes4(keccak256("test2()"));
+        selectors[2] = bytes4(keccak256("test3()"));
+
+        vm.prank(admin);
+        registry.addFacet(facet, selectors);
+
+        // Now remove the FIRST selector (this will force loop iteration to reach ++j)
+        bytes4[] memory removeSelectors = new bytes4[](1);
+        bool[] memory removeAllowed = new bool[](1);
+        removeSelectors[0] = selectors[0]; // Remove first one
+        removeAllowed[0] = false;
+
+        vm.prank(admin);
+        registry.editFacet(facet, removeSelectors, removeAllowed);
+
+        // Verify selector was removed
+        (bool isAllowed,) = registry.selectorInfo(facet, selectors[0]);
+        assertFalse(isAllowed);
+    }
 }
