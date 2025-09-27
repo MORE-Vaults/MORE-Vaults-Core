@@ -266,4 +266,11 @@ contract OracleRegistryTest is Test {
         vm.expectRevert(IOracleRegistry.PriceIsNotAvailable.selector);
         registry.getAssetPrice(asset);
     }
+
+    function test_mockAggregator_latestAnswer() public {
+        MockAggregator mockAgg = new MockAggregator(42e8, block.timestamp);
+
+        int256 latestAnswer = mockAgg.latestAnswer();
+        assertEq(latestAnswer, 42e8);
+    }
 }
