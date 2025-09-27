@@ -361,4 +361,21 @@ contract BridgeErrorsTest is Test {
 
         vm.stopPrank();
     }
+
+    function test_onlyOwner_ShouldPassWhenOwner() public {
+        vm.prank(owner);
+        testContract.setTrustedOFT(mockToken, true);
+        assertTrue(testContract.trustedOFTs(mockToken));
+    }
+
+    function test_setTrustedOFTsBatch_NoZeroAddress() public {
+        address[] memory ofts = new address[](1);
+        bool[] memory trusted = new bool[](1);
+        ofts[0] = mockToken; // Non-zero address
+        trusted[0] = true;
+
+        vm.prank(owner);
+        testContract.setTrustedOFTsBatch(ofts, trusted);
+        assertTrue(testContract.trustedOFTs(mockToken));
+    }
 }
