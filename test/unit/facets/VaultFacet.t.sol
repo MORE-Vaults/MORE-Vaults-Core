@@ -2342,9 +2342,6 @@ contract VaultFacetTest is Test {
             withdrawAmount
         );
 
-        // Calculate expected fee
-        uint256 expectedFee = (withdrawAmount * withdrawalFee) / 10000;
-
         // The preview should account for the fee
         assertTrue(expectedShares > 0);
     }
@@ -2382,7 +2379,6 @@ contract VaultFacetTest is Test {
 
         // Calculate expected fee
         uint256 totalAssets = (redeemShares * 1000 ether) / shares; // Approximate
-        uint256 expectedFee = (totalAssets * withdrawalFee) / 10000;
 
         // The preview should account for the fee
         assertTrue(expectedAssets > 0);
