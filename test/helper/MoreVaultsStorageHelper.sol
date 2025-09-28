@@ -54,11 +54,11 @@ library MoreVaultsStorageHelper {
     uint256 constant IS_HUB = 34;
     uint256 constant ORACLES_CROSS_CHAIN_ACCOUNTING = 34;
     uint256 constant CROSS_CHAIN_ACCOUNTING_MANAGER = 34;
-    uint256 constant NONCE_TO_CROSS_CHAIN_REQUEST_INFO = 35;
-    uint256 constant FINALIZATION_NONCE = 36;
-    uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 36;
-    uint256 constant WITHDRAWAL_FEE = 36;
-    uint256 constant LAST_ACCRUED_INTEREST_TIMESTAMP = 36;
+    uint256 constant GUID_TO_CROSS_CHAIN_REQUEST_INFO = 35;
+    uint256 constant FINALIZATION_GUID = 36;
+    uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
+    uint256 constant WITHDRAWAL_FEE = 37;
+    uint256 constant LAST_ACCRUED_INTEREST_TIMESTAMP = 37;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -1043,7 +1043,7 @@ library MoreVaultsStorageHelper {
 
     function setIsHub(address contractAddress, bool isHub) internal {
         bytes32 storedValue = getStorageValue(contractAddress, IS_HUB);
-        bytes32 mask = bytes32(uint256(1)); // маска для первого бита
+        bytes32 mask = bytes32(uint256(0xff));
         setStorageValue(
             contractAddress,
             IS_HUB,
@@ -1053,7 +1053,7 @@ library MoreVaultsStorageHelper {
 
     function getIsHub(address contractAddress) internal view returns (bool) {
         bytes32 storedValue = getStorageValue(contractAddress, IS_HUB);
-        bytes32 mask = bytes32(uint256(1));
+        bytes32 mask = bytes32(uint256(0xff));
         return uint256(storedValue & mask) != 0;
     }
 
@@ -1065,12 +1065,12 @@ library MoreVaultsStorageHelper {
             contractAddress,
             ORACLES_CROSS_CHAIN_ACCOUNTING
         );
-        bytes32 mask = bytes32(uint256(2));
+        bytes32 mask = bytes32(uint256(0xff) << 8);
         setStorageValue(
             contractAddress,
             ORACLES_CROSS_CHAIN_ACCOUNTING,
             (storedValue & ~mask) |
-                bytes32(uint256(oraclesCrossChainAccounting ? 2 : 0))
+                bytes32(uint256(oraclesCrossChainAccounting ? (1 << 8) : 0))
         );
     }
 
@@ -1081,7 +1081,7 @@ library MoreVaultsStorageHelper {
             contractAddress,
             ORACLES_CROSS_CHAIN_ACCOUNTING
         );
-        bytes32 mask = bytes32(uint256(2));
+        bytes32 mask = bytes32(uint256(0xff) << 8);
         return uint256(storedValue & mask) != 0;
     }
 
@@ -1093,12 +1093,12 @@ library MoreVaultsStorageHelper {
             contractAddress,
             CROSS_CHAIN_ACCOUNTING_MANAGER
         );
-        bytes32 mask = bytes32(uint256(type(uint160).max) << 2);
+        bytes32 mask = bytes32(uint256(type(uint160).max) << 16);
         setStorageValue(
             contractAddress,
             CROSS_CHAIN_ACCOUNTING_MANAGER,
             (storedValue & ~mask) |
-                bytes32(uint256(uint160(crossChainAccountingManager)) << 2)
+                bytes32(uint256(uint160(crossChainAccountingManager)) << 16)
         );
     }
 
@@ -1109,8 +1109,8 @@ library MoreVaultsStorageHelper {
             contractAddress,
             CROSS_CHAIN_ACCOUNTING_MANAGER
         );
-        bytes32 mask = bytes32(uint256(type(uint160).max) << 2);
-        return address(uint160(uint256((storedValue & mask) >> 2)));
+        bytes32 mask = bytes32(uint256(type(uint160).max) << 16);
+        return address(uint160(uint256((storedValue & mask) >> 16)));
     }
 
     function setStakingAddresses(
@@ -1211,67 +1211,58 @@ library MoreVaultsStorageHelper {
     }
 
     // Functions for variables in slot 36
-    function setFinalizationNonce(
+    function setFinalizationGuid(
         address contractAddress,
-        uint64 value
+        bytes32 value
     ) internal {
-        bytes32 storedValue = getStorageValue(
-            contractAddress,
-            FINALIZATION_NONCE
-        );
-        bytes32 mask = bytes32(uint256(type(uint64).max));
-        setStorageValue(
-            contractAddress,
-            FINALIZATION_NONCE,
-            (storedValue & ~mask) | bytes32(uint256(value))
-        );
+        // finalizationGuid occupies the entire slot
+        setStorageValue(contractAddress, FINALIZATION_GUID, value);
     }
 
-    function getFinalizationNonce(
+    function getFinalizationGuid(
         address contractAddress
-    ) internal view returns (uint64) {
-        bytes32 storedValue = getStorageValue(
-            contractAddress,
-            FINALIZATION_NONCE
-        );
-        bytes32 mask = bytes32(uint256(type(uint64).max));
-        return uint64(uint256(storedValue & mask));
+    ) internal view returns (bytes32) {
+        // read the entire slot with finalizationGuid
+        return getStorageValue(contractAddress, FINALIZATION_GUID);
     }
 
     function setIsWithdrawalQueueEnabled(
         address contractAddress,
         bool value
     ) internal {
+        // bool occupies the least significant byte of the slot
         bytes32 storedValue = getStorageValue(
             contractAddress,
             IS_WITHDRAWAL_QUEUE_ENABLED
         );
-        bytes32 mask = bytes32(uint256(type(uint8).max) << 64);
+        bytes32 mask = bytes32(uint256(type(uint8).max));
         setStorageValue(
             contractAddress,
             IS_WITHDRAWAL_QUEUE_ENABLED,
-            (storedValue & ~mask) | bytes32(uint256(value ? 1 : 0) << 64)
+            (storedValue & ~mask) | bytes32(uint256(value ? 1 : 0))
         );
     }
 
     function getIsWithdrawalQueueEnabled(
         address contractAddress
     ) internal view returns (bool) {
+        // read the least significant byte of the slot
         bytes32 storedValue = getStorageValue(
             contractAddress,
             IS_WITHDRAWAL_QUEUE_ENABLED
         );
-        bytes32 mask = bytes32(uint256(type(uint8).max) << 64);
-        return uint8(uint256((storedValue & mask) >> 64)) != 0;
+        bytes32 mask = bytes32(uint256(type(uint8).max));
+        return uint8(uint256(storedValue & mask)) != 0;
     }
 
     function setWithdrawalFee(address contractAddress, uint96 value) internal {
+        // uint96 starts at 8-bit offset (after the bool)
         bytes32 storedValue = getStorageValue(contractAddress, WITHDRAWAL_FEE);
-        bytes32 mask = bytes32(uint256(type(uint96).max) << 72);
+        bytes32 mask = bytes32(uint256(type(uint96).max) << 8);
         setStorageValue(
             contractAddress,
             WITHDRAWAL_FEE,
-            (storedValue & ~mask) | bytes32(uint256(value) << 72)
+            (storedValue & ~mask) | bytes32(uint256(value) << 8)
         );
     }
 
@@ -1279,23 +1270,24 @@ library MoreVaultsStorageHelper {
         address contractAddress
     ) internal view returns (uint96) {
         bytes32 storedValue = getStorageValue(contractAddress, WITHDRAWAL_FEE);
-        bytes32 mask = bytes32(uint256(type(uint96).max) << 72);
-        return uint96(uint256((storedValue & mask) >> 72));
+        bytes32 mask = bytes32(uint256(type(uint96).max) << 8);
+        return uint96(uint256((storedValue & mask) >> 8));
     }
 
     function setLastAccruedInterestTimestamp(
         address contractAddress,
         uint64 value
     ) internal {
+        // uint64 starts at 104-bit offset (1 + 96 + 8)
         bytes32 storedValue = getStorageValue(
             contractAddress,
             LAST_ACCRUED_INTEREST_TIMESTAMP
         );
-        bytes32 mask = bytes32(uint256(type(uint64).max) << 168);
+        bytes32 mask = bytes32(uint256(type(uint64).max) << 104);
         setStorageValue(
             contractAddress,
             LAST_ACCRUED_INTEREST_TIMESTAMP,
-            (storedValue & ~mask) | bytes32(uint256(value) << 168)
+            (storedValue & ~mask) | bytes32(uint256(value) << 104)
         );
     }
 
@@ -1306,8 +1298,8 @@ library MoreVaultsStorageHelper {
             contractAddress,
             LAST_ACCRUED_INTEREST_TIMESTAMP
         );
-        bytes32 mask = bytes32(uint256(type(uint64).max) << 168);
-        return uint64(uint256((storedValue & mask) >> 168));
+        bytes32 mask = bytes32(uint256(type(uint64).max) << 104);
+        return uint64(uint256((storedValue & mask) >> 104));
     }
 
     // Functions for WITHDRAW_TIMELOCK (slot 25)

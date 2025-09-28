@@ -12,7 +12,7 @@ import {OptionsBuilder} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/libs/
 import {TokenMock} from "@layerzerolabs/lz-evm-protocol-v2/test/mocks/TokenMock.sol";
 
 // Contract Under Test
-import {LzAdapter} from "../../../src/adapters/cross-chain/LzAdapter.sol";
+import {IBridgeAdapter, LzAdapter} from "../../../src/adapters/cross-chain/LzAdapter.sol";
 
 // Test helper to expose internal functions
 contract LzAdapterTestHelper is LzAdapter {
@@ -23,7 +23,16 @@ contract LzAdapterTestHelper is LzAdapter {
         address _composer,
         address _vaultsFactory,
         address _vaultsRegistry
-    ) LzAdapter(_endpoint, _delegate, _readChannel, _composer, _vaultsFactory, _vaultsRegistry) {}
+    )
+        LzAdapter(
+            _endpoint,
+            _delegate,
+            _readChannel,
+            _composer,
+            _vaultsFactory,
+            _vaultsRegistry
+        )
+    {}
 
     // Expose _lzReceive for testing with test data
     function exposed_lzReceive(
@@ -33,62 +42,40 @@ contract LzAdapterTestHelper is LzAdapter {
         address _executor,
         bytes calldata _extraData
     ) external {
-        // Use test data instead of private mapping
-        TestCallInfo memory callInfo = testCallInfo[_origin.nonce];
-        require(callInfo.vault != address(0), "Call info not set for nonce");
-
-        // Decode the sum from message
-        uint256 sum = abi.decode(_message, (uint256));
-
-        // Get request info from the mock vault
-        MoreVaultsLib.CrossChainRequestInfo memory requestInfo = IBridgeFacet(callInfo.vault).getRequestInfo(_origin.nonce);
-
-        // Handle different action types
-        if (
-            requestInfo.actionType == MoreVaultsLib.ActionType.REQUEST_WITHDRAW ||
-            requestInfo.actionType == MoreVaultsLib.ActionType.REQUEST_REDEEM
-        ) {
-            IBridgeFacet(callInfo.vault).finalizeRequest(_origin.nonce);
-        } else {
-            IBridgeFacet(callInfo.vault).updateAccountingInfoForRequest(_origin.nonce, sum);
-            if (callInfo.initiator == composer) {
-                _callbackToComposer(_origin.nonce);
-            }
-        }
+        _lzReceive(_origin, _guid, _message, _executor, _extraData);
     }
 
     // Expose _callbackToComposer for testing
-    function exposed_callbackToComposer(uint64 nonce) external {
-        _callbackToComposer(nonce);
+    function exposed_callbackToComposer(
+        bytes32 guid,
+        bool readSuccess
+    ) external {
+        _callbackToComposer(guid, readSuccess);
     }
 
     // Expose _validateBridgeParams for testing
     function exposed_validateBridgeParams(
-        uint256 destChainId,
         address oftToken,
         uint32 layerZeroEid,
         uint256 amount
     ) external view {
-        _validateBridgeParams(destChainId, oftToken, layerZeroEid, amount);
+        _validateBridgeParams(oftToken, layerZeroEid, amount);
     }
-
-    // Test struct to match internal CallInfo
-    struct TestCallInfo {
-        address vault;
-        address initiator;
-    }
-
-    // Internal mapping to store call info for testing
-    mapping(uint64 => TestCallInfo) public testCallInfo;
 
     // Helper to set call info for testing
-    function setCallInfo(uint64 nonce, address vault, address initiator) external {
-        testCallInfo[nonce] = TestCallInfo({vault: vault, initiator: initiator});
+    function setCallInfo(
+        bytes32 guid,
+        address vault,
+        address initiator
+    ) external {
+        _guidToCallInfo[guid] = CallInfo({vault: vault, initiator: initiator});
     }
 
     // Override to use test data when needed
-    function getCallInfo(uint64 nonce) external view returns (address vault, address initiator) {
-        TestCallInfo memory info = testCallInfo[nonce];
+    function getCallInfo(
+        bytes32 guid
+    ) external view returns (address vault, address initiator) {
+        CallInfo memory info = _guidToCallInfo[guid];
         return (info.vault, info.initiator);
     }
 }
@@ -115,8 +102,8 @@ contract MockLayerZeroEndpoint {
     }
 
     function send(
-        MessagingFee calldata _fee,
-        address _refundAddress
+        MessagingFee calldata,
+        address
     ) external payable returns (MessagingReceipt memory receipt) {
         receipt.nonce = 1;
         receipt.guid = bytes32(uint256(1));
@@ -125,8 +112,8 @@ contract MockLayerZeroEndpoint {
 
     // Overload for MessagingParams
     function send(
-        MessagingParams calldata _params,
-        address _refundAddress
+        MessagingParams calldata,
+        address
     ) external payable returns (MessagingReceipt memory receipt) {
         receipt.nonce = 1;
         receipt.guid = bytes32(uint256(1));
@@ -134,29 +121,29 @@ contract MockLayerZeroEndpoint {
     }
 
     function quote(
-        address _sender,
-        bytes calldata _message,
-        bytes calldata _options,
-        bool _payInLzToken
+        address,
+        bytes calldata,
+        bytes calldata,
+        bool
     ) external pure returns (MessagingFee memory) {
         return MessagingFee(0.01 ether, 0);
     }
 
     // Additional overload for different quote signature
     function quote(
-        MessagingParams calldata _params,
-        address _sender
+        MessagingParams calldata,
+        address
     ) external pure returns (MessagingFee memory) {
         return MessagingFee(0.01 ether, 0);
     }
 
     // Additional functions for OAppRead support
     function lzSend(
-        uint32 _dstEid,
-        bytes calldata _message,
-        bytes calldata _options,
-        MessagingFee calldata _fee,
-        address _refundAddress
+        uint32,
+        bytes calldata,
+        bytes calldata,
+        MessagingFee calldata,
+        address
     ) external payable returns (MessagingReceipt memory receipt) {
         receipt.nonce = 1;
         receipt.guid = bytes32(uint256(1));
@@ -171,10 +158,15 @@ contract MockOFT {
     uint8 public decimals = 18;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+    address public underlyingToken = address(this);
 
     constructor(string memory _name, string memory _symbol) {
         name = _name;
         symbol = _symbol;
+    }
+
+    function setUnderlyingToken(address _underlyingToken) external {
+        underlyingToken = _underlyingToken;
     }
 
     function mint(address to, uint256 amount) external {
@@ -186,9 +178,16 @@ contract MockOFT {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external returns (bool) {
         require(balanceOf[from] >= amount, "Insufficient balance");
-        require(allowance[from][msg.sender] >= amount, "Insufficient allowance");
+        require(
+            allowance[from][msg.sender] >= amount,
+            "Insufficient allowance"
+        );
 
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
@@ -198,16 +197,16 @@ contract MockOFT {
     }
 
     function quoteSend(
-        SendParam calldata _sendParam,
-        bool _payInLzToken
+        SendParam calldata,
+        bool
     ) external pure returns (MessagingFee memory) {
         return MessagingFee(0.01 ether, 0);
     }
 
     function send(
         SendParam calldata _sendParam,
-        MessagingFee calldata _fee,
-        address _refundAddress
+        MessagingFee calldata,
+        address
     ) external payable returns (MessagingReceipt memory, OFTReceipt memory) {
         return (
             MessagingReceipt(bytes32(uint256(1)), 1, MessagingFee(0, 0)),
@@ -218,11 +217,18 @@ contract MockOFT {
     function forceApprove(address spender, uint256 amount) external {
         allowance[msg.sender][spender] = amount;
     }
+
+    function token() external view returns (address) {
+        return underlyingToken;
+    }
 }
 
 // Mock contracts for dependencies
 contract MockVaultsFactory {
     mapping(address => bool) private _vaults;
+    uint32 public localEid;
+    bool internal _isSpokeOfHub = true;
+    bool internal _isCrossChainVault = true;
 
     function setVault(address vault, bool isValidVault) external {
         _vaults[vault] = isValidVault;
@@ -230,6 +236,31 @@ contract MockVaultsFactory {
 
     function isVault(address vault) external view returns (bool) {
         return _vaults[vault];
+    }
+
+    function isSpokeOfHub(
+        uint32,
+        address,
+        uint32,
+        address
+    ) external view returns (bool) {
+        return _isSpokeOfHub;
+    }
+
+    function isCrossChainVault(uint32, address) external view returns (bool) {
+        return _isCrossChainVault;
+    }
+
+    function setLocalEid(uint32 _localEid) external {
+        localEid = _localEid;
+    }
+
+    function setIsSpokeOfHub(bool isSpokeOfHub_) external {
+        _isSpokeOfHub = isSpokeOfHub_;
+    }
+
+    function setIsCrossChainVault(bool isCrossChainVault_) external {
+        _isCrossChainVault = isCrossChainVault_;
     }
 }
 
@@ -241,17 +272,22 @@ contract MockVaultsRegistry {
 }
 
 contract MockLzComposer {
-    mapping(uint64 => bool) public completedDeposits;
+    mapping(bytes32 => bool) public completedDeposits;
 
-    function completeDeposit(uint64 nonce) external {
-        completedDeposits[nonce] = true;
+    function completeDeposit(bytes32 guid) external {
+        completedDeposits[guid] = true;
+    }
+
+    function refundDeposit(bytes32 guid) external {
+        completedDeposits[guid] = false;
     }
 }
 
 contract MockVault {
-    mapping(uint64 => bool) public finalizedRequests;
-    mapping(uint64 => uint256) public requestAccountingInfo;
+    mapping(bytes32 => bool) public finalizedRequests;
+    mapping(bytes32 => uint256) public requestAccountingInfo;
     bool public canReceiveNative = true;
+    bool public isHub = true;
 
     // Allow contract to receive ETH like real vault
     receive() external payable {
@@ -264,26 +300,21 @@ contract MockVault {
         canReceiveNative = _canReceive;
     }
 
-    function finalizeRequest(uint64 nonce) external {
-        finalizedRequests[nonce] = true;
+    function setIsHub(bool _isHub) external {
+        isHub = _isHub;
     }
 
-    function updateAccountingInfoForRequest(uint64 nonce, uint256 sum) external {
-        requestAccountingInfo[nonce] = sum;
+    function finalizeRequest(bytes32 guid) external {
+        finalizedRequests[guid] = true;
     }
 
-    function getRequestInfo(uint64 nonce) external pure returns (MoreVaultsLib.CrossChainRequestInfo memory) {
-        MoreVaultsLib.CrossChainRequestInfo memory info;
-        // Return mock action type based on nonce for testing
-        // ActionType enum: REQUEST_WITHDRAW=0, REQUEST_REDEEM=1, DEPOSIT=2, etc.
-        if (nonce % 3 == 0) {
-            info.actionType = MoreVaultsLib.ActionType.REQUEST_WITHDRAW; // 0
-        } else if (nonce % 3 == 1) {
-            info.actionType = MoreVaultsLib.ActionType.REQUEST_REDEEM; // 1
-        } else {
-            info.actionType = MoreVaultsLib.ActionType.DEPOSIT; // 2 - Other action type
-        }
-        return info;
+    function updateAccountingInfoForRequest(
+        bytes32 guid,
+        uint256 sum,
+        bool readSuccess
+    ) external {
+        requestAccountingInfo[guid] = sum;
+        finalizedRequests[guid] = readSuccess;
     }
 
     function totalAssetsUsd() external pure returns (uint256) {
@@ -347,21 +378,21 @@ contract LzAdapterTest is Test {
         // Deploy LzAdapter and TestHelper
         vm.startPrank(owner);
         lzAdapter = new LzAdapter(
-            address(mockEndpoint),         // endpoint
-            owner,                         // delegate
-            READ_CHANNEL,                  // readChannel
-            address(mockComposer),         // composer
-            address(mockVaultsFactory),    // vaultsFactory
-            address(mockVaultsRegistry)    // vaultsRegistry
+            address(mockEndpoint), // endpoint
+            owner, // delegate
+            READ_CHANNEL, // readChannel
+            address(mockComposer), // composer
+            address(mockVaultsFactory), // vaultsFactory
+            address(mockVaultsRegistry) // vaultsRegistry
         );
 
         lzAdapterHelper = new LzAdapterTestHelper(
-            address(mockEndpoint),         // endpoint
-            owner,                         // delegate
-            READ_CHANNEL,                  // readChannel
-            address(mockComposer),         // composer
-            address(mockVaultsFactory),    // vaultsFactory
-            address(mockVaultsRegistry)    // vaultsRegistry
+            address(mockEndpoint), // endpoint
+            owner, // delegate
+            READ_CHANNEL, // readChannel
+            address(mockComposer), // composer
+            address(mockVaultsFactory), // vaultsFactory
+            address(mockVaultsRegistry) // vaultsRegistry
         );
         vm.stopPrank();
 
@@ -374,10 +405,6 @@ contract LzAdapterTest is Test {
 
     function _setupInitialConfiguration() internal {
         vm.startPrank(owner);
-
-        // Configure chain mapping
-        lzAdapter.setChainIdToEid(DST_CHAIN_ID, DST_EID);
-        lzAdapter.setChainIdToEid(1, A_EID); // Ethereum mainnet
 
         // Set trusted OFT tokens
         address[] memory ofts = new address[](2);
@@ -408,40 +435,51 @@ contract LzAdapterTest is Test {
     // Helper functions for test utilities
     function _createBridgeParams(
         address oftToken,
-        uint256 destChainId,
         uint32 lzEid,
         uint256 amount,
-        address destVault
+        address destVault,
+        address refundAddress
     ) internal pure returns (bytes memory) {
-        return abi.encode(oftToken, destChainId, lzEid, amount, destVault);
+        return abi.encode(oftToken, lzEid, amount, destVault, refundAddress);
     }
 
-    function _createVaultInfos(
+    function _encodeInfo(
+        uint32 eid,
+        address vaultAddr
+    ) internal pure returns (bytes32) {
+        return bytes32((uint256(eid) << 160) | uint160(vaultAddr));
+    }
+
+    function _decodeInfo(
+        bytes32 vaultInfo
+    ) internal pure returns (uint32 eid, address vaultAddr) {
+        eid = uint32(uint256(vaultInfo) >> 160);
+        vaultAddr = address(uint160(uint256(vaultInfo)));
+    }
+
+    function _createVaultInfo(
         address vaultAddr,
-        uint16 chainId
-    ) internal pure returns (IVaultsFactory.VaultInfo[] memory) {
-        IVaultsFactory.VaultInfo[] memory vaultInfos = new IVaultsFactory.VaultInfo[](1);
-        vaultInfos[0] = IVaultsFactory.VaultInfo({
-            vault: vaultAddr,
-            chainId: chainId
-        });
+        uint32 eid
+    ) internal pure returns (bytes32[] memory) {
+        bytes32[] memory vaultInfos = new bytes32[](1);
+        vaultInfos[0] = _encodeInfo(eid, vaultAddr);
         return vaultInfos;
     }
 
     // Test helper to get bridge fee quote
     function _getBridgeFee(
         address oftToken,
-        uint256 destChainId,
         uint32 lzEid,
         uint256 amount,
-        address destVault
+        address destVault,
+        address refundAddress
     ) internal view returns (uint256) {
         bytes memory bridgeParams = _createBridgeParams(
             oftToken,
-            destChainId,
             lzEid,
             amount,
-            destVault
+            destVault,
+            refundAddress
         );
         return lzAdapter.quoteBridgeFee(bridgeParams);
     }
@@ -450,20 +488,26 @@ contract LzAdapterTest is Test {
     function _executeBridge(
         address sender,
         address oftToken,
-        uint256 destChainId,
         uint32 lzEid,
         uint256 amount,
-        address destVault
+        address destVault,
+        address refundAddress
     ) internal {
         bytes memory bridgeParams = _createBridgeParams(
             oftToken,
-            destChainId,
             lzEid,
             amount,
-            destVault
+            destVault,
+            refundAddress
         );
 
-        uint256 fee = _getBridgeFee(oftToken, destChainId, lzEid, amount, destVault);
+        uint256 fee = _getBridgeFee(
+            oftToken,
+            lzEid,
+            amount,
+            destVault,
+            refundAddress
+        );
 
         vm.startPrank(sender);
         MockOFT(oftToken).approve(address(lzAdapter), amount);
@@ -472,23 +516,27 @@ contract LzAdapterTest is Test {
     }
 
     // Basic setup verification tests
-    function test_setUp_basic() public {
+    function test_setUp_basic() public view {
         // Verify contract deployment
         assertNotEq(address(lzAdapter), address(0));
         assertEq(lzAdapter.owner(), owner);
-        assertEq(address(lzAdapter.vaultsFactory()), address(mockVaultsFactory));
-        assertEq(address(lzAdapter.vaultsRegistry()), address(mockVaultsRegistry));
+        assertEq(
+            address(lzAdapter.vaultsFactory()),
+            address(mockVaultsFactory)
+        );
+        assertEq(
+            address(lzAdapter.vaultsRegistry()),
+            address(mockVaultsRegistry)
+        );
         assertEq(lzAdapter.composer(), address(mockComposer));
     }
 
-    function test_setUp_layerZeroConfiguration() public {
+    function test_setUp_layerZeroConfiguration() public view {
         // Verify LayerZero configuration
         assertEq(lzAdapter.READ_CHANNEL(), READ_CHANNEL);
-        assertEq(lzAdapter.chainIdToEid(DST_CHAIN_ID), DST_EID);
-        assertEq(lzAdapter.chainIdToEid(1), A_EID);
     }
 
-    function test_setUp_oftTrustedTokens() public {
+    function test_setUp_oftTrustedTokens() public view {
         // Verify trusted OFT tokens
         assertTrue(lzAdapter.isTrustedOFT(address(oftTokenA)));
         assertTrue(lzAdapter.isTrustedOFT(address(oftTokenB)));
@@ -497,43 +545,17 @@ contract LzAdapterTest is Test {
         assertEq(trustedOFTs.length, 2);
     }
 
-    function test_setUp_tokenBalances() public {
+    function test_setUp_tokenBalances() public view {
         // Verify token balances
         assertEq(oftTokenA.balanceOf(user), INITIAL_BALANCE);
         assertEq(oftTokenA.balanceOf(address(mockVault)), INITIAL_BALANCE);
         assertEq(oftTokenB.balanceOf(user), INITIAL_BALANCE);
     }
 
-    function test_setUp_mockVaultConfiguration() public {
+    function test_setUp_mockVaultConfiguration() public view {
         // Verify mock vault is configured correctly
         assertTrue(mockVaultsFactory.isVault(address(mockVault)));
         assertTrue(mockVaultsFactory.isVault(vault));
-    }
-
-    // Chain configuration tests
-    function test_getSupportedChains() public {
-        (uint256[] memory chains, bool[] memory statuses) = lzAdapter.getSupportedChains();
-
-        // Should have at least our configured chains
-        bool foundEthereumChain = false;
-        bool foundPolygonChain = false;
-
-        for (uint256 i = 0; i < chains.length; i++) {
-            if (chains[i] == 1) foundEthereumChain = true;
-            if (chains[i] == DST_CHAIN_ID) foundPolygonChain = true;
-            assertTrue(statuses[i]); // All chains should be active by default
-        }
-
-        assertTrue(foundEthereumChain);
-        assertTrue(foundPolygonChain);
-    }
-
-    function test_getChainConfig() public {
-        (bool supported, bool isPaused, string memory additionalInfo) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-
-        assertTrue(supported);
-        assertFalse(isPaused);
-        assertEq(bytes(additionalInfo).length, 0);
     }
 
     // ============================
@@ -545,10 +567,10 @@ contract LzAdapterTest is Test {
         uint256 bridgeAmount = TEST_AMOUNT;
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
-            dstVault
+            dstVault,
+            user
         );
 
         // Get quote for fee
@@ -570,8 +592,14 @@ contract LzAdapterTest is Test {
         lzAdapter.executeBridging{value: bridgeFee}(bridgeParams);
 
         // Verify balances changed correctly
-        assertEq(oftTokenA.balanceOf(address(mockVault)), vaultBalanceBefore - bridgeAmount);
-        assertEq(oftTokenA.balanceOf(address(lzAdapter)), adapterBalanceBefore + bridgeAmount);
+        assertEq(
+            oftTokenA.balanceOf(address(mockVault)),
+            vaultBalanceBefore - bridgeAmount
+        );
+        assertEq(
+            oftTokenA.balanceOf(address(lzAdapter)),
+            adapterBalanceBefore + bridgeAmount
+        );
 
         vm.stopPrank();
     }
@@ -579,10 +607,10 @@ contract LzAdapterTest is Test {
     function test_executeBridging_revert_unauthorizedVault() public {
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -603,10 +631,10 @@ contract LzAdapterTest is Test {
 
         bytes memory bridgeParams = _createBridgeParams(
             address(untrustedOFT),
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         vm.startPrank(address(mockVault));
@@ -620,70 +648,14 @@ contract LzAdapterTest is Test {
     function test_executeBridging_revert_invalidParams_zeroAmount() public {
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             0, // Zero amount
-            dstVault
+            dstVault,
+            user
         );
 
         vm.startPrank(address(mockVault));
         vm.expectRevert(); // Should revert with InvalidBridgeParams
-        lzAdapter.executeBridging{value: 0.01 ether}(bridgeParams);
-        vm.stopPrank();
-    }
-
-    function test_executeBridging_revert_invalidParams_zeroDestChain() public {
-        bytes memory bridgeParams = _createBridgeParams(
-            address(oftTokenA),
-            0, // Zero dest chain
-            DST_EID,
-            TEST_AMOUNT,
-            dstVault
-        );
-
-        vm.startPrank(address(mockVault));
-        vm.expectRevert(); // Should revert with InvalidBridgeParams
-        lzAdapter.executeBridging{value: 0.01 ether}(bridgeParams);
-        vm.stopPrank();
-    }
-
-    function test_executeBridging_revert_unsupportedChain() public {
-        uint16 unsupportedChainId = 999;
-        uint32 unsupportedEid = 999;
-
-        bytes memory bridgeParams = _createBridgeParams(
-            address(oftTokenA),
-            unsupportedChainId,
-            unsupportedEid,
-            TEST_AMOUNT,
-            dstVault
-        );
-
-        vm.startPrank(address(mockVault));
-        oftTokenA.approve(address(lzAdapter), TEST_AMOUNT);
-
-        vm.expectRevert(); // Should revert with UnsupportedChain
-        lzAdapter.executeBridging{value: 0.01 ether}(bridgeParams);
-        vm.stopPrank();
-    }
-
-    function test_executeBridging_revert_chainPaused() public {
-        // Pause the destination chain
-        vm.prank(owner);
-        lzAdapter.pauseChain(DST_CHAIN_ID);
-
-        bytes memory bridgeParams = _createBridgeParams(
-            address(oftTokenA),
-            DST_CHAIN_ID,
-            DST_EID,
-            TEST_AMOUNT,
-            dstVault
-        );
-
-        vm.startPrank(address(mockVault));
-        oftTokenA.approve(address(lzAdapter), TEST_AMOUNT);
-
-        vm.expectRevert(); // Should revert with ChainPaused
         lzAdapter.executeBridging{value: 0.01 ether}(bridgeParams);
         vm.stopPrank();
     }
@@ -691,10 +663,10 @@ contract LzAdapterTest is Test {
     function test_executeBridging_revert_insufficientFee() public {
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -712,13 +684,13 @@ contract LzAdapterTest is Test {
     // quoteBridgeFee Tests
     // ============================
 
-    function test_quoteBridgeFee_success() public {
+    function test_quoteBridgeFee_success() public view {
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 fee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -732,28 +704,13 @@ contract LzAdapterTest is Test {
         // Test with zero amount
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             0, // Zero amount
-            dstVault
+            dstVault,
+            user
         );
 
         vm.expectRevert(); // Should revert with InvalidBridgeParams
-        lzAdapter.quoteBridgeFee(bridgeParams);
-    }
-
-    function test_quoteBridgeFee_revert_unsupportedChain() public {
-        uint16 unsupportedChainId = 999;
-
-        bytes memory bridgeParams = _createBridgeParams(
-            address(oftTokenA),
-            unsupportedChainId,
-            DST_EID,
-            TEST_AMOUNT,
-            dstVault
-        );
-
-        vm.expectRevert(); // Should revert with UnsupportedChain
         lzAdapter.quoteBridgeFee(bridgeParams);
     }
 
@@ -762,17 +719,26 @@ contract LzAdapterTest is Test {
     // ============================
 
     function test_initiateCrossChainAccounting_success() public {
-        IVaultsFactory.VaultInfo[] memory vaultInfos = _createVaultInfos(
+        bytes32[] memory spokeInfos = _createVaultInfo(
             address(mockVault),
-            1 // Ethereum chain
+            1 // treat as EID in tests
         );
+        address[] memory vaults = new address[](spokeInfos.length);
+        uint32[] memory eids = new uint32[](spokeInfos.length);
+        for (uint256 i = 0; i < spokeInfos.length; i++) {
+            (uint32 eid, address v) = _decodeInfo(spokeInfos[i]);
+            eids[i] = eid;
+            vaults[i] = v;
+        }
 
         vm.deal(address(mockVault), 1 ether);
         vm.startPrank(address(mockVault));
 
         // Should not revert and return a receipt
-        MessagingReceipt memory receipt = lzAdapter.initiateCrossChainAccounting{value: 0.1 ether}(
-            vaultInfos,
+        MessagingReceipt memory receipt = lzAdapter
+            .initiateCrossChainAccounting{value: 0.1 ether}(
+            vaults,
+            eids,
             "", // empty extra options
             user // initiator
         );
@@ -784,13 +750,20 @@ contract LzAdapterTest is Test {
         vm.stopPrank();
     }
 
-    function test_quoteReadFee_success() public {
-        IVaultsFactory.VaultInfo[] memory vaultInfos = _createVaultInfos(
+    function test_quoteReadFee_success() public view {
+        bytes32[] memory spokeInfos = _createVaultInfo(
             address(mockVault),
-            1 // Ethereum chain
+            1 // treat as EID in tests
         );
+        address[] memory vaults = new address[](spokeInfos.length);
+        uint32[] memory eids = new uint32[](spokeInfos.length);
+        for (uint256 i = 0; i < spokeInfos.length; i++) {
+            (uint32 eid, address v) = _decodeInfo(spokeInfos[i]);
+            eids[i] = eid;
+            vaults[i] = v;
+        }
 
-        MessagingFee memory fee = lzAdapter.quoteReadFee(vaultInfos, "");
+        MessagingFee memory fee = lzAdapter.quoteReadFee(vaults, eids, "");
 
         // Should return a valid fee structure
         assertGt(fee.nativeFee, 0);
@@ -852,69 +825,6 @@ contract LzAdapterTest is Test {
         lzAdapter.setTrustedOFTs(ofts, trusted);
     }
 
-    function test_setChainIdToEid_success() public {
-        uint16 newChainId = 42161; // Arbitrum
-        uint32 newEid = 30110;
-
-        vm.prank(owner);
-        lzAdapter.setChainIdToEid(newChainId, newEid);
-
-        assertEq(lzAdapter.chainIdToEid(newChainId), newEid);
-
-        (uint256[] memory chains, bool[] memory statuses) = lzAdapter.getSupportedChains();
-
-        // Should find the new chain in supported chains
-        bool foundNewChain = false;
-        for (uint256 i = 0; i < chains.length; i++) {
-            if (chains[i] == newChainId) {
-                foundNewChain = true;
-                assertTrue(statuses[i]); // Should be active
-                break;
-            }
-        }
-        assertTrue(foundNewChain);
-    }
-
-    function test_setChainIdToEid_disable_chain() public {
-        vm.prank(owner);
-        lzAdapter.setChainIdToEid(DST_CHAIN_ID, 0); // Disable by setting EID to 0
-
-        assertEq(lzAdapter.chainIdToEid(DST_CHAIN_ID), 0);
-
-        (bool supported, ,) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-        assertFalse(supported);
-    }
-
-    function test_setSupportedChain_disable() public {
-        vm.prank(owner);
-        lzAdapter.setSupportedChain(DST_CHAIN_ID, false);
-
-        assertEq(lzAdapter.chainIdToEid(DST_CHAIN_ID), 0);
-        (bool supported, ,) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-        assertFalse(supported);
-    }
-
-    function test_pauseChain_success() public {
-        vm.prank(owner);
-        lzAdapter.pauseChain(DST_CHAIN_ID);
-
-        (, bool isPaused,) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-        assertTrue(isPaused);
-    }
-
-    function test_unpauseChain_success() public {
-        // First pause
-        vm.prank(owner);
-        lzAdapter.pauseChain(DST_CHAIN_ID);
-
-        // Then unpause
-        vm.prank(owner);
-        lzAdapter.unpauseChain(DST_CHAIN_ID);
-
-        (, bool isPaused,) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-        assertFalse(isPaused);
-    }
-
     function test_pause_unpause_adapter() public {
         // Test pause
         vm.prank(owner);
@@ -940,7 +850,9 @@ contract LzAdapterTest is Test {
         uint256 invalidSlippage = 10001; // > 100%
 
         vm.prank(owner);
-        vm.expectRevert("Slippage too high");
+        vm.expectRevert(
+            abi.encodeWithSelector(IBridgeAdapter.SlippageTooHigh.selector)
+        );
         lzAdapter.setSlippage(invalidSlippage);
     }
 
@@ -973,10 +885,10 @@ contract LzAdapterTest is Test {
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         vm.deal(address(mockVault), 1 ether);
@@ -992,10 +904,10 @@ contract LzAdapterTest is Test {
         // Create bridge params with EOA address (no code)
         bytes memory bridgeParams = _createBridgeParams(
             user, // EOA address, no code
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         vm.deal(address(mockVault), 1 ether);
@@ -1034,10 +946,10 @@ contract LzAdapterTest is Test {
         // 1. Quote the fee
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
-            dstVault
+            dstVault,
+            user
         );
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
 
@@ -1055,7 +967,10 @@ contract LzAdapterTest is Test {
         lzAdapter.executeBridging{value: bridgeFee}(bridgeParams);
 
         // 4. Verify state changes
-        assertEq(oftTokenA.balanceOf(address(mockVault)), vaultBalanceBefore - bridgeAmount);
+        assertEq(
+            oftTokenA.balanceOf(address(mockVault)),
+            vaultBalanceBefore - bridgeAmount
+        );
         assertEq(address(mockVault).balance, ethBalanceBefore - bridgeFee);
 
         vm.stopPrank();
@@ -1065,36 +980,27 @@ contract LzAdapterTest is Test {
     // LayerZero Message Handling Tests (Previously Uncovered)
     // ============================
 
-    // NOTE: lzReduce has a bug in the source code - infinite loop due to missing i++
-    // function test_lzReduce_success() public {
-    //     bytes[] memory responses = new bytes[](3);
-    //     responses[0] = abi.encode(uint256(1000000)); // 1M USD
-    //     responses[1] = abi.encode(uint256(2000000)); // 2M USD
-    //     responses[2] = abi.encode(uint256(3000000)); // 3M USD
+    function test_lzReduce_success() public view {
+        bytes[] memory responses = new bytes[](3);
+        responses[0] = abi.encode(uint256(1000000), true); // 1M USD
+        responses[1] = abi.encode(uint256(2000000), true); // 2M USD
+        responses[2] = abi.encode(uint256(3000000), true); // 3M USD
 
-    //     bytes memory result = lzAdapter.lzReduce("", responses);
-    //     uint256 sum = abi.decode(result, (uint256));
+        bytes memory result = lzAdapter.lzReduce("", responses);
+        (uint256 sum, bool success) = abi.decode(result, (uint256, bool));
+        assertTrue(success);
 
-    //     assertEq(sum, 6000000); // Should be sum of all responses
-    // }
+        assertEq(sum, 6000000); // Should be sum of all responses
+    }
 
     function test_lzReduce_revert_noResponses() public {
         bytes[] memory emptyResponses = new bytes[](0);
 
-        vm.expectRevert(); // Should revert with NoResponses
+        vm.expectRevert(
+            abi.encodeWithSelector(IBridgeAdapter.NoResponses.selector)
+        ); // Should revert with NoResponses
         lzAdapter.lzReduce("", emptyResponses);
     }
-
-    // NOTE: lzReduce has a bug in the source code - infinite loop due to missing i++
-    // function test_lzReduce_singleResponse() public {
-    //     bytes[] memory responses = new bytes[](1);
-    //     responses[0] = abi.encode(uint256(5000000)); // 5M USD
-
-    //     bytes memory result = lzAdapter.lzReduce("", responses);
-    //     uint256 sum = abi.decode(result, (uint256));
-
-    //     assertEq(sum, 5000000);
-    // }
 
     // Test _lzReceive for WITHDRAW/REDEEM actions
     function test_lzReceive_withdrawRedeem_finalizesRequest() public {
@@ -1102,57 +1008,31 @@ contract LzAdapterTest is Test {
         MockVault mockVaultLz = new MockVault();
         // MockVault returns actionType 1 (REQUEST_WITHDRAW) for nonce % 3 == 0
 
+        bytes32 testGuid = bytes32(uint256(123));
+        uint64 testNonce = 123;
         // Create origin data
         Origin memory origin = Origin({
             srcEid: A_EID,
             sender: bytes32(uint256(uint160(address(lzAdapter)))),
-            nonce: 123
+            nonce: testNonce
         });
 
         // Setup call info
-        vm.store(
-            address(lzAdapter),
-            keccak256(abi.encode(uint256(123), uint256(1))), // _nonceToCallInfo[123].vault
-            bytes32(uint256(uint160(address(mockVaultLz))))
-        );
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         // Encode message with sum
-        bytes memory message = abi.encode(uint256(1000000));
+        bytes memory message = abi.encode(uint256(1000000), true);
 
-        // Call _lzReceive via a public wrapper (need to add this)
         vm.prank(address(mockEndpoint));
-        // Note: _lzReceive is internal, we'd need to add a public wrapper for testing
-        // or test through initiateCrossChainAccounting flow
-    }
-
-    // Test setSupportedChain enable path (currently only disable is tested)
-    function test_setSupportedChain_enable_noEffect() public {
-        uint256 newChainId = 999;
-
-        vm.prank(owner);
-        lzAdapter.setSupportedChain(newChainId, true); // Should do nothing
-
-        // Chain should still not be supported (EID = 0)
-        assertEq(lzAdapter.chainIdToEid(uint16(newChainId)), 0);
-        (bool supported, ,) = lzAdapter.getChainConfig(newChainId);
-        assertFalse(supported);
-    }
-
-    // Test edge case in getSupportedChains with no supported chains
-    function test_getSupportedChains_noChains() public {
-        // Deploy fresh adapter with no chains configured
-        LzAdapter freshAdapter = new LzAdapter(
-            address(mockEndpoint),
-            owner,
-            READ_CHANNEL,
-            address(mockComposer),
-            address(mockVaultsFactory),
-            address(mockVaultsRegistry)
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
         );
 
-        (uint256[] memory chains, bool[] memory statuses) = freshAdapter.getSupportedChains();
-        assertEq(chains.length, 0);
-        assertEq(statuses.length, 0);
+        assertTrue(mockVaultLz.finalizedRequests(testGuid));
     }
 
     // Test _executeOFTSend with exact fee (no refund)
@@ -1160,10 +1040,10 @@ contract LzAdapterTest is Test {
         uint256 bridgeAmount = TEST_AMOUNT;
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -1191,10 +1071,10 @@ contract LzAdapterTest is Test {
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             TEST_AMOUNT,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 fee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -1242,31 +1122,38 @@ contract LzAdapterTest is Test {
         trusted[0] = true;
         trusted[1] = true;
         lzAdapterHelper.setTrustedOFTs(ofts, trusted);
-        lzAdapterHelper.setChainIdToEid(DST_CHAIN_ID, DST_EID);
         vm.stopPrank();
 
         // Setup mock vault for withdraw action
         MockVault mockVaultLz = new MockVault();
         // MockVault returns actionType 1 (REQUEST_WITHDRAW) for nonce % 3 == 0
 
+        bytes32 testGuid = bytes32(uint256(123));
+        uint64 testNonce = 123;
         // Set call info
-        lzAdapterHelper.setCallInfo(123, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         // Create origin data
         Origin memory origin = Origin({
             srcEid: A_EID,
             sender: bytes32(uint256(uint160(address(lzAdapterHelper)))),
-            nonce: 123
+            nonce: testNonce
         });
 
         // Test message
-        bytes memory message = abi.encode(uint256(1000000));
+        bytes memory message = abi.encode(uint256(1000000), true);
 
         // Call exposed _lzReceive
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
 
         // Verify finalizeRequest was called
-        assertTrue(mockVaultLz.finalizedRequests(123));
+        assertTrue(mockVaultLz.finalizedRequests(testGuid));
     }
 
     function test_lzReceive_redeemAction() public {
@@ -1285,21 +1172,29 @@ contract LzAdapterTest is Test {
         MockVault mockVaultLz = new MockVault();
         // MockVault returns actionType 2 (REQUEST_REDEEM) for nonce % 3 == 1
 
+        bytes32 testGuid = bytes32(uint256(457));
+        uint64 testNonce = 457;
         // Set call info
-        lzAdapterHelper.setCallInfo(457, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         // Create origin data
         Origin memory origin = Origin({
             srcEid: A_EID,
             sender: bytes32(uint256(uint160(address(lzAdapterHelper)))),
-            nonce: 457
+            nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(2000000));
+        bytes memory message = abi.encode(uint256(2000000), true);
 
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
 
-        assertTrue(mockVaultLz.finalizedRequests(457));
+        assertTrue(mockVaultLz.finalizedRequests(testGuid));
     }
 
     function test_lzReceive_otherActionWithComposer() public {
@@ -1318,22 +1213,35 @@ contract LzAdapterTest is Test {
         MockVault mockVaultLz = new MockVault();
         // MockVault returns actionType 0 (OTHER) for nonce % 3 == 2
 
+        bytes32 testGuid = bytes32(uint256(791));
+        uint64 testNonce = 791;
+
         // Set call info with composer as initiator
-        lzAdapterHelper.setCallInfo(791, address(mockVaultLz), address(mockComposer));
+        lzAdapterHelper.setCallInfo(
+            testGuid,
+            address(mockVaultLz),
+            address(mockComposer)
+        );
 
         Origin memory origin = Origin({
             srcEid: A_EID,
             sender: bytes32(uint256(uint160(address(lzAdapterHelper)))),
-            nonce: 791
+            nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(3000000));
+        bytes memory message = abi.encode(uint256(3000000), true);
 
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
 
         // Should update accounting and call composer
-        assertEq(mockVaultLz.requestAccountingInfo(791), 3000000);
-        assertTrue(mockComposer.completedDeposits(791));
+        assertEq(mockVaultLz.requestAccountingInfo(testGuid), 3000000);
+        assertTrue(mockComposer.completedDeposits(testGuid));
     }
 
     function test_lzReceive_otherActionNoComposer() public {
@@ -1351,22 +1259,31 @@ contract LzAdapterTest is Test {
         MockVault mockVaultLz = new MockVault();
         // MockVault returns actionType 0 (OTHER) for nonce % 3 == 2
 
+        bytes32 testGuid = bytes32(uint256(101114));
+        uint64 testNonce = 101114;
+
         // Set call info with non-composer initiator
-        lzAdapterHelper.setCallInfo(101114, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         Origin memory origin = Origin({
             srcEid: A_EID,
             sender: bytes32(uint256(uint160(address(lzAdapterHelper)))),
-            nonce: 101114
+            nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(4000000));
+        bytes memory message = abi.encode(uint256(4000000), true);
 
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
 
         // Should only update accounting, no composer callback
-        assertEq(mockVaultLz.requestAccountingInfo(101114), 4000000);
-        assertFalse(mockComposer.completedDeposits(101114));
+        assertEq(mockVaultLz.requestAccountingInfo(testGuid), 4000000);
+        assertFalse(mockComposer.completedDeposits(testGuid));
     }
 
     function test_pause_unpause_internal_functions() public {
@@ -1388,25 +1305,33 @@ contract LzAdapterTest is Test {
         lzAdapter.lzReduce("", emptyResponses);
     }
 
-    function test_lzReduce_singleResponse() public {
+    function test_lzReduce_singleResponse() public view {
         // Test with single response (now that the infinite loop bug is fixed)
         bytes[] memory responses = new bytes[](1);
-        responses[0] = abi.encode(uint256(1000000));
+        responses[0] = abi.encode(uint256(1000000), true);
 
         bytes memory result = lzAdapter.lzReduce("", responses);
-        uint256 decodedSum = abi.decode(result, (uint256));
+        (uint256 decodedSum, bool success) = abi.decode(
+            result,
+            (uint256, bool)
+        );
+        assertTrue(success);
         assertEq(decodedSum, 1000000);
     }
 
-    function test_lzReduce_multipleResponses() public {
+    function test_lzReduce_multipleResponses() public view {
         // Test with multiple responses (now that the infinite loop bug is fixed)
         bytes[] memory responses = new bytes[](3);
-        responses[0] = abi.encode(uint256(100));
-        responses[1] = abi.encode(uint256(200));
-        responses[2] = abi.encode(uint256(300));
+        responses[0] = abi.encode(uint256(100), true);
+        responses[1] = abi.encode(uint256(200), true);
+        responses[2] = abi.encode(uint256(300), true);
 
         bytes memory result = lzAdapter.lzReduce("", responses);
-        uint256 decodedSum = abi.decode(result, (uint256));
+        (uint256 decodedSum, bool success) = abi.decode(
+            result,
+            (uint256, bool)
+        );
+        assertTrue(success);
         assertEq(decodedSum, 600);
     }
 
@@ -1422,14 +1347,18 @@ contract LzAdapterTest is Test {
         trusted[0] = true;
         trusted[1] = true;
         lzAdapterHelper.setTrustedOFTs(ofts, trusted);
-        lzAdapterHelper.setChainIdToEid(DST_CHAIN_ID, DST_EID);
         vm.stopPrank();
 
         MockVault mockVaultForInternal = new MockVault();
 
-        // Use TestHelper's setCallInfo which works with testCallInfo mapping
+        bytes32 testGuid = bytes32(uint256(999));
         uint64 testNonce = 999; // 999 % 3 = 0 -> REQUEST_WITHDRAW
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultForInternal), user);
+
+        lzAdapterHelper.setCallInfo(
+            testGuid,
+            address(mockVaultForInternal),
+            user
+        );
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -1437,13 +1366,19 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(5000000));
+        bytes memory message = abi.encode(uint256(5000000), true);
 
         // Use the exposed _lzReceive function from TestHelper
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
 
         // For nonce 999 % 3 = 0, it should be REQUEST_WITHDRAW and call finalizeRequest
-        assertTrue(mockVaultForInternal.finalizedRequests(testNonce));
+        assertTrue(mockVaultForInternal.finalizedRequests(testGuid));
     }
 
     function test_rescueToken_nativeETH() public {
@@ -1471,17 +1406,35 @@ contract LzAdapterTest is Test {
         lzAdapterHelper.setTrustedOFTs(ofts, trusted);
         vm.stopPrank();
 
-        uint64 testNonce = 999;
+        bytes32 testGuid = bytes32(uint256(999));
 
-        lzAdapterHelper.exposed_callbackToComposer(testNonce);
+        lzAdapterHelper.exposed_callbackToComposer(testGuid, true);
 
-        assertTrue(mockComposer.completedDeposits(testNonce));
+        assertTrue(mockComposer.completedDeposits(testGuid));
+    }
+
+    function test_callbackToComposer_refund() public {
+        // Setup helper
+        vm.startPrank(owner);
+        address[] memory ofts = new address[](2);
+        bool[] memory trusted = new bool[](2);
+        ofts[0] = address(oftTokenA);
+        ofts[1] = address(oftTokenB);
+        trusted[0] = true;
+        trusted[1] = true;
+        lzAdapterHelper.setTrustedOFTs(ofts, trusted);
+        vm.stopPrank();
+
+        bytes32 testGuid = bytes32(uint256(999));
+
+        lzAdapterHelper.exposed_callbackToComposer(testGuid, false);
+
+        assertFalse(mockComposer.completedDeposits(testGuid));
     }
 
     function test_validateBridgeParams_allValid() public {
         // Configure chain for helper
         vm.startPrank(owner);
-        lzAdapterHelper.setChainIdToEid(DST_CHAIN_ID, DST_EID);
         address[] memory ofts = new address[](1);
         bool[] memory trusted = new bool[](1);
         ofts[0] = address(oftTokenA);
@@ -1491,7 +1444,6 @@ contract LzAdapterTest is Test {
 
         // Should not revert with valid params
         lzAdapterHelper.exposed_validateBridgeParams(
-            DST_CHAIN_ID,
             address(oftTokenA),
             DST_EID,
             TEST_AMOUNT
@@ -1502,27 +1454,15 @@ contract LzAdapterTest is Test {
     function test_validateBridgeParams_zeroAmount() public {
         vm.expectRevert();
         lzAdapterHelper.exposed_validateBridgeParams(
-            DST_CHAIN_ID,
             address(oftTokenA),
             DST_EID,
             0 // Zero amount
         );
     }
 
-    function test_validateBridgeParams_zeroDestChain() public {
-        vm.expectRevert();
-        lzAdapterHelper.exposed_validateBridgeParams(
-            0, // Zero dest chain
-            address(oftTokenA),
-            DST_EID,
-            TEST_AMOUNT
-        );
-    }
-
     function test_validateBridgeParams_zeroOftToken() public {
         vm.expectRevert();
         lzAdapterHelper.exposed_validateBridgeParams(
-            DST_CHAIN_ID,
             address(0), // Zero token
             DST_EID,
             TEST_AMOUNT
@@ -1532,19 +1472,8 @@ contract LzAdapterTest is Test {
     function test_validateBridgeParams_zeroLayerZeroEid() public {
         vm.expectRevert();
         lzAdapterHelper.exposed_validateBridgeParams(
-            DST_CHAIN_ID,
             address(oftTokenA),
             0, // Zero EID
-            TEST_AMOUNT
-        );
-    }
-
-    function test_validateBridgeParams_unsupportedChain() public {
-        vm.expectRevert();
-        lzAdapterHelper.exposed_validateBridgeParams(
-            999, // Unsupported chain
-            address(oftTokenA),
-            999,
             TEST_AMOUNT
         );
     }
@@ -1559,13 +1488,11 @@ contract LzAdapterTest is Test {
         trusted[0] = true;
         trusted[1] = true;
         lzAdapterHelper.setTrustedOFTs(ofts, trusted);
-        lzAdapterHelper.setChainIdToEid(DST_CHAIN_ID, DST_EID);
-        lzAdapterHelper.pauseChain(DST_CHAIN_ID);
+        lzAdapterHelper.pauseEid(DST_EID);
         vm.stopPrank();
 
         vm.expectRevert();
         lzAdapterHelper.exposed_validateBridgeParams(
-            DST_CHAIN_ID,
             address(oftTokenA),
             DST_EID,
             TEST_AMOUNT
@@ -1575,7 +1502,6 @@ contract LzAdapterTest is Test {
     function test_validateBridgeParams_tokenNoCode() public {
         vm.expectRevert();
         lzAdapterHelper.exposed_validateBridgeParams(
-            DST_CHAIN_ID,
             user, // EOA, no code
             DST_EID,
             TEST_AMOUNT
@@ -1596,10 +1522,10 @@ contract LzAdapterTest is Test {
         uint256 bridgeAmount = TEST_AMOUNT;
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -1613,56 +1539,15 @@ contract LzAdapterTest is Test {
         oftTokenA.mint(address(freshVault), bridgeAmount);
         oftTokenA.approve(address(lzAdapter), bridgeAmount);
 
-        uint256 ethBalanceBefore = address(freshVault).balance;
+        uint256 ethBalanceBefore = address(user).balance;
 
         // Send more than required
         lzAdapter.executeBridging{value: bridgeFee + overpayment}(bridgeParams);
 
         // Should get refund for overpayment
-        assertEq(address(freshVault).balance, ethBalanceBefore - bridgeFee);
+        assertEq(address(user).balance, ethBalanceBefore + overpayment);
 
         vm.stopPrank();
-    }
-
-    function test_getSupportedChains_partiallyConfigured() public {
-        // Deploy adapter with only some chains configured
-        LzAdapter testAdapter = new LzAdapter(
-            address(mockEndpoint),
-            owner,
-            READ_CHANNEL,
-            address(mockComposer),
-            address(mockVaultsFactory),
-            address(mockVaultsRegistry)
-        );
-
-        vm.startPrank(owner);
-        testAdapter.setChainIdToEid(1, 101);    // Ethereum
-        testAdapter.setChainIdToEid(137, 109);  // Polygon
-        testAdapter.pauseChain(137);            // Pause Polygon
-        vm.stopPrank();
-
-        (uint256[] memory chains, bool[] memory statuses) = testAdapter.getSupportedChains();
-
-        // Should have 2 chains
-        assertEq(chains.length, 2);
-        assertEq(statuses.length, 2);
-
-        // Find and verify each chain
-        bool foundEth = false;
-        bool foundPoly = false;
-
-        for (uint256 i = 0; i < chains.length; i++) {
-            if (chains[i] == 1) {
-                foundEth = true;
-                assertTrue(statuses[i]); // Ethereum should be active
-            } else if (chains[i] == 137) {
-                foundPoly = true;
-                assertFalse(statuses[i]); // Polygon should be paused
-            }
-        }
-
-        assertTrue(foundEth);
-        assertTrue(foundPoly);
     }
 
     function test_setReadChannel_disable() public {
@@ -1708,18 +1593,18 @@ contract LzAdapterTest is Test {
         uint256 exactFee = lzAdapter.quoteBridgeFee(
             _createBridgeParams(
                 address(oftTokenA),
-                DST_CHAIN_ID,
                 DST_EID,
                 bridgeAmount,
+                dstVault,
                 user
             )
         );
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
+            dstVault,
             user
         );
 
@@ -1737,23 +1622,6 @@ contract LzAdapterTest is Test {
         vm.stopPrank();
     }
 
-    function test_getSupportedChains_singleChain() public {
-        // Test when only one chain is supported
-        vm.startPrank(owner);
-
-        // Disable the second chain
-        lzAdapter.setChainIdToEid(1, 0); // Disable Ethereum
-
-        (uint256[] memory chains, bool[] memory statuses) = lzAdapter.getSupportedChains();
-
-        // Should only return DST_CHAIN_ID (Polygon)
-        assertEq(chains.length, 1);
-        assertEq(chains[0], DST_CHAIN_ID);
-        assertTrue(statuses[0]);
-
-        vm.stopPrank();
-    }
-
     // Note: ERC20 rescue token functionality is already tested in test_rescueToken_erc20
 
     function test_trustedOFTs_edgeCases() public {
@@ -1768,26 +1636,6 @@ contract LzAdapterTest is Test {
         lzAdapter.setTrustedOFTs(ofts, trusted);
 
         assertFalse(lzAdapter.isTrustedOFT(address(oftTokenA)));
-        vm.stopPrank();
-    }
-
-    function test_chainConfiguration_edgeCases() public {
-        vm.startPrank(owner);
-
-        // Test setting chain with 0 EID (disable)
-        lzAdapter.setChainIdToEid(999, 0);
-        assertEq(lzAdapter.chainIdToEid(999), 0);
-
-        (bool supported, ,) = lzAdapter.getChainConfig(999);
-        assertFalse(supported);
-
-        // Test setting chain with valid EID
-        lzAdapter.setChainIdToEid(999, 123);
-        assertEq(lzAdapter.chainIdToEid(999), 123);
-
-        (supported, ,) = lzAdapter.getChainConfig(999);
-        assertTrue(supported);
-
         vm.stopPrank();
     }
 
@@ -1846,8 +1694,9 @@ contract LzAdapterTest is Test {
         MockVault mockVaultLz = new MockVault();
 
         // Set call info with non-composer initiator (actionType OTHER)
-        uint64 testNonce = 104117; // 104117 % 3 = 2 -> OTHER
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), user);
+        bytes32 testGuid = bytes32(uint256(104117)); // 104117 % 3 = 2 -> OTHER
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
+        uint64 testNonce = 104117;
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -1855,22 +1704,34 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(5000000));
+        bytes memory message = abi.encode(uint256(5000000), true);
 
         vm.startPrank(address(mockEndpoint));
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Verify composer callback was NOT called (since initiator != composer)
-        assertFalse(mockComposer.completedDeposits(testNonce));
+        assertFalse(mockComposer.completedDeposits(testGuid));
     }
 
     function test_lzReceive_actionTypeOther_withComposer() public {
         MockVault mockVaultLz = new MockVault();
 
         // Set call info with composer as initiator (actionType OTHER)
-        uint64 testNonce = 104118; // 104118 % 3 = 2 -> OTHER
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), address(mockComposer));
+        bytes32 testGuid = bytes32(uint256(104118)); // 104118 % 3 = 2 -> OTHER
+        lzAdapterHelper.setCallInfo(
+            testGuid,
+            address(mockVaultLz),
+            address(mockComposer)
+        );
+
+        uint64 testNonce = 104118;
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -1878,55 +1739,30 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(7500000));
+        bytes memory message = abi.encode(uint256(7500000), true);
 
         vm.startPrank(address(mockEndpoint));
         // Just verify it executes without reverting - the complex logic is tested elsewhere
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Test passes if no revert occurred during execution
-    }
-
-    function test_setSupportedChain_enableWhenAlreadyEnabled() public {
-        vm.startPrank(owner);
-
-        // First enable the chain
-        lzAdapter.setSupportedChain(DST_CHAIN_ID, true);
-        (bool supported,,) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-        assertTrue(supported);
-
-        // Try to enable again - should be no-op but not revert
-        lzAdapter.setSupportedChain(DST_CHAIN_ID, true);
-        (supported,,) = lzAdapter.getChainConfig(DST_CHAIN_ID);
-        assertTrue(supported);
-
-        vm.stopPrank();
-    }
-
-    function test_setSupportedChain_disableWhenAlreadyDisabled() public {
-        vm.startPrank(owner);
-
-        // Ensure chain is not supported initially
-        (bool supported,,) = lzAdapter.getChainConfig(999);
-        assertFalse(supported);
-
-        // Try to disable when already disabled - should be no-op
-        lzAdapter.setSupportedChain(999, false);
-        (supported,,) = lzAdapter.getChainConfig(999);
-        assertFalse(supported);
-
-        vm.stopPrank();
     }
 
     function test_executeBridging_exactRefundScenario() public {
         uint256 bridgeAmount = TEST_AMOUNT;
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -2012,10 +1848,10 @@ contract LzAdapterTest is Test {
         uint256 bridgeAmount = TEST_AMOUNT;
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA),
-            DST_CHAIN_ID,
             DST_EID,
             bridgeAmount,
-            dstVault
+            dstVault,
+            user
         );
 
         uint256 bridgeFee = lzAdapter.quoteBridgeFee(bridgeParams);
@@ -2037,8 +1873,6 @@ contract LzAdapterTest is Test {
         // Send some ETH to the adapter
         vm.deal(address(lzAdapter), 1 ether);
 
-        uint256 balanceBefore = owner.balance;
-
         // Rescue ETH tokens (not address(0), use ETH token if available, otherwise skip)
         address payable to = payable(makeAddr("recipient"));
         uint256 recipientBefore = to.balance;
@@ -2052,26 +1886,13 @@ contract LzAdapterTest is Test {
         vm.stopPrank();
     }
 
-    function test_setChainIdToEid_disableMapping() public {
-        vm.startPrank(owner);
-
-        // First set a mapping
-        lzAdapter.setChainIdToEid(999, 123);
-        assertEq(lzAdapter.chainIdToEid(999), 123);
-
-        // Disable the mapping by setting EID to 0
-        lzAdapter.setChainIdToEid(999, 0);
-        assertEq(lzAdapter.chainIdToEid(999), 0);
-
-        vm.stopPrank();
-    }
-
     function test_lzReceive_simpleDataFlow() public {
         MockVault mockVaultLz = new MockVault();
 
         // Use a nonce that triggers OTHER action type (104119 % 3 = 2)
+        bytes32 testGuid = bytes32(uint256(104119));
         uint64 testNonce = 104119;
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -2079,11 +1900,17 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(1000000));
+        bytes memory message = abi.encode(uint256(1000000), true);
 
         vm.startPrank(address(mockEndpoint));
         // This should trigger the OTHER branch in _lzReceive
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Just verify that the function executed without reverting
@@ -2094,15 +1921,15 @@ contract LzAdapterTest is Test {
         vm.startPrank(owner);
 
         // Initially not paused
-        assertFalse(lzAdapter.chainPaused(DST_CHAIN_ID));
+        assertFalse(lzAdapter.isEidPaused(DST_EID));
 
         // Pause
-        lzAdapter.pauseChain(DST_CHAIN_ID);
-        assertTrue(lzAdapter.chainPaused(DST_CHAIN_ID));
+        lzAdapter.pauseEid(DST_EID);
+        assertTrue(lzAdapter.isEidPaused(DST_EID));
 
         // Unpause
-        lzAdapter.unpauseChain(DST_CHAIN_ID);
-        assertFalse(lzAdapter.chainPaused(DST_CHAIN_ID));
+        lzAdapter.unpauseEid(DST_EID);
+        assertFalse(lzAdapter.isEidPaused(DST_EID));
 
         vm.stopPrank();
     }
@@ -2151,11 +1978,11 @@ contract LzAdapterTest is Test {
 
         // This should trigger _validateBridgeParams and cover the false branch of line 576
         bytes memory bridgeParams = abi.encode(
-            address(validOFT),  // oftTokenAddress
-            DST_CHAIN_ID,       // dstChainId
-            DST_EID,            // lzEid
-            100e18,             // amount
-            user                // dstVaultAddress
+            address(validOFT), // oftTokenAddress
+            DST_CHAIN_ID, // dstChainId
+            DST_EID, // lzEid
+            100e18, // amount
+            user // dstVaultAddress
         );
         try lzAdapter.executeBridging{value: 1 ether}(bridgeParams) {} catch {}
 
@@ -2167,8 +1994,9 @@ contract LzAdapterTest is Test {
         MockVault mockVaultLz = new MockVault();
 
         // Use nonce that triggers OTHER action type (not withdraw/redeem)
+        bytes32 testGuid = bytes32(uint256(1));
         uint64 testNonce = 1; // This should trigger the else branch
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -2176,21 +2004,27 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(1000000));
+        bytes memory message = abi.encode(uint256(1000000), true);
 
         vm.startPrank(address(mockEndpoint));
         // This should trigger the else branch (line 540)
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
     }
-
 
     function test_lzReceive_withdrawBranch() public {
         MockVault mockVaultLz = new MockVault();
 
         // Use nonce that triggers WITHDRAW action (nonce % 3 == 0)
+        bytes32 testGuid = bytes32(uint256(999));
         uint64 testNonce = 999; // 999 % 3 = 0 -> REQUEST_WITHDRAW
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -2198,23 +2032,30 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(2000000));
+        bytes memory message = abi.encode(uint256(2000000), true);
 
         vm.startPrank(address(mockEndpoint));
         // This should trigger the first branch (lines 530-533)
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Should have called finalizeRequest instead of updateAccounting
-        assertTrue(mockVaultLz.finalizedRequests(testNonce));
+        assertTrue(mockVaultLz.finalizedRequests(testGuid));
     }
 
     function test_lzReceive_redeemBranch() public {
         MockVault mockVaultLz = new MockVault();
 
         // Use nonce that triggers REDEEM action (nonce % 3 == 1)
+        bytes32 testGuid = bytes32(uint256(1000));
         uint64 testNonce = 1000; // 1000 % 3 = 1 -> REQUEST_REDEEM
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), user);
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user);
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -2222,23 +2063,34 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(3000000));
+        bytes memory message = abi.encode(uint256(3000000), true);
 
         vm.startPrank(address(mockEndpoint));
         // This should also trigger the first branch (REQUEST_REDEEM)
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Should have called finalizeRequest
-        assertTrue(mockVaultLz.finalizedRequests(testNonce));
+        assertTrue(mockVaultLz.finalizedRequests(testGuid));
     }
 
     function test_lzReceive_otherAction_initiatorEqualsComposer() public {
         MockVault mockVaultLz = new MockVault();
 
         // Use nonce that triggers OTHER action AND initiator == composer
+        bytes32 testGuid = bytes32(uint256(1001));
         uint64 testNonce = 1001; // 1001 % 3 = 2 -> OTHER
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), address(mockComposer));
+        lzAdapterHelper.setCallInfo(
+            testGuid,
+            address(mockVaultLz),
+            address(mockComposer)
+        );
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -2246,23 +2098,30 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(4000000));
+        bytes memory message = abi.encode(uint256(4000000), true);
 
         vm.startPrank(address(mockEndpoint));
         // This covers line 540: initiator == composer check
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Should have called composer callback
-        assertTrue(mockComposer.completedDeposits(testNonce));
+        assertTrue(mockComposer.completedDeposits(testGuid));
     }
 
     function test_lzReceive_otherAction_initiatorNotComposer() public {
         MockVault mockVaultLz = new MockVault();
 
         // Use nonce that triggers OTHER action BUT initiator != composer
-        uint64 testNonce = 1002; // 1002 % 3 = 2 -> OTHER
-        lzAdapterHelper.setCallInfo(testNonce, address(mockVaultLz), user); // user != composer
+        bytes32 testGuid = bytes32(uint256(1002)); // 1002 % 3 = 2 -> OTHER
+        uint64 testNonce = 1002;
+        lzAdapterHelper.setCallInfo(testGuid, address(mockVaultLz), user); // user != composer
 
         Origin memory origin = Origin({
             srcEid: A_EID,
@@ -2270,15 +2129,20 @@ contract LzAdapterTest is Test {
             nonce: testNonce
         });
 
-        bytes memory message = abi.encode(uint256(5000000));
+        bytes memory message = abi.encode(uint256(5000000), true);
 
         vm.startPrank(address(mockEndpoint));
         // This covers the FALSE branch of line 540
-        lzAdapterHelper.exposed_lzReceive(origin, bytes32(0), message, address(0), "");
+        lzAdapterHelper.exposed_lzReceive(
+            origin,
+            testGuid,
+            message,
+            address(0),
+            ""
+        );
         vm.stopPrank();
 
         // Should NOT have called composer callback
-        assertFalse(mockComposer.completedDeposits(testNonce));
+        assertFalse(mockComposer.completedDeposits(testGuid));
     }
 }
-

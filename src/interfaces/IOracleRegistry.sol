@@ -43,7 +43,7 @@ interface IOracleRegistry {
 
     event SpokeOracleInfoUpdated(
         address indexed hub,
-        uint16 indexed chaindId,
+        uint32 indexed chaindId,
         OracleInfo info
     );
 
@@ -72,18 +72,18 @@ interface IOracleRegistry {
 
     function setSpokeOracleInfos(
         address hub,
-        uint16[] calldata chainIds,
+        uint32[] calldata chainIds,
         OracleInfo[] calldata infos
     ) external;
 
     function getSpokeValue(
         address hub,
-        uint16 chainId
+        uint32 chainId
     ) external view returns (uint256);
 
     function getSpokeOracleInfo(
         address hub,
-        uint16 chainId
+        uint32 chainId
     ) external view returns (OracleInfo memory);
 
     /**

@@ -14,6 +14,8 @@ import {IMulticallFacet, MulticallFacet} from "../src/facets/MulticallFacet.sol"
 import {IVaultFacet, IERC4626, IERC20, VaultFacet} from "../src/facets/VaultFacet.sol";
 import {IERC4626Facet, ERC4626Facet} from "../src/facets/ERC4626Facet.sol";
 import {IERC7540Facet, ERC7540Facet} from "../src/facets/ERC7540Facet.sol";
+import {IBridgeFacet, BridgeFacet} from "../src/facets/BridgeFacet.sol";
+import {LzAdapter} from "../src/adapters/cross-chain/LzAdapter.sol";
 import {DeployConfig} from "./config/DeployConfig.s.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -30,10 +32,13 @@ import {console} from "forge-std/console.sol";
 // forge script scripts/Deploy.s.sol:DeployScript --chain-id 747 --rpc-url https://mainnet.evm.nodes.onflow.org -vv --slow --broadcast --verify --verifier blockscout --verifier-url 'https://evm.flowscan.io/api/'
 
 // ethereum mainnet deployment script
-// forge script scripts/Deploy.s.sol:DeployScript --chain-id 1 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 1 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key {API_KEY}
 
 // sepolia testnet deployment script
-// forge script scripts/Deploy.s.sol:DeployScript --chain-id 11155111 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 11155111 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key {API_KEY}
+
+// bnb testnet deployment script
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 97 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --verifier-url 'https://api.etherscan.io/v2/api?chainid=97' --etherscan-api-key {API_KEY}
 
 contract DeployScript is Script {
     DeployConfig config;
@@ -41,6 +46,10 @@ contract DeployScript is Script {
     VaultsFactory factory;
     MoreVaultsDiamond diamond;
     OracleRegistry oracleRegistry;
+    LzAdapter lzAdapter;
+    uint256 public constant LZ_READ_CHANNEL = 1;
+
+    address lzEndpoint;
 
     // FLOW MAINNET
     // address constant USDF = address(0x2aaBea2058b5aC2D339b163C6Ab6f2b6d53aabED);
@@ -61,8 +70,12 @@ contract DeployScript is Script {
 
     // SEPOLIA TESTNET
     address constant USDF = address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766);
-    address constant PROTOCOL_OWNER =
-        address(0xb10C12547799688F2893530c80Cf625f4A193870);
+    address PROTOCOL_OWNER;
+    bool IS_HUB;
+
+    // BNB TESTNET
+    address MockUSDC = address(0xB360f59C348e471B4D73238cf30A3801Aad6beeb);
+    address MockOracle = address(0x62F7A4c832eB0AcD93B8917C4a3303b1D09D1125);
 
     function test_skip() public pure {}
 
@@ -88,6 +101,10 @@ contract DeployScript is Script {
             vm.envString("VAULT_NAME"),
             vm.envString("VAULT_SYMBOL")
         );
+
+        lzEndpoint = vm.envAddress("LZ_ENDPOINT");
+        PROTOCOL_OWNER = vm.envAddress("PROTOCOL_OWNER");
+        IS_HUB = vm.envBool("IS_HUB");
     }
 
     function run() public {
@@ -98,7 +115,7 @@ contract DeployScript is Script {
         DiamondCutFacet diamondCut = DiamondCutFacet(
             CREATE3.deployDeterministic(
                 type(DiamondCutFacet).creationCode,
-                keccak256(abi.encode("diamondCutFacet"))
+                keccak256(abi.encode("diamondCutFacetCrossChainTest2"))
             )
         );
 
@@ -107,43 +124,49 @@ contract DeployScript is Script {
             DiamondLoupeFacet diamondLoupe = DiamondLoupeFacet(
                 CREATE3.deployDeterministic(
                     type(DiamondLoupeFacet).creationCode,
-                    keccak256(abi.encode("diamondLoupe"))
+                    keccak256(abi.encode("diamondLoupeCrossChainTest2"))
                 )
             );
             AccessControlFacet accessControl = AccessControlFacet(
                 CREATE3.deployDeterministic(
                     type(AccessControlFacet).creationCode,
-                    keccak256(abi.encode("accessControl"))
+                    keccak256(abi.encode("accessControlCrossChainTest2"))
                 )
             );
             ConfigurationFacet configuration = ConfigurationFacet(
                 CREATE3.deployDeterministic(
                     type(ConfigurationFacet).creationCode,
-                    keccak256(abi.encode("configuration"))
+                    keccak256(abi.encode("configurationCrossChainTest2"))
                 )
             );
             MulticallFacet multicall = MulticallFacet(
                 CREATE3.deployDeterministic(
                     type(MulticallFacet).creationCode,
-                    keccak256(abi.encode("multicall"))
+                    keccak256(abi.encode("multicallCrossChainTest2"))
                 )
             );
             VaultFacet vault = VaultFacet(
                 CREATE3.deployDeterministic(
                     type(VaultFacet).creationCode,
-                    keccak256(abi.encode("vault"))
+                    keccak256(abi.encode("vaultCrossChainTest2"))
                 )
             );
             ERC4626Facet erc4626 = ERC4626Facet(
                 CREATE3.deployDeterministic(
                     type(ERC4626Facet).creationCode,
-                    keccak256(abi.encode("erc4626"))
+                    keccak256(abi.encode("erc4626CrossChainTest2"))
                 )
             );
             ERC7540Facet erc7540 = ERC7540Facet(
                 CREATE3.deployDeterministic(
                     type(ERC7540Facet).creationCode,
-                    keccak256(abi.encode("erc7540"))
+                    keccak256(abi.encode("erc7540CrossChainTest2"))
+                )
+            );
+            BridgeFacet bridge = BridgeFacet(
+                CREATE3.deployDeterministic(
+                    type(BridgeFacet).creationCode,
+                    keccak256(abi.encode("bridgeCrossChainTest2"))
                 )
             );
 
@@ -154,6 +177,7 @@ contract DeployScript is Script {
             facetAddresses.vault = address(vault);
             facetAddresses.erc4626 = address(erc4626);
             facetAddresses.erc7540 = address(erc7540);
+            facetAddresses.bridge = address(bridge);
         }
 
         // Save addresses to .env.deployments file
@@ -182,6 +206,9 @@ contract DeployScript is Script {
                 "\n",
                 "ERC7540_FACET=",
                 vm.toString(facetAddresses.erc7540),
+                "\n",
+                "BRIDGE_FACET=",
+                vm.toString(facetAddresses.bridge),
                 "\n"
             )
         );
@@ -217,6 +244,9 @@ contract DeployScript is Script {
                 "\n",
                 "ERC7540_FACET=",
                 vm.toString(facetAddresses.erc7540),
+                "\n",
+                "BRIDGE_FACET=",
+                vm.toString(facetAddresses.bridge),
                 "\n"
             )
         );
@@ -300,13 +330,28 @@ contract DeployScript is Script {
             aggregator: IAggregatorV2V3Interface(sources[0]),
             stalenessThreshold: confidence[0]
         });
-        // uint256 baseCurrencyUnit = 8;
+
+        // // BNB TESTNET
+        // address[] memory assets = new address[](1);
+        // assets[0] = MockUSDC;
+        // address[] memory sources = new address[](1);
+        // sources[0] = MockOracle;
+        // uint96[] memory confidence = new uint96[](1);
+        // confidence[0] = 4 hours;
+        // IOracleRegistry.OracleInfo[]
+        //     memory infos = new IOracleRegistry.OracleInfo[](1);
+        // infos[0] = IOracleRegistry.OracleInfo({
+        //     aggregator: IAggregatorV2V3Interface(sources[0]),
+        //     stalenessThreshold: confidence[0]
+        // });
 
         // Deploy oracle registry
         OracleRegistry oracleRegistryImplementation = OracleRegistry(
             CREATE3.deployDeterministic(
                 type(OracleRegistry).creationCode,
-                keccak256(abi.encode("oracleRegistryImplementation"))
+                keccak256(
+                    abi.encode("oracleRegistryImplementationCrossChainTest2")
+                )
             )
         );
         oracleRegistry = OracleRegistry(
@@ -327,7 +372,7 @@ contract DeployScript is Script {
                             )
                         )
                     ),
-                    keccak256(abi.encode("oracleRegistry2"))
+                    keccak256(abi.encode("oracleRegistryCrossChainTest2"))
                 )
             )
         );
@@ -360,7 +405,7 @@ contract DeployScript is Script {
         // Deploy registry
         address registryImplementation = CREATE3.deployDeterministic(
             type(VaultsRegistry).creationCode,
-            keccak256(abi.encode("registryImplementation"))
+            keccak256(abi.encode("registryImplementationCrossChainTest2"))
         );
         registry = VaultsRegistry(
             address(
@@ -378,7 +423,7 @@ contract DeployScript is Script {
                             )
                         )
                     ),
-                    keccak256(abi.encode("registry"))
+                    keccak256(abi.encode("registryCrossChainTest2"))
                 )
             )
         );
@@ -443,7 +488,7 @@ contract DeployScript is Script {
         address factoryImplementation = address(
             CREATE3.deployDeterministic(
                 type(VaultsFactory).creationCode,
-                keccak256(abi.encode("factoryImplementation"))
+                keccak256(abi.encode("factoryImplementationCrossChainTest2"))
             )
         );
         factory = VaultsFactory(
@@ -466,7 +511,7 @@ contract DeployScript is Script {
                             )
                         )
                     ),
-                    keccak256(abi.encode("factory"))
+                    keccak256(abi.encode("factoryCrossChainTest2"))
                 )
             )
         );
@@ -496,40 +541,61 @@ contract DeployScript is Script {
             )
         );
 
-        // // Deploy vault
-        // bytes memory accessControlFacetInitData = abi.encode(
-        //     config.owner(),
-        //     config.curator(),
-        //     config.guardian()
-        // );
-        // address vaultAddress = factory.deployVault(
-        //     cuts,
-        //     accessControlFacetInitData
-        // );
-        // console.log("Vault deployed at:", vaultAddress);
+        // Deploy lz adapter
+        lzAdapter = LzAdapter(
+            CREATE3.deployDeterministic(
+                abi.encodePacked(
+                    type(LzAdapter).creationCode,
+                    abi.encode(
+                        lzEndpoint,
+                        PROTOCOL_OWNER,
+                        LZ_READ_CHANNEL,
+                        address(0),
+                        address(factory),
+                        address(registry)
+                    )
+                ),
+                keccak256(abi.encode("lzAdapterCrossChainTest2"))
+            )
+        );
+        console.log("Lz adapter deployed at:", address(lzAdapter));
 
-        // vm.writeFile(
-        //     ".env.deployments",
-        //     string(
-        //         abi.encodePacked(
-        //             vm.readFile(".env.deployments"),
-        //             "VAULT_ADDRESS=",
-        //             vm.toString(vaultAddress),
-        //             "\n"
-        //         )
-        //     )
-        // );
-        // vm.writeFile(
-        //     ".env",
-        //     string(
-        //         abi.encodePacked(
-        //             vm.readFile(".env"),
-        //             "VAULT_ADDRESS=",
-        //             vm.toString(vaultAddress),
-        //             "\n"
-        //         )
-        //     )
-        // );
+        // Deploy vault
+        bytes memory accessControlFacetInitData = abi.encode(
+            config.owner(),
+            config.curator(),
+            config.guardian()
+        );
+        address vaultAddress = factory.deployVault(
+            cuts,
+            accessControlFacetInitData,
+            IS_HUB,
+            keccak256(abi.encode("testVaultCrossChain"))
+        );
+        console.log("Vault deployed at:", vaultAddress);
+
+        vm.writeFile(
+            ".env.deployments",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env.deployments"),
+                    "VAULT_ADDRESS=",
+                    vm.toString(vaultAddress),
+                    "\n"
+                )
+            )
+        );
+        vm.writeFile(
+            ".env",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env"),
+                    "VAULT_ADDRESS=",
+                    vm.toString(vaultAddress),
+                    "\n"
+                )
+            )
+        );
 
         vm.stopBroadcast();
     }

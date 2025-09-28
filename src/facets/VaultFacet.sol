@@ -13,7 +13,6 @@ import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {ICrossChainAccounting} from "../interfaces/ICrossChainAccounting.sol";
 import {MessagingReceipt} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 contract VaultFacet is
@@ -33,11 +32,11 @@ contract VaultFacet is
     error VaultIsUsingRestrictedFacet(address);
     error WithdrawalQueueDisabled();
     error NotAHub();
-    error CrossChainRequestWasntFulfilled(uint64);
     error InvalidActionType();
     error OnlyCrossChainAccountingManager();
     error SyncActionsDisabledInCrossChainVaults();
     error RequestWasntFulfilled();
+    error RequestWithdrawDisabled();
 
     event WithdrawRequestCreated(
         address requester,
@@ -129,7 +128,8 @@ contract VaultFacet is
      */
     function pause() external {
         if (
-            AccessControlLib.vaultOwner() != msg.sender && // TODO: add Guardian
+            AccessControlLib.vaultOwner() != msg.sender &&
+            AccessControlLib.vaultGuardian() != msg.sender &&
             MoreVaultsLib.factoryAddress() != msg.sender
         ) {
             revert AccessControlLib.UnauthorizedAccess();
@@ -141,7 +141,7 @@ contract VaultFacet is
      * @inheritdoc IVaultFacet
      */
     function unpause() external {
-        AccessControlLib.validateOwner(msg.sender); // TODO: add Guardian
+        AccessControlLib.validateGuardian(msg.sender);
         IVaultsFactory factory = IVaultsFactory(MoreVaultsLib.factoryAddress());
         address[] memory restrictedFacets = factory.getRestrictedFacets();
         for (uint256 i = 0; i < restrictedFacets.length; ) {
@@ -405,8 +405,6 @@ contract VaultFacet is
         }
     }
 
-    // TODO: add maxWithdraw and maxRedeem?
-
     /**
      * @notice override maxMint to check if the deposit capacity is exceeded
      * @dev Warning: the returned value can be slightly higher since accrued fee are not included.
@@ -519,6 +517,13 @@ contract VaultFacet is
 
         if (!ds.isHub) {
             revert NotAHub();
+        }
+        IVaultsFactory factory = IVaultsFactory(ds.factory);
+        if (
+            factory.isCrossChainVault(factory.localEid(), address(this)) &&
+            !ds.oraclesCrossChainAccounting
+        ) {
+            revert RequestWithdrawDisabled();
         }
         _beforeAccounting(ds.beforeAccountingFacets);
         uint256 newTotalAssets = totalAssets();
@@ -930,7 +935,7 @@ contract VaultFacet is
 
         // if the timestamp is less than the last accrued interest timestamp, that means the interest has already been accrued
         // it needs to prevent multiple fee accruals if cross chain accounting is used
-        if (_timestamp < ds.lastAccruedInterestTimestamp) {
+        if (_timestamp <= ds.lastAccruedInterestTimestamp) {
             return;
         }
         ds.lastAccruedInterestTimestamp = _timestamp;
@@ -1240,22 +1245,18 @@ contract VaultFacet is
         if (!ds.isHub) {
             revert NotAHub();
         }
+        IVaultsFactory factory = IVaultsFactory(ds.factory);
         if (
-            IVaultsFactory(ds.factory)
-                .hubToSpokes(uint16(block.chainid), address(this))
-                .length !=
-            0 &&
+            factory.isCrossChainVault(factory.localEid(), address(this)) &&
             !ds.oraclesCrossChainAccounting
         ) {
-            uint64 nonce = ds.finalizationNonce;
-            if (nonce == type(uint64).max) {
+            bytes32 guid = ds.finalizationGuid;
+            if (guid == 0) {
                 revert SyncActionsDisabledInCrossChainVaults();
             } else {
-                totalAssets_ = ds
-                    .nonceToCrossChainRequestInfo[nonce]
-                    .totalAssets;
-                msgSender_ = ds.nonceToCrossChainRequestInfo[nonce].initiator;
-                timestamp_ = ds.nonceToCrossChainRequestInfo[nonce].timestamp;
+                totalAssets_ = ds.guidToCrossChainRequestInfo[guid].totalAssets;
+                msgSender_ = ds.guidToCrossChainRequestInfo[guid].initiator;
+                timestamp_ = ds.guidToCrossChainRequestInfo[guid].timestamp;
             }
         } else {
             _beforeAccounting(ds.beforeAccountingFacets);

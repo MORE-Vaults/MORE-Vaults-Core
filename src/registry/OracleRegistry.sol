@@ -15,7 +15,7 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
     // Map of asset price sources (asset => priceSource)
     mapping(address => OracleInfo) private _oracleInfos;
     // Map of spoke value sources (hub => chainId => oracle)
-    mapping(address => mapping(uint16 => OracleInfo))
+    mapping(address => mapping(uint32 => OracleInfo))
         private _spokeVaultOracleInfos;
 
     address public override BASE_CURRENCY;
@@ -58,7 +58,7 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
 
     function setSpokeOracleInfos(
         address hub,
-        uint16[] calldata chainIds,
+        uint32[] calldata chainIds,
         OracleInfo[] calldata infos
     ) external onlyRole(ORACLE_MANAGER_ROLE) {
         _setSpokeOracleInfos(hub, chainIds, infos);
@@ -98,7 +98,7 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
      */
     function _setSpokeOracleInfos(
         address hub,
-        uint16[] calldata chainIds,
+        uint32[] calldata chainIds,
         OracleInfo[] calldata infos
     ) internal {
         if (chainIds.length != infos.length) {
@@ -115,7 +115,7 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
 
     function getSpokeValue(
         address hub,
-        uint16 chainId
+        uint32 chainId
     ) external view returns (uint256) {
         OracleInfo memory info = _spokeVaultOracleInfos[hub][chainId];
 
@@ -169,7 +169,7 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
 
     function getSpokeOracleInfo(
         address hub,
-        uint16 chainId
+        uint32 chainId
     ) external view returns (OracleInfo memory) {
         return _spokeVaultOracleInfos[hub][chainId];
     }
@@ -187,8 +187,3 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
         }
     }
 }
-
-// TODO: Permissionless OracleRegistry
-// TODO: Permissionless deployment of the vault with flag
-// TODO: deployment script revamp
-// TODO: put timelock to any role change

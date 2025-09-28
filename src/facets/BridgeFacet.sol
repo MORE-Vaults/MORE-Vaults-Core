@@ -8,30 +8,29 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
-import {ICrossChainAccounting} from "../interfaces/ICrossChainAccounting.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AccessControlLib} from "../libraries/AccessControlLib.sol";
+import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
 import {IOracleRegistry} from "../interfaces/IOracleRegistry.sol";
 import {IBridgeFacet} from "../interfaces/facets/IBridgeFacet.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract BridgeFacet is
     PausableUpgradeable,
     BaseFacetInitializer,
-    IBridgeFacet
+    IBridgeFacet,
+    ReentrancyGuard
 {
+    using SafeERC20 for IERC20;
     using Math for uint256;
 
-    error CrossChainRequestWasntFulfilled(uint64);
-    error InvalidActionType();
-    error OnlyCrossChainAccountingManager();
-    error SyncActionsDisabledInCrossChainVaults();
-    error RequestWasntFulfilled();
-    error FinalizationCallFailed();
-    error OracleWasntSetForSpoke(IVaultsFactory.VaultInfo);
-    error NoOracleForSpoke(uint16);
-    error AlreadySet();
-    error AccountingViaOracles();
-
+    event AccountingInfoUpdated(
+        bytes32 indexed guid,
+        uint256 sumOfSpokesUsdValue,
+        bool readSuccess
+    );
     event OracleCrossChainAccountingUpdated(bool indexed isTrue);
 
     function INITIALIZABLE_STORAGE_SLOT()
@@ -51,10 +50,10 @@ contract BridgeFacet is
         return "1.0.0";
     }
 
-    function initialize(
-        bytes calldata data
-    ) external initializerFacet initializer {
-        // ds.supportedInterfaces[type(IBridgeFacet).interfaceId] = true; // IBridgeFacet interface
+    function initialize(bytes calldata) external initializerFacet initializer {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
+            .moreVaultsStorage();
+        ds.supportedInterfaces[type(IBridgeFacet).interfaceId] = true; // IBridgeFacet interface
     }
 
     function accountingBridgeFacet()
@@ -64,15 +63,18 @@ contract BridgeFacet is
     {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        IVaultsFactory.VaultInfo[] memory spokeInfos = IVaultsFactory(
-            ds.factory
-        ).hubToSpokes(uint16(block.chainid), address(this));
-        for (uint256 i = 0; i < spokeInfos.length; ) {
+        IVaultsFactory factory = IVaultsFactory(ds.factory);
+        uint32 localEid = factory.localEid();
+        (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(
+            localEid,
+            address(this)
+        );
+        for (uint256 i = 0; i < vaults.length; ) {
             IMoreVaultsRegistry registry = IMoreVaultsRegistry(
                 AccessControlLib.vaultRegistry()
             );
             IOracleRegistry oracle = registry.oracle();
-            sum += oracle.getSpokeValue(address(this), spokeInfos[i].chainId);
+            sum += oracle.getSpokeValue(address(this), eids[i]);
             unchecked {
                 ++i;
             }
@@ -83,7 +85,7 @@ contract BridgeFacet is
     function onFacetRemoval(bool isReplacing) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        // ds.supportedInterfaces[type(IBridgeFacet).interfaceId] = false;
+        ds.supportedInterfaces[type(IBridgeFacet).interfaceId] = false;
 
         MoreVaultsLib.removeFromFacetsForAccounting(
             ds,
@@ -96,16 +98,18 @@ contract BridgeFacet is
         AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        IVaultsFactory.VaultInfo[] memory spokeInfos = IVaultsFactory(
-            ds.factory
-        ).hubToSpokes(uint16(block.chainid), address(this));
+        IVaultsFactory factory = IVaultsFactory(ds.factory);
+        (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(
+            factory.localEid(),
+            address(this)
+        );
 
         bool currentValue = ds.oraclesCrossChainAccounting;
         if (isTrue == currentValue) {
             revert AlreadySet();
         }
         if (isTrue && !currentValue) {
-            for (uint256 i = 0; i < spokeInfos.length; ) {
+            for (uint256 i = 0; i < vaults.length; ) {
                 IMoreVaultsRegistry registry = IMoreVaultsRegistry(
                     AccessControlLib.vaultRegistry()
                 );
@@ -114,14 +118,11 @@ contract BridgeFacet is
                 if (
                     address(
                         oracle
-                            .getSpokeOracleInfo(
-                                address(this),
-                                spokeInfos[i].chainId
-                            )
+                            .getSpokeOracleInfo(address(this), eids[i])
                             .aggregator
                     ) == address(0)
                 ) {
-                    revert NoOracleForSpoke(spokeInfos[i].chainId);
+                    revert NoOracleForSpoke(eids[i]);
                 }
                 unchecked {
                     ++i;
@@ -145,23 +146,49 @@ contract BridgeFacet is
         emit OracleCrossChainAccountingUpdated(isTrue);
     }
 
+    function executeBridging(
+        address adapter,
+        address token,
+        uint256 amount,
+        bytes calldata bridgeSpecificParams
+    ) external payable whenNotPaused nonReentrant {
+        AccessControlLib.validateCurator(msg.sender);
+        _pause();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
+            .accessControlStorage();
+        if (
+            !IMoreVaultsRegistry(acs.moreVaultsRegistry).isBridgeAllowed(
+                adapter
+            )
+        ) {
+            revert AdapterNotAllowed(adapter);
+        }
+        IERC20(token).forceApprove(adapter, amount);
+        IBridgeAdapter(adapter).executeBridging{value: msg.value}(
+            bridgeSpecificParams
+        );
+    }
+
     function initVaultActionRequest(
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
         bytes calldata extraOptions
-    ) external payable whenNotPaused returns (uint64 nonce) {
+    ) external payable whenNotPaused nonReentrant returns (bytes32 guid) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        IVaultsFactory.VaultInfo[] memory spokesInfo = IVaultsFactory(
-            ds.factory
-        ).hubToSpokes(uint16(block.chainid), address(this));
-        if (spokesInfo.length != 0) {
+        IVaultsFactory factory = IVaultsFactory(ds.factory);
+        (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(
+            factory.localEid(),
+            address(this)
+        );
+        if (vaults.length != 0) {
             if (ds.oraclesCrossChainAccounting) {
                 revert AccountingViaOracles();
             }
-            nonce = _createCrossChainRequest(
+            guid = _createCrossChainRequest(
                 ds,
-                spokesInfo,
+                vaults,
+                eids,
                 actionType,
                 actionCallData,
                 extraOptions
@@ -171,17 +198,19 @@ contract BridgeFacet is
 
     function _createCrossChainRequest(
         MoreVaultsLib.MoreVaultsStorage storage ds,
-        IVaultsFactory.VaultInfo[] memory spokesInfo,
+        address[] memory vaults,
+        uint32[] memory eids,
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
         bytes calldata extraOptions
-    ) internal returns (uint64 nonce) {
-        nonce = ICrossChainAccounting(ds.crossChainAccountingManager)
+    ) internal returns (bytes32 guid) {
+        guid = IBridgeAdapter(ds.crossChainAccountingManager)
         .initiateCrossChainAccounting{value: msg.value}(
-            spokesInfo,
+            vaults,
+            eids,
             extraOptions,
             msg.sender
-        ).nonce;
+        ).guid;
 
         MoreVaultsLib._beforeAccounting(ds.beforeAccountingFacets);
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib
@@ -193,32 +222,42 @@ contract BridgeFacet is
                 fulfilled: false,
                 totalAssets: IVaultFacet(address(this)).totalAssets()
             });
-        ds.nonceToCrossChainRequestInfo[nonce] = requestInfo;
+        ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }
 
     function updateAccountingInfoForRequest(
-        uint64 nonce,
-        uint256 sumOfSpokesUsdValue
+        bytes32 guid,
+        uint256 sumOfSpokesUsdValue,
+        bool readSuccess
     ) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
         if (msg.sender != ds.crossChainAccountingManager)
             revert OnlyCrossChainAccountingManager();
-        ds.nonceToCrossChainRequestInfo[nonce].totalAssets += MoreVaultsLib
-            .convertUsdToUnderlying(sumOfSpokesUsdValue, Math.Rounding.Floor);
-        ds.nonceToCrossChainRequestInfo[nonce].fulfilled = true;
+        if (readSuccess) {
+            ds.guidToCrossChainRequestInfo[guid].totalAssets += MoreVaultsLib
+                .convertUsdToUnderlying(
+                    sumOfSpokesUsdValue,
+                    Math.Rounding.Floor
+                );
+        }
+        ds.guidToCrossChainRequestInfo[guid].fulfilled = readSuccess;
+
+        emit AccountingInfoUpdated(guid, sumOfSpokesUsdValue, readSuccess);
     }
 
-    function finalizeRequest(uint64 nonce) external payable {
+    function finalizeRequest(bytes32 guid) external payable nonReentrant {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        if (!ds.nonceToCrossChainRequestInfo[nonce].fulfilled) {
+        MoreVaultsLib.CrossChainRequestInfo memory requestInfo = ds
+            .guidToCrossChainRequestInfo[guid];
+        if (!ds.guidToCrossChainRequestInfo[guid].fulfilled) {
             revert RequestWasntFulfilled();
         }
-        ds.finalizationNonce = nonce;
-
-        MoreVaultsLib.CrossChainRequestInfo memory requestInfo = ds
-            .nonceToCrossChainRequestInfo[nonce];
+        if (requestInfo.timestamp + 1 hours < block.timestamp) {
+            revert RequestTimedOut();
+        }
+        ds.finalizationGuid = guid;
 
         bool success;
         if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
@@ -228,12 +267,11 @@ contract BridgeFacet is
             );
             (success, ) = address(this).call(
                 abi.encodeWithSelector(
-                    bytes4(keccak256("deposit(uint256,address)")),
+                    IERC4626.deposit.selector,
                     assets,
                     receiver
                 )
             );
-            // TODO: think about this in terms native depostis, most likely they don't work since You need OFT to bridge assets and OFT will be for wrapped native, not native itself
         } else if (
             requestInfo.actionType ==
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT
@@ -294,19 +332,19 @@ contract BridgeFacet is
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.SET_FEE) {
             uint96 fee = abi.decode(requestInfo.actionCallData, (uint96));
             (success, ) = address(this).call(
-                abi.encodeWithSelector(bytes4(keccak256("setFee(uint96)")), fee)
+                abi.encodeWithSelector(IVaultFacet.setFee.selector, fee)
             );
         }
         if (!success) revert FinalizationCallFailed();
 
-        ds.finalizationNonce = type(uint64).max;
+        ds.finalizationGuid = 0;
     }
 
     function getRequestInfo(
-        uint64 nonce
+        bytes32 guid
     ) external view returns (MoreVaultsLib.CrossChainRequestInfo memory) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
-        return ds.nonceToCrossChainRequestInfo[nonce];
+        return ds.guidToCrossChainRequestInfo[guid];
     }
 }

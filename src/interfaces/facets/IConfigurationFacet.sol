@@ -15,6 +15,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error NothingSubmitted();
     error ArraysLengthsMismatch();
     error InvalidManager();
+    error SlippageTooHigh();
 
     /**
      * @dev Events
@@ -34,6 +35,10 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event WithdrawalQueueStatusSet(bool status);
     /// @notice Emitted when the withdrawal timelock is set
     event WithdrawalTimelockSet(uint64 duration);
+    /// @notice Emitted when the cross chain accounting manager is set
+    event CrossChainAccountingManagerSet(address indexed manager);
+    /// @notice Emitted when the max slippage percent is set
+    event MaxSlippagePercentSet(uint256 percent);
 
     /**
      * @notice Sets fee recipient address

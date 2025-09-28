@@ -17,21 +17,35 @@ interface IBridgeAdapter {
     error InsufficientAllowance();
     error ChainPaused();
     error UntrustedOFT();
+    error ZeroAddress();
+    error ArrayLengthMismatch();
+    error InvalidOFTToken();
+    error InvalidLayerZeroEid();
+    error NoResponses();
+    error UnsupportedChain(uint32 chainId);
+    error InvalidBridgeParams();
+    error NativeTransferFailed();
+    error InvalidReceiver(uint32, address);
+    error InvalidAddress();
+    error SlippageTooHigh();
+    error InvalidVault();
 
     /**
      * @notice Shared events (each adapter has its own specific BridgeExecuted event)
      */
-    event ChainPausedEvent(uint256 indexed chainId);
-    event ChainUnpausedEvent(uint256 indexed chainId);
+    event EidPaused(uint32 indexed eid);
+    event EidUnpaused(uint32 indexed eid);
 
     /**
      * @notice Quote fee for read operation
-     * @param vaultInfos Array of vault information
+     * @param vaults Array of vault addresses
+     * @param eids Array of LayerZero EIDs
      * @param _extraOptions Extra options for the read operation
      * @return fee The fee for the read operation
      */
     function quoteReadFee(
-        IVaultsFactory.VaultInfo[] memory vaultInfos,
+        address[] memory vaults,
+        uint32[] memory eids,
         bytes calldata _extraOptions
     ) external view returns (MessagingFee memory fee);
 
@@ -46,23 +60,18 @@ interface IBridgeAdapter {
 
     /**
      * @notice Initiate a cross-chain accounting operation
-     * @param vaultInfos Array of vault information
+     * @param vaults Array of vault addresses
+     * @param eids Array of LayerZero EIDs
      * @param _extraOptions Extra options for the cross-chain accounting operation
      * @param _initiator The initiator of the cross-chain accounting operation
      * @return receipt The receipt of the cross-chain accounting operation
      */
     function initiateCrossChainAccounting(
-        IVaultsFactory.VaultInfo[] memory vaultInfos,
+        address[] memory vaults,
+        uint32[] memory eids,
         bytes calldata _extraOptions,
         address _initiator
     ) external payable returns (MessagingReceipt memory receipt);
-
-    /**
-     * @notice Set the LayerZero EID for a specific chain
-     * @param chainId Chain ID to set
-     * @param eid The LayerZero EID to set
-     */
-    function setChainIdToEid(uint16 chainId, uint32 eid) external;
 
     /**
      * @notice Set the LayerZero read channel
@@ -100,25 +109,6 @@ interface IBridgeAdapter {
     function paused() external view returns (bool);
 
     /**
-     * @notice Set supported chain (admin only)
-     * @param chainId Chain ID to set
-     * @param supported Whether chain is supported
-     * @dev If supported=true, use setChainIdToEid instead. If false, removes EID mapping.
-     */
-    function setSupportedChain(uint256 chainId, bool supported) external;
-
-    /**
-     * @notice Pause bridge operations for particular chain(admin only)
-     * @param chainId Chain ID to check
-     */
-    function pauseChain(uint256 chainId) external;
-    /**
-     * @notice Unpause bridge operations for particular chain(admin only)
-     * @param chainId Chain ID to unpause
-     */
-    function unpauseChain(uint256 chainId) external;
-
-    /**
      * @notice Set slippage (admin only)
      * @param newSlippageBps New slippage in basis points
      */
@@ -130,36 +120,10 @@ interface IBridgeAdapter {
      */
     function setComposer(address _composer) external;
 
-    /**
-     * @notice Get supported chains and their status
-     * @return chains Array of supported chain IDs
-     * @return statuses Array of chain status (true = active, false = inactive)
-     */
-    function getSupportedChains()
-        external
-        view
-        returns (uint256[] memory chains, bool[] memory statuses);
-
-    /**
-     * @notice Get configuration for a specific chain
-     * @param chainId Chain ID to query
-     * @return supported Whether chain is supported
-     * @return isPaused Whether chain is paused
-     * @return additionalInfo Additional adapter-specific information (e.g., transfer mode)
-     */
-    function getChainConfig(
-        uint256 chainId
-    )
-        external
-        view
-        returns (bool supported, bool isPaused, string memory additionalInfo);
-
-    /**
-     * @notice Get the LayerZero EID for a specific chain
-     * @param chainId Chain ID to query
-     * @return eid The LayerZero EID for the chain
-     */
-    function chainIdToEid(uint16 chainId) external view returns (uint32);
+    // EID-only pausing API
+    function pauseEid(uint32 eid) external;
+    function unpauseEid(uint32 eid) external;
+    function isEidPaused(uint32 eid) external view returns (bool);
 
     /**
      * @notice Batch set trust status for multiple OFT tokens

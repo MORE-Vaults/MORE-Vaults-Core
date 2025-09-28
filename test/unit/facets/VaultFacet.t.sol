@@ -109,6 +109,21 @@ contract VaultFacetTest is Test {
         );
         MoreVaultsStorageHelper.setIsHub(facet, true);
 
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.localEid.selector),
+            abi.encode(uint32(block.chainid))
+        );
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(
+                IVaultsFactory.isCrossChainVault.selector,
+                uint32(block.chainid),
+                facet
+            ),
+            abi.encode(false)
+        );
+
         // Mint some assets to user for testing
         MockERC20(asset).mint(user, 1000 ether);
         vm.prank(user);
@@ -239,12 +254,12 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0)
         );
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.prank(user);
@@ -331,12 +346,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.prank(user);
@@ -444,12 +459,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.prank(user);
@@ -523,12 +538,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.prank(user);
@@ -549,12 +564,12 @@ contract VaultFacetTest is Test {
     function test_mint_ShouldRevertinMulticall() public {
         MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
@@ -594,12 +609,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.prank(user);
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
@@ -643,12 +658,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.prank(user);
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
@@ -694,12 +709,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.prank(user);
@@ -759,12 +774,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // First deposit
@@ -893,12 +908,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // First deposit
@@ -1099,12 +1114,12 @@ contract VaultFacetTest is Test {
         vm.prank(user);
         IERC20(asset).approve(facet, type(uint256).max);
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Try to deposit
@@ -1184,12 +1199,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         deal(asset, user, 1000001 ether);
@@ -1260,12 +1275,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Try to deposit
@@ -1308,12 +1323,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Try to deposit
         vm.prank(user);
@@ -1363,12 +1378,12 @@ contract VaultFacetTest is Test {
             abi.encode(protocolFeeRecipient, protocolFee)
         );
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1482,12 +1497,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0) // No protocol fee
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1588,12 +1603,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
@@ -1690,12 +1705,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
@@ -1787,12 +1802,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
@@ -1851,12 +1866,12 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0)
         );
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Set new fee
@@ -1904,12 +1919,12 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0)
         );
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.startPrank(owner);
@@ -1972,12 +1987,12 @@ contract VaultFacetTest is Test {
             )
         );
 
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         VaultFacet(facet).deposit(100 ether, user2);
@@ -2023,12 +2038,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         vm.startPrank(user2);
@@ -2117,12 +2132,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         vm.startPrank(user2);
         MockERC20(asset).mint(user2, 100 ether);
@@ -2184,12 +2199,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Deposit first
         uint256 depositAmount = 1000 ether;
@@ -2246,12 +2261,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Deposit first
         uint256 depositAmount = 1000 ether;
@@ -2307,12 +2322,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Deposit first
         uint256 depositAmount = 1000 ether;
@@ -2329,7 +2344,6 @@ contract VaultFacetTest is Test {
 
         // Calculate expected fee
         uint256 expectedFee = (withdrawAmount * withdrawalFee) / 10000;
-        uint256 expectedNetAmount = withdrawAmount - expectedFee;
 
         // The preview should account for the fee
         assertTrue(expectedShares > 0);
@@ -2347,12 +2361,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Deposit first
@@ -2369,7 +2383,6 @@ contract VaultFacetTest is Test {
         // Calculate expected fee
         uint256 totalAssets = (redeemShares * 1000 ether) / shares; // Approximate
         uint256 expectedFee = (totalAssets * withdrawalFee) / 10000;
-        uint256 expectedNetAmount = totalAssets - expectedFee;
 
         // The preview should account for the fee
         assertTrue(expectedAssets > 0);
@@ -2405,12 +2418,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         uint256 assets = 100 ether;
@@ -2437,12 +2450,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         uint256 shares = 100 ether;
         uint256 expectedAssets = VaultFacet(facet).previewMint(shares);
@@ -2474,12 +2487,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // First deposit to initialize vault
         uint256 depositAmount = 1000 ether;
@@ -2503,12 +2516,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // First deposit to initialize vault
         uint256 depositAmount = 1000 ether;
@@ -2534,12 +2547,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Test with deposit capacity
@@ -2565,12 +2578,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Test with deposit capacity
         uint256 maxMint = VaultFacet(facet).maxMint(user);
@@ -2600,12 +2613,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // First deposit to get shares
@@ -2654,12 +2667,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Deposit first
@@ -2704,12 +2717,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Deposit first
@@ -2747,12 +2760,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
 
         // Fill up the vault to capacity
@@ -2775,12 +2788,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Fill up the vault to capacity
         uint256 depositAmount = DEPOSIT_CAPACITY;
@@ -2848,12 +2861,12 @@ contract VaultFacetTest is Test {
             abi.encodeWithSignature("protocolFeeInfo(address)"),
             abi.encode(address(0), 0)
         );
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         // Initially should be empty
         (uint256 shares, uint256 timelockEndsAt) = VaultFacet(facet)
@@ -2888,12 +2901,12 @@ contract VaultFacetTest is Test {
         uint64 newTimelock = 2 days;
         vm.prank(curator);
         MoreVaultsStorageHelper.setWithdrawTimelock(facet, newTimelock);
-        IVaultsFactory.VaultInfo[]
-            memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
         vm.mockCall(
             factory,
             abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(vaultsInfo)
+            abi.encode(eids, vaults)
         );
         uint64 updatedTimelock = MoreVaultsStorageHelper.getWithdrawTimelock(
             facet
@@ -2907,12 +2920,12 @@ contract VaultFacetTest is Test {
     //         asset
     //     );
     //     assertEq(lockedAmount, 0); // Should start at 0
-    //     IVaultsFactory.VaultInfo[]
-    //         memory vaultsInfo = new IVaultsFactory.VaultInfo[](0);
+    //     uint32[] memory eids = new uint32[](0);
+    //     address[] memory vaults = new address[](0);
     //     vm.mockCall(
     //         factory,
     //         abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-    //         abi.encode(vaultsInfo)
+    //         abi.encode(eids, vaults)
     //     );
     //     // Test with a different asset
     //     address otherAsset = address(0x123);

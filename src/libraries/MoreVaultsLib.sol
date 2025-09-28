@@ -108,8 +108,6 @@ library MoreVaultsLib {
     }
 
     enum ActionType {
-        REQUEST_WITHDRAW,
-        REQUEST_REDEEM,
         DEPOSIT,
         MINT,
         WITHDRAW,
@@ -173,8 +171,8 @@ library MoreVaultsLib {
         bool isHub;
         bool oraclesCrossChainAccounting;
         address crossChainAccountingManager;
-        mapping(uint64 => CrossChainRequestInfo) nonceToCrossChainRequestInfo;
-        uint64 finalizationNonce;
+        mapping(bytes32 => CrossChainRequestInfo) guidToCrossChainRequestInfo;
+        bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
         uint64 lastAccruedInterestTimestamp;
@@ -266,7 +264,9 @@ library MoreVaultsLib {
         address underlyingToken;
         {
             MoreVaultsStorage storage ds = moreVaultsStorage();
-            resolvedToken = _token == address(0) ? address(ds.wrappedNative) : _token;
+            resolvedToken = _token == address(0)
+                ? address(ds.wrappedNative)
+                : _token;
             underlyingToken = address(getERC4626Storage()._asset);
 
             if (resolvedToken == underlyingToken) {
@@ -303,7 +303,9 @@ library MoreVaultsLib {
             IAggregatorV2V3Interface aggregator = IAggregatorV2V3Interface(
                 oracle.getOracleInfo(underlyingToken).aggregator
             );
-            uint256 underlyingTokenPrice = oracle.getAssetPrice(underlyingToken);
+            uint256 underlyingTokenPrice = oracle.getAssetPrice(
+                underlyingToken
+            );
             uint8 underlyingTokenOracleDecimals = aggregator.decimals();
 
             finalPriceForConversion = inputTokenPrice.mulDiv(
@@ -314,11 +316,15 @@ library MoreVaultsLib {
         }
 
         // Final conversion calculation
-        return amount.mulDiv(
-            finalPriceForConversion * 10 ** IERC20Metadata(underlyingToken).decimals(),
-            10 ** (inputTokenOracleDecimals + IERC20Metadata(resolvedToken).decimals()),
-            rounding
-        );
+        return
+            amount.mulDiv(
+                finalPriceForConversion *
+                    10 ** IERC20Metadata(underlyingToken).decimals(),
+                10 **
+                    (inputTokenOracleDecimals +
+                        IERC20Metadata(resolvedToken).decimals()),
+                rounding
+            );
     }
 
     function convertUnderlyingToUsd(
@@ -329,14 +335,12 @@ library MoreVaultsLib {
             AccessControlLib.vaultRegistry()
         ).oracle();
         address underlyingToken = address(getERC4626Storage()._asset);
-
-        return (
+        return
             amount.mulDiv(
                 oracle.getAssetPrice(underlyingToken),
                 10 ** IERC20Metadata(underlyingToken).decimals(),
                 rounding
-            )
-        );
+            );
     }
 
     function convertUsdToUnderlying(
@@ -347,14 +351,12 @@ library MoreVaultsLib {
             AccessControlLib.vaultRegistry()
         ).oracle();
         address underlyingToken = address(getERC4626Storage()._asset);
-
-        return (
+        return
             amount.mulDiv(
                 10 ** IERC20Metadata(underlyingToken).decimals(),
                 oracle.getAssetPrice(underlyingToken),
                 rounding
-            )
-        );
+            );
     }
 
     function _setFeeRecipient(address recipient) internal {
@@ -774,7 +776,6 @@ library MoreVaultsLib {
                     )
                 );
             // revert if onFacetRemoval exists on facet and failed
-            // TODO: remove second condition after all facets will be upgraded
             if (!success && result.length > 0) {
                 revert OnFacetRemovalFailed(_facetAddress, result);
             }

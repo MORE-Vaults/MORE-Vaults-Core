@@ -6,7 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
+import {IOFT, SendParam} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {OptionsBuilder} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/libs/OptionsBuilder.sol";
 import {OAppRead} from "@layerzerolabs/oapp-evm/contracts/oapp/OAppRead.sol";
@@ -22,7 +22,7 @@ import {IBridgeFacet} from "../../interfaces/facets/IBridgeFacet.sol";
 import {ILzComposer} from "../../interfaces/ILzComposer.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MoreVaultsLib} from "../../libraries/MoreVaultsLib.sol";
-import {BridgeErrors} from "../../libraries/BridgeErrors.sol";
+import {IConfigurationFacet} from "../../interfaces/facets/IConfigurationFacet.sol";
 
 contract LzAdapter is
     IBridgeAdapter,
@@ -35,7 +35,6 @@ contract LzAdapter is
     using OptionsBuilder for bytes;
     using Math for uint256;
 
-
     struct CallInfo {
         address vault;
         address initiator;
@@ -47,18 +46,18 @@ contract LzAdapter is
 
     event ComposerUpdated(address indexed composer);
 
-    event ChainIdToEidUpdated(uint16 indexed chainId, uint32 indexed eid);
+    event GasLimitUpdated(uint256 gasLimit);
 
     event TrustedOFTUpdated(address indexed oft, bool trusted);
 
     event BridgeExecuted(
-        address indexed sender,
-        uint256 indexed destChainId,
+        address indexed vault,
         address indexed destVault,
         address oftToken,
         uint256 amount,
         uint256 fee,
-        uint32 layerZeroEid
+        uint32 layerZeroEid,
+        address refundAddress
     );
 
     IVaultsFactory public immutable vaultsFactory;
@@ -70,20 +69,21 @@ contract LzAdapter is
     /// @notice Message type for the read operation.
     uint16 public constant READ_TYPE = 1;
 
-    mapping(uint16 => uint32) private _chainIdToEid;
-    mapping(uint64 => CallInfo) private _nonceToCallInfo;
+    mapping(bytes32 => CallInfo) internal _guidToCallInfo; // primary correlation
 
     address public composer;
 
     // Security configurations
     uint256 public slippageBps = 100; // 1% default slippage
 
-    // Chain management
-    mapping(uint256 => bool) public chainPaused;
+    // EID-level pause control (EID-only mode)
+    mapping(uint32 => bool) public eidPaused;
 
     // OFT management
     mapping(address => bool) private _trustedOFTs;
     address[] private _trustedOFTsList;
+
+    uint256 public gasLimit = 200000;
 
     /**
      * @notice Initialize the LayerZero adapter for cross-chain bridge operations
@@ -109,7 +109,6 @@ contract LzAdapter is
         READ_CHANNEL = _readChannel;
         _setPeer(_readChannel, AddressCast.toBytes32(address(this)));
         composer = _composer;
-
         vaultsFactory = IVaultsFactory(_vaultsFactory);
         vaultsRegistry = IMoreVaultsRegistry(_vaultsRegistry);
     }
@@ -129,116 +128,33 @@ contract LzAdapter is
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function chainIdToEid(uint16 chainId) external view returns (uint32) {
-        return _chainIdToEid[chainId];
-    }
-
-    /**
-     * @notice Get all supported chains and their statuses
-     * @return chains Array of supported chain IDs
-     * @return statuses Array of chain status (true = active, false = paused)
-     * @dev Uses EID-only approach: only returns chains with non-zero EID mappings
-     *      Status reflects pause state: !chainPaused[chainId]
-     *      Limited to common chains for gas efficiency - may need optimization for production
-     */
-    function getSupportedChains()
-        external
-        view
-        returns (uint256[] memory chains, bool[] memory statuses)
-    {
-        // We need to track configured chains for efficiency
-        // For now, iterate through common chain IDs
-        uint256[] memory commonChainIds = new uint256[](10);
-        commonChainIds[0] = 1; // Ethereum
-        commonChainIds[1] = 137; // Polygon
-        commonChainIds[2] = 56; // BSC
-        commonChainIds[3] = 43114; // Avalanche
-        commonChainIds[4] = 250; // Fantom
-        commonChainIds[5] = 42161; // Arbitrum
-        commonChainIds[6] = 10; // Optimism
-        commonChainIds[7] = 8453; // Base
-        commonChainIds[8] = 324; // zkSync
-        commonChainIds[9] = 59144; // Linea
-
-        // Count supported chains
-        uint256 count = 0;
-        for (uint256 i = 0; i < commonChainIds.length; i++) {
-            if (_chainIdToEid[uint16(commonChainIds[i])] != 0) {
-                count++;
-            }
-        }
-
-        uint256[] memory allChains = new uint256[](count);
-        bool[] memory allStatuses = new bool[](count);
-
-        uint256 index = 0;
-        for (uint256 i = 0; i < commonChainIds.length; i++) {
-            if (_chainIdToEid[uint16(commonChainIds[i])] != 0) {
-                allChains[index] = commonChainIds[i];
-                allStatuses[index] = !chainPaused[commonChainIds[i]];
-                index++;
-            }
-        }
-
-        return (allChains, allStatuses);
-    }
-
-    /**
-     * @notice Get configuration for a specific chain
-     * @param chainId Chain ID to query
-     * @return supported Whether chain is supported (has non-zero EID)
-     * @return isPaused Whether chain operations are paused
-     * @return additionalInfo Additional adapter-specific information
-     * @dev Uses EID-only approach: supported = (_chainIdToEid[chainId] != 0)
-     */
-    function getChainConfig(
-        uint256 chainId
-    )
-        external
-        view
-        returns (bool supported, bool isPaused, string memory additionalInfo)
-    {
-        bool isSupported = _chainIdToEid[uint16(chainId)] != 0;
-        return (isSupported, chainPaused[chainId], "");
-    }
-
-    /**
-     * @inheritdoc IBridgeAdapter
-     */
     function quoteBridgeFee(
         bytes calldata bridgeSpecificParams
     ) external view returns (uint256 nativeFee) {
         (
             address oftTokenAddress,
-            uint256 dstChainId,
             uint32 lzEid,
             uint256 amount,
             address dstVaultAddress
         ) = abi.decode(
                 bridgeSpecificParams,
-                (address, uint256, uint32, uint256, address)
+                (address, uint32, uint256, address)
             );
-        return
-            _quoteFee(
-                oftTokenAddress,
-                dstChainId,
-                lzEid,
-                amount,
-                dstVaultAddress
-            );
+        return _quoteFee(oftTokenAddress, lzEid, amount, dstVaultAddress);
     }
 
     /**
      * @inheritdoc IBridgeAdapter
      */
     function quoteReadFee(
-        IVaultsFactory.VaultInfo[] memory vaultInfos,
+        address[] memory vaults,
+        uint32[] memory eids,
         bytes calldata _extraOptions
     ) external view returns (MessagingFee memory fee) {
         return
             _quote(
                 READ_CHANNEL,
-                _getCmd(vaultInfos),
+                _getCmd(vaults, eids),
                 combineOptions(READ_CHANNEL, READ_TYPE, _extraOptions),
                 false
             );
@@ -261,49 +177,28 @@ contract LzAdapter is
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function pauseChain(uint256 chainId) external onlyOwner {
-        chainPaused[chainId] = true;
-        emit ChainPausedEvent(chainId);
+    function pauseEid(uint32 eid) external onlyOwner {
+        eidPaused[eid] = true;
+        emit EidPaused(eid);
     }
 
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function unpauseChain(uint256 chainId) external onlyOwner {
-        chainPaused[chainId] = false;
-        emit ChainUnpausedEvent(chainId);
+    function unpauseEid(uint32 eid) external onlyOwner {
+        eidPaused[eid] = false;
+        emit EidUnpaused(eid);
     }
 
-    /**
-     * @notice Set supported chain status
-     * @param chainId Chain ID to configure
-     * @param supported Whether chain should be supported
-     * @dev IMPORTANT: This adapter uses an EID-only approach for chain management.
-     *      - To ENABLE a chain: Use setChainIdToEid() with non-zero EID
-     *      - To DISABLE a chain: Call this function with supported=false (sets EID=0)
-     *      - Setting supported=true here does nothing - use setChainIdToEid instead
-     *      - Chain support is determined by: _chainIdToEid[chainId] != 0
-     */
-    function setSupportedChain(
-        uint256 chainId,
-        bool supported
-    ) external onlyOwner {
-        if (supported) {
-            // Chain is supported if it has an EID, nothing to set here
-            // Use setChainIdToEid instead to enable chains
-            return;
-        } else {
-            // To remove support, set EID to 0
-            _chainIdToEid[uint16(chainId)] = 0;
-            emit ChainIdToEidUpdated(uint16(chainId), 0);
-        }
+    function isEidPaused(uint32 eid) external view returns (bool) {
+        return eidPaused[eid];
     }
 
     /**
      * @inheritdoc IBridgeAdapter
      */
     function setSlippage(uint256 newSlippageBps) external onlyOwner {
-        require(newSlippageBps <= 10000, "Slippage too high");
+        if (newSlippageBps > 10000) revert SlippageTooHigh();
         slippageBps = newSlippageBps;
     }
 
@@ -322,28 +217,19 @@ contract LzAdapter is
     }
 
     /**
-     * @notice Set LayerZero EID mapping for a chain
-     * @param chainId The chain ID to configure
-     * @param eid The LayerZero endpoint ID (set to 0 to disable chain)
-     * @dev This is the PRIMARY way to enable/disable chains in this adapter:
-     *      - Setting eid != 0: Enables the chain for bridging operations
-     *      - Setting eid = 0: Disables the chain (equivalent to unsupported)
-     *      - No separate supportedChains mapping - EID presence determines support
-     *      - Chain validation: _chainIdToEid[chainId] != 0 means supported
-     * @dev Gas optimized: Single mapping lookup determines chain support status
-     */
-    function setChainIdToEid(uint16 chainId, uint32 eid) external onlyOwner {
-        _chainIdToEid[chainId] = eid;
-        emit ChainIdToEidUpdated(chainId, eid);
-    }
-
-    /**
      * @inheritdoc IBridgeAdapter
      */
     function setComposer(address _composer) external onlyOwner {
+        if (_composer == address(0)) revert InvalidAddress();
         composer = _composer;
 
         emit ComposerUpdated(composer);
+    }
+
+    function setGasLimit(uint256 _gasLimit) external onlyOwner {
+        gasLimit = _gasLimit;
+
+        emit GasLimitUpdated(gasLimit);
     }
 
     /**
@@ -354,20 +240,20 @@ contract LzAdapter is
     ) external payable whenNotPaused nonReentrant {
         (
             address oftTokenAddress,
-            uint256 dstChainId,
             uint32 lzEid,
             uint256 amount,
-            address dstVaultAddress
+            address dstVaultAddress,
+            address refundAddress
         ) = abi.decode(
                 bridgeSpecificParams,
-                (address, uint256, uint32, uint256, address)
+                (address, uint32, uint256, address, address)
             );
         _executeBridging(
             oftTokenAddress,
-            dstChainId,
             lzEid,
             amount,
-            dstVaultAddress
+            dstVaultAddress,
+            refundAddress
         );
     }
 
@@ -375,39 +261,53 @@ contract LzAdapter is
      * @inheritdoc IBridgeAdapter
      */
     function initiateCrossChainAccounting(
-        IVaultsFactory.VaultInfo[] memory vaultInfos,
+        address[] memory vaults,
+        uint32[] memory eids,
         bytes calldata _extraOptions,
         address _initiator
     ) external payable returns (MessagingReceipt memory receipt) {
-        bytes memory cmd = _getCmd(vaultInfos);
-
-        _nonceToCallInfo[receipt.nonce] = CallInfo({
-            vault: msg.sender,
-            initiator: _initiator
-        });
+        if (!IVaultsFactory(vaultsFactory).isVault(msg.sender)) {
+            revert UnauthorizedVault();
+        }
+        bytes memory cmd = _getCmd(vaults, eids);
 
         receipt = _lzSend(
             READ_CHANNEL,
             cmd,
             combineOptions(READ_CHANNEL, READ_TYPE, _extraOptions),
             MessagingFee(msg.value, 0),
-            payable(msg.sender)
+            payable(_initiator)
         );
+
+        _guidToCallInfo[receipt.guid] = CallInfo({
+            vault: msg.sender,
+            initiator: _initiator
+        });
     }
 
-    /// @notice Reduces multiple mapped responses to a single average value.
-    /// @param _responses Array of encoded totalAssetsUsd responses from each chain.
-    /// @return Encoded sum of all responses.
+    /// @notice Reduces multiple mapped responses to a single sum value.
+    /// @param _responses Array of encoded totalAssetsUsd responses from each chain and success flag.
+    /// @return Encoded sum of all responses and success flag.
     function lzReduce(
         bytes calldata,
         bytes[] calldata _responses
     ) external pure returns (bytes memory) {
-        if (_responses.length == 0) revert BridgeErrors.NoResponses();
+        if (_responses.length == 0) revert NoResponses();
         uint256 sum;
-        for (uint i = 0; i < _responses.length; i++) {
-            sum += abi.decode(_responses[i], (uint256));
+        bool readSuccess = true;
+        for (uint i = 0; i < _responses.length; ) {
+            (uint256 assets, bool success) = abi.decode(
+                _responses[i],
+                (uint256, bool)
+            );
+            if (!success) readSuccess = false;
+            sum += assets;
+
+            unchecked {
+                ++i;
+            }
         }
-        return abi.encode(sum);
+        return abi.encode(sum, readSuccess);
     }
 
     /**
@@ -419,7 +319,8 @@ contract LzAdapter is
         uint256 amount
     ) external onlyOwner {
         if (token == address(0)) {
-            to.transfer(amount);
+            (bool success, ) = to.call{value: amount}("");
+            if (!success) revert NativeTransferFailed();
         } else {
             IERC20(token).safeTransfer(to, amount);
         }
@@ -435,7 +336,7 @@ contract LzAdapter is
         address[] calldata ofts,
         bool[] calldata trusted
     ) external onlyOwner nonReentrant {
-        if (ofts.length != trusted.length) revert BridgeErrors.ArrayLengthMismatch();
+        if (ofts.length != trusted.length) revert ArrayLengthMismatch();
 
         for (uint256 i = 0; i < ofts.length; ) {
             _setTrustedOFT(ofts[i], trusted[i]);
@@ -463,7 +364,8 @@ contract LzAdapter is
     }
 
     function _getCmd(
-        IVaultsFactory.VaultInfo[] memory vaultInfos
+        address[] memory vaults,
+        uint32[] memory eids
     ) internal view returns (bytes memory cmd) {
         // 1. Define WHAT function to call on the target contract
         //    Using the interface selector ensures type safety and correctness
@@ -472,22 +374,18 @@ contract LzAdapter is
             IVaultFacet.totalAssetsUsd.selector
         );
         EVMCallRequestV1[] memory readRequests = new EVMCallRequestV1[](
-            vaultInfos.length
+            vaults.length
         );
 
         // 2. Build the read request specifying WHERE and HOW to fetch the data
-        for (uint256 i = 0; i < vaultInfos.length; ) {
-            uint32 eid = _chainIdToEid[vaultInfos[i].chainId];
-            if (eid == 0) {
-                revert BridgeErrors.UnsupportedChain(vaultInfos[i].chainId);
-            }
+        for (uint256 i = 0; i < vaults.length; ) {
             readRequests[i] = EVMCallRequestV1({
                 appRequestLabel: uint16(i + 1), // Label for tracking this specific request
-                targetEid: eid, // WHICH chain to read from
+                targetEid: eids[i], // WHICH chain to read from
                 isBlockNum: false, // Use timestamp (not block number)
                 blockNumOrTimestamp: uint64(block.timestamp), // WHEN to read the state (current time)
                 confirmations: 15, // HOW many confirmations to wait for
-                to: vaultInfos[i].vault, // WHERE - the contract address to call
+                to: vaults[i], // WHERE - the contract address to call
                 callData: callData // WHAT - the function call to execute
             });
             unchecked {
@@ -515,119 +413,141 @@ contract LzAdapter is
     /// @dev _guid Unique message identifier (unused).
     /// @param _message Encoded sum of totalAssetsUsd bytes.
     function _lzReceive(
-        Origin calldata _origin,
-        bytes32 /*_guid*/,
+        Origin calldata /*_origin*/,
+        bytes32 _guid,
         bytes calldata _message,
         address /*_executor*/,
         bytes calldata /*_extraData*/
     ) internal override {
-        uint256 sum = abi.decode(_message, (uint256));
+        (uint256 sum, bool readSuccess) = abi.decode(_message, (uint256, bool));
 
-        MoreVaultsLib.CrossChainRequestInfo memory requestInfo = IBridgeFacet(
-            _nonceToCallInfo[_origin.nonce].vault
-        ).getRequestInfo(_origin.nonce);
-        MoreVaultsLib.ActionType actionType = requestInfo.actionType;
-        if (
-            actionType == MoreVaultsLib.ActionType.REQUEST_WITHDRAW ||
-            actionType == MoreVaultsLib.ActionType.REQUEST_REDEEM
-        ) {
-            IBridgeFacet(_nonceToCallInfo[_origin.nonce].vault).finalizeRequest(
-                _origin.nonce
-            );
-        } else {
-            IBridgeFacet(_nonceToCallInfo[_origin.nonce].vault)
-                .updateAccountingInfoForRequest(_origin.nonce, sum);
-            if (_nonceToCallInfo[_origin.nonce].initiator == composer) {
-                _callbackToComposer(_origin.nonce);
-            }
+        CallInfo memory info = _guidToCallInfo[_guid];
+        if (info.vault == address(0)) revert InvalidVault();
+
+        IBridgeFacet(info.vault).updateAccountingInfoForRequest(
+            _guid,
+            sum,
+            readSuccess
+        );
+        if (info.initiator == composer) {
+            _callbackToComposer(_guid, readSuccess);
         }
+
+        delete _guidToCallInfo[_guid];
     }
 
-    function _callbackToComposer(uint64 nonce) internal {
-        ILzComposer(composer).completeDeposit(nonce); // calling finalizeRequest in composer, TODO:may be we should do request creation through composer
-        // and finalizeRequest automatically after receiving data from all spoke vaults. But in this case assets could be stucked on composer if accounting failed.
+    function _callbackToComposer(bytes32 guid, bool readSuccess) internal {
+        if (!readSuccess) {
+            ILzComposer(composer).refundDeposit(guid);
+        } else {
+            ILzComposer(composer).completeDeposit(guid);
+        }
     }
 
     /// @dev Gas-optimized consolidated validation logic
     function _validateBridgeParams(
-        uint256 destChainId,
         address oftToken,
         uint32 layerZeroEid,
         uint256 amount
     ) internal view {
         // Single comprehensive check for basic parameters
-        if (amount == 0 ||
-            destChainId == 0 ||
-            oftToken == address(0) ||
-            layerZeroEid == 0) {
-            revert BridgeErrors.InvalidBridgeParams();
+        if (amount == 0 || oftToken == address(0) || layerZeroEid == 0) {
+            revert InvalidBridgeParams();
         }
 
-        // Chain status validation (combines EID check and pause check)
-        uint32 configuredEid = _chainIdToEid[uint16(destChainId)];
-        if (configuredEid == 0) {
-            revert BridgeErrors.UnsupportedChain(uint16(destChainId));
-        }
-        if (chainPaused[destChainId]) {
-            revert BridgeErrors.ChainPaused();
-        }
+        // EID pause validation
+        if (eidPaused[layerZeroEid]) revert ChainPaused();
 
         // Code existence check (separate for gas optimization)
         if (oftToken.code.length == 0) {
-            revert BridgeErrors.InvalidOFTToken();
+            revert InvalidOFTToken();
         }
     }
 
     /// @dev Internal bridge logic
     function _executeBridging(
         address oftTokenAddress,
-        uint256 dstChainId,
         uint32 lzEid,
         uint256 amount,
-        address dstVaultAddress
+        address dstVaultAddress,
+        address refundAddress
     ) internal {
         // Validate caller is authorized vault (calculate initiatorIsHub internally)
-        if (!vaultsFactory.isVault(msg.sender)) revert BridgeErrors.UnauthorizedVault();
+        if (!vaultsFactory.isVault(msg.sender)) revert UnauthorizedVault();
 
         // Validate OFT token is trusted
-        if (!_trustedOFTs[oftTokenAddress])
-            revert BridgeErrors.UntrustedOFT();
+        if (!_trustedOFTs[oftTokenAddress]) revert UntrustedOFT();
 
-        _validateBridgeParams(dstChainId, oftTokenAddress, lzEid, amount);
+        if (!IConfigurationFacet(msg.sender).isHub()) {
+            (uint32 hubEid, address hubVault) = vaultsFactory.spokeToHub(
+                vaultsFactory.localEid(),
+                msg.sender
+            );
+            if (lzEid != hubEid || dstVaultAddress != hubVault) {
+                revert InvalidReceiver(lzEid, dstVaultAddress);
+            }
+        } else {
+            // O(1) membership check via factory
+            if (
+                !vaultsFactory.isSpokeOfHub(
+                    vaultsFactory.localEid(),
+                    msg.sender,
+                    lzEid,
+                    dstVaultAddress
+                )
+            ) {
+                revert InvalidReceiver(lzEid, dstVaultAddress);
+            }
+        }
 
-        IERC20(oftTokenAddress).safeTransferFrom(
-            msg.sender,
-            address(this),
-            amount
-        );
+        if (refundAddress == address(0)) {
+            revert ZeroAddress();
+        }
+        _validateBridgeParams(oftTokenAddress, lzEid, amount);
+
+        address underlyingToken = IOFT(oftTokenAddress).token();
+        if (underlyingToken == oftTokenAddress) {
+            IERC20(oftTokenAddress).safeTransferFrom(
+                msg.sender,
+                address(this),
+                amount
+            );
+        } else {
+            // OFT-Proxy: transfer underlying tokens to the adapter
+            IERC20(underlyingToken).safeTransferFrom(
+                msg.sender,
+                address(this),
+                amount
+            );
+        }
 
         uint256 actualFee = _executeOFTSend(
             oftTokenAddress,
             lzEid,
             amount,
-            dstVaultAddress
+            dstVaultAddress,
+            refundAddress
         );
 
         emit BridgeExecuted(
             msg.sender,
-            dstChainId,
             dstVaultAddress,
             oftTokenAddress,
             amount,
             actualFee,
-            lzEid
+            lzEid,
+            refundAddress
         );
     }
 
     /// @dev Internal quote logic
     function _quoteFee(
         address oftTokenAddress,
-        uint256 dstChainId,
         uint32 lzEid,
         uint256 amount,
         address dstVaultAddress
     ) internal view returns (uint256 nativeFee) {
-        _validateBridgeParams(dstChainId, oftTokenAddress, lzEid, amount);
+        _validateBridgeParams(oftTokenAddress, lzEid, amount);
 
         IOFT oft = IOFT(oftTokenAddress);
 
@@ -640,7 +560,7 @@ contract LzAdapter is
             minAmountLD: minAmountOut,
             extraOptions: OptionsBuilder
                 .newOptions()
-                .addExecutorLzReceiveOption(200000, 0),
+                .addExecutorLzReceiveOption(uint128(gasLimit), 0),
             composeMsg: "",
             oftCmd: ""
         });
@@ -653,7 +573,8 @@ contract LzAdapter is
         address oftToken,
         uint32 layerZeroEid,
         uint256 amount,
-        address recipient
+        address recipient,
+        address refundAddress
     ) internal returns (uint256 actualFee) {
         IOFT oft = IOFT(oftToken);
 
@@ -666,19 +587,26 @@ contract LzAdapter is
             minAmountLD: minAmountOut,
             extraOptions: OptionsBuilder
                 .newOptions()
-                .addExecutorLzReceiveOption(200000, 0),
+                .addExecutorLzReceiveOption(uint128(gasLimit), 0),
             composeMsg: "",
             oftCmd: ""
         });
 
         MessagingFee memory fee = oft.quoteSend(sendParam, false);
-        if (msg.value < fee.nativeFee) revert BridgeErrors.BridgeFailed();
+        if (msg.value < fee.nativeFee) revert BridgeFailed();
 
-        IERC20(oftToken).forceApprove(oftToken, amount);
-        oft.send{value: fee.nativeFee}(sendParam, fee, payable(msg.sender));
+        address underlyingToken = IOFT(oftToken).token();
+        if (underlyingToken != oftToken) {
+            IERC20(underlyingToken).forceApprove(oftToken, amount);
+        } else {
+            IERC20(oftToken).forceApprove(oftToken, amount);
+        }
+        oft.send{value: fee.nativeFee}(sendParam, fee, refundAddress);
 
         if (msg.value > fee.nativeFee) {
-            payable(msg.sender).transfer(msg.value - fee.nativeFee);
+            uint256 refund = msg.value - fee.nativeFee;
+            (bool success, ) = payable(refundAddress).call{value: refund}("");
+            if (!success) revert NativeTransferFailed();
         }
 
         return fee.nativeFee;
@@ -690,7 +618,7 @@ contract LzAdapter is
      * @param trusted True to trust the OFT, false to remove trust
      */
     function _setTrustedOFT(address oft, bool trusted) internal {
-        if (oft == address(0)) revert BridgeErrors.ZeroAddress();
+        if (oft == address(0)) revert ZeroAddress();
 
         bool currentlyTrusted = _trustedOFTs[oft];
         if (currentlyTrusted == trusted) {

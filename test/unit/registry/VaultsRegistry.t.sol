@@ -727,7 +727,7 @@ contract VaultsRegistryTest is Test {
         assertEq(mask, fetchedMask, "Should set mask");
     }
 
-    function test_isPermissionless_ShouldReturnFalse() public {
+    function test_isPermissionless_ShouldReturnFalse() public view {
         assertFalse(registry.isPermissionless());
     }
 
@@ -749,7 +749,9 @@ contract VaultsRegistryTest is Test {
         assertTrue(registry.isCrossChainAccountingManager(manager));
     }
 
-    function test_setDefaultCrossChainAccountingManager_ShouldSetDefaultManager() public {
+    function test_setDefaultCrossChainAccountingManager_ShouldSetDefaultManager()
+        public
+    {
         address manager = address(0x9ABC);
 
         registry.setDefaultCrossChainAccountingManager(manager);
@@ -768,7 +770,9 @@ contract VaultsRegistryTest is Test {
         assertTrue(registry.isBridgeAllowed(bridge));
     }
 
-    function test_isCrossChainAccountingManager_ShouldReturnCorrectValue() public {
+    function test_isCrossChainAccountingManager_ShouldReturnCorrectValue()
+        public
+    {
         address manager = address(0x1111);
 
         assertFalse(registry.isCrossChainAccountingManager(manager));
@@ -800,7 +804,7 @@ contract VaultsRegistryTest is Test {
         registry.editFacet(facet, removeSelectors, removeAllowed);
 
         // Verify selector was removed
-        (bool isAllowed,) = registry.selectorInfo(facet, selectors[0]);
+        (bool isAllowed, ) = registry.selectorInfo(facet, selectors[0]);
         assertFalse(isAllowed);
     }
 }

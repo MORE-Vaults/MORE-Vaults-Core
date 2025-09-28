@@ -46,7 +46,10 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
+        if (_newPercent > 2000) revert SlippageTooHigh();
         ds.maxSlippagePercent = _newPercent;
+
+        emit MaxSlippagePercentSet(_newPercent);
     }
 
     function setGasLimitForAccounting(
@@ -163,12 +166,11 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function setWithdrawalTimelock(uint64 _duration) external {
-        AccessControlLib.validateCurator(msg.sender); // TODO: only owner can set timelock
+        AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
             .moreVaultsStorage();
 
         ds.witdrawTimelock = _duration;
-        // TODO: add timelock to change timelock duration
         emit WithdrawalTimelockSet(_duration);
     }
 
@@ -179,12 +181,14 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib
             .accessControlStorage();
         if (
-            IMoreVaultsRegistry(acs.moreVaultsRegistry)
+            !IMoreVaultsRegistry(acs.moreVaultsRegistry)
                 .isCrossChainAccountingManager(manager)
         ) {
             revert InvalidManager();
         }
         ds.crossChainAccountingManager = manager;
+
+        emit CrossChainAccountingManagerSet(manager);
     }
 
     /**

@@ -10,6 +10,7 @@ import {IVaultFacet, IERC4626, IERC20, VaultFacet} from "../../src/facets/VaultF
 import {IERC4626Facet, ERC4626Facet} from "../../src/facets/ERC4626Facet.sol";
 import {IERC7540Facet, ERC7540Facet} from "../../src/facets/ERC7540Facet.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {IBridgeFacet} from "../../src/interfaces/facets/IBridgeFacet.sol";
 
 contract DeployConfig {
     // Roles
@@ -41,6 +42,7 @@ contract DeployConfig {
         address vault;
         address erc4626;
         address erc7540;
+        address bridge;
     }
 
     function initParamsForProtocolDeployment(
@@ -97,13 +99,13 @@ contract DeployConfig {
         // selectors for access control
         bytes4[] memory functionSelectorsAccessControlFacet = new bytes4[](9);
         functionSelectorsAccessControlFacet[0] = AccessControlFacet
-            .transferCuratorship
-            .selector;
-        functionSelectorsAccessControlFacet[1] = AccessControlFacet
             .transferOwnership
             .selector;
-        functionSelectorsAccessControlFacet[2] = AccessControlFacet
+        functionSelectorsAccessControlFacet[1] = AccessControlFacet
             .acceptOwnership
+            .selector;
+        functionSelectorsAccessControlFacet[2] = AccessControlFacet
+            .transferCuratorship
             .selector;
         functionSelectorsAccessControlFacet[3] = AccessControlFacet
             .transferGuardian
@@ -131,7 +133,7 @@ contract DeployConfig {
         );
 
         // selectors for configuration
-        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](22);
+        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](30);
         functionSelectorsConfigurationFacet[0] = ConfigurationFacet
             .setFeeRecipient
             .selector;
@@ -142,61 +144,85 @@ contract DeployConfig {
             .setDepositCapacity
             .selector;
         functionSelectorsConfigurationFacet[3] = ConfigurationFacet
-            .addAvailableAsset
-            .selector;
-        functionSelectorsConfigurationFacet[4] = ConfigurationFacet
-            .addAvailableAssets
-            .selector;
-        functionSelectorsConfigurationFacet[5] = ConfigurationFacet
-            .enableAssetToDeposit
-            .selector;
-        functionSelectorsConfigurationFacet[6] = ConfigurationFacet
-            .disableAssetToDeposit
-            .selector;
-        functionSelectorsConfigurationFacet[7] = ConfigurationFacet
-            .isAssetAvailable
-            .selector;
-        functionSelectorsConfigurationFacet[8] = ConfigurationFacet
-            .isAssetDepositable
-            .selector;
-        functionSelectorsConfigurationFacet[9] = ConfigurationFacet
-            .getAvailableAssets
-            .selector;
-        functionSelectorsConfigurationFacet[10] = ConfigurationFacet
-            .fee
-            .selector;
-        functionSelectorsConfigurationFacet[11] = ConfigurationFacet
-            .depositCapacity
-            .selector;
-        functionSelectorsConfigurationFacet[12] = ConfigurationFacet
-            .timeLockPeriod
-            .selector;
-        functionSelectorsConfigurationFacet[13] = ConfigurationFacet
-            .feeRecipient
-            .selector;
-        functionSelectorsConfigurationFacet[14] = ConfigurationFacet
-            .setGasLimitForAccounting
-            .selector;
-        functionSelectorsConfigurationFacet[15] = ConfigurationFacet
-            .setMaxSlippagePercent
-            .selector;
-        functionSelectorsConfigurationFacet[16] = ConfigurationFacet
             .setDepositWhitelist
             .selector;
-        functionSelectorsConfigurationFacet[17] = ConfigurationFacet
-            .getDepositWhitelist
-            .selector;
-        functionSelectorsConfigurationFacet[18] = ConfigurationFacet
+        functionSelectorsConfigurationFacet[4] = ConfigurationFacet
             .enableDepositWhitelist
             .selector;
-        functionSelectorsConfigurationFacet[19] = ConfigurationFacet
+        functionSelectorsConfigurationFacet[5] = ConfigurationFacet
             .disableDepositWhitelist
             .selector;
+        functionSelectorsConfigurationFacet[6] = ConfigurationFacet
+            .getDepositWhitelist
+            .selector;
+        functionSelectorsConfigurationFacet[7] = ConfigurationFacet
+            .addAvailableAsset
+            .selector;
+        functionSelectorsConfigurationFacet[8] = ConfigurationFacet
+            .addAvailableAssets
+            .selector;
+        functionSelectorsConfigurationFacet[9] = ConfigurationFacet
+            .enableAssetToDeposit
+            .selector;
+        functionSelectorsConfigurationFacet[10] = ConfigurationFacet
+            .disableAssetToDeposit
+            .selector;
+        functionSelectorsConfigurationFacet[11] = ConfigurationFacet
+            .setWithdrawalFee
+            .selector;
+        functionSelectorsConfigurationFacet[12] = ConfigurationFacet
+            .setWithdrawalTimelock
+            .selector;
+        functionSelectorsConfigurationFacet[13] = ConfigurationFacet
+            .updateWithdrawalQueueStatus
+            .selector;
+        functionSelectorsConfigurationFacet[14] = ConfigurationFacet
+            .setMaxSlippagePercent
+            .selector;
+        functionSelectorsConfigurationFacet[15] = ConfigurationFacet
+            .setCrossChainAccountingManager
+            .selector;
+        functionSelectorsConfigurationFacet[16] = ConfigurationFacet
+            .getWithdrawalFee
+            .selector;
+        functionSelectorsConfigurationFacet[17] = ConfigurationFacet
+            .getWithdrawalQueueStatus
+            .selector;
+        functionSelectorsConfigurationFacet[18] = ConfigurationFacet
+            .getDepositableAssets
+            .selector;
+        functionSelectorsConfigurationFacet[19] = ConfigurationFacet
+            .isAssetAvailable
+            .selector;
         functionSelectorsConfigurationFacet[20] = ConfigurationFacet
-            .isDepositWhitelistEnabled
+            .isAssetDepositable
             .selector;
         functionSelectorsConfigurationFacet[21] = ConfigurationFacet
-            .getDepositableAssets
+            .isDepositWhitelistEnabled
+            .selector;
+        functionSelectorsConfigurationFacet[22] = ConfigurationFacet
+            .isHub
+            .selector;
+        functionSelectorsConfigurationFacet[23] = ConfigurationFacet
+            .getAvailableAssets
+            .selector;
+        functionSelectorsConfigurationFacet[24] = ConfigurationFacet
+            .fee
+            .selector;
+        functionSelectorsConfigurationFacet[25] = ConfigurationFacet
+            .feeRecipient
+            .selector;
+        functionSelectorsConfigurationFacet[26] = ConfigurationFacet
+            .depositCapacity
+            .selector;
+        functionSelectorsConfigurationFacet[27] = ConfigurationFacet
+            .timeLockPeriod
+            .selector;
+        functionSelectorsConfigurationFacet[28] = ConfigurationFacet
+            .getWithdrawalTimelock
+            .selector;
+        functionSelectorsConfigurationFacet[29] = ConfigurationFacet
+            .lockedTokensAmountOfAsset
             .selector;
         bytes memory initDataConfigurationFacet = abi.encode(
             maxSlippagePercent
@@ -222,7 +248,7 @@ contract DeployConfig {
         bytes memory initDataMulticallFacet = abi.encode(timeLockPeriod);
 
         // selectors for vault
-        bytes4[] memory functionSelectorsVaultFacet = new bytes4[](39);
+        bytes4[] memory functionSelectorsVaultFacet = new bytes4[](35);
         functionSelectorsVaultFacet[0] = IERC20Metadata.name.selector;
         functionSelectorsVaultFacet[1] = IERC20Metadata.symbol.selector;
         functionSelectorsVaultFacet[2] = IERC20Metadata.decimals.selector;
@@ -254,26 +280,14 @@ contract DeployConfig {
         functionSelectorsVaultFacet[26] = IVaultFacet.paused.selector;
         functionSelectorsVaultFacet[27] = IVaultFacet.pause.selector;
         functionSelectorsVaultFacet[28] = IVaultFacet.unpause.selector;
-        functionSelectorsVaultFacet[29] = IVaultFacet.setFee.selector;
-        functionSelectorsVaultFacet[30] = IVaultFacet.requestRedeem.selector;
-        functionSelectorsVaultFacet[31] = IVaultFacet.requestWithdraw.selector;
-        functionSelectorsVaultFacet[32] = IVaultFacet
-            .setWithdrawalTimelock
-            .selector;
+        functionSelectorsVaultFacet[29] = IVaultFacet.totalAssetsUsd.selector;
+        functionSelectorsVaultFacet[30] = IVaultFacet.setFee.selector;
+        functionSelectorsVaultFacet[31] = IVaultFacet.requestRedeem.selector;
+        functionSelectorsVaultFacet[32] = IVaultFacet.requestWithdraw.selector;
         functionSelectorsVaultFacet[33] = IVaultFacet.clearRequest.selector;
         functionSelectorsVaultFacet[34] = IVaultFacet
             .getWithdrawalRequest
             .selector;
-        functionSelectorsVaultFacet[35] = IVaultFacet
-            .getWithdrawalTimelock
-            .selector;
-        functionSelectorsVaultFacet[36] = IVaultFacet
-            .lockedTokensAmountOfAsset
-            .selector;
-        functionSelectorsVaultFacet[37] = IVaultFacet
-            .getStakingAddresses
-            .selector;
-        functionSelectorsVaultFacet[38] = IVaultFacet.tokensHeld.selector;
 
         bytes memory initDataVaultFacet = abi.encode(
             vaultName,
@@ -332,7 +346,23 @@ contract DeployConfig {
         );
         bytes memory initDataERC7540Facet = abi.encode(facetSelectorERC7540);
 
-        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](7);
+        // selectors for bridge
+        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](6);
+        functionSelectorsBridgeFacet[0] = IBridgeFacet.executeBridging.selector;
+        functionSelectorsBridgeFacet[1] = IBridgeFacet
+            .initVaultActionRequest
+            .selector;
+        functionSelectorsBridgeFacet[2] = IBridgeFacet
+            .updateAccountingInfoForRequest
+            .selector;
+        functionSelectorsBridgeFacet[3] = IBridgeFacet.finalizeRequest.selector;
+        functionSelectorsBridgeFacet[4] = IBridgeFacet.getRequestInfo.selector;
+        functionSelectorsBridgeFacet[5] = IBridgeFacet
+            .setOraclesCrossChainAccounting
+            .selector;
+        bytes memory initDataBridgeFacet = abi.encode();
+
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](8);
         cuts[0] = IDiamondCut.FacetCut({
             facetAddress: facetAddresses.diamondLoupe,
             action: IDiamondCut.FacetCutAction.Add,
@@ -374,6 +404,12 @@ contract DeployConfig {
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: functionSelectorsERC7540Facet,
             initData: initDataERC7540Facet
+        });
+        cuts[7] = IDiamondCut.FacetCut({
+            facetAddress: facetAddresses.bridge,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: functionSelectorsBridgeFacet,
+            initData: initDataBridgeFacet
         });
 
         return cuts;

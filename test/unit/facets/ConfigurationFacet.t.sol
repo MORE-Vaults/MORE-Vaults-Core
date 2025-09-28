@@ -114,13 +114,22 @@ contract ConfigurationFacetTest is Test {
         public
     {
         vm.startPrank(owner);
-        facet.setMaxSlippagePercent(10000);
+        facet.setMaxSlippagePercent(2000);
         vm.stopPrank();
         assertEq(
             MoreVaultsStorageHelper.getSlippagePercent(address(facet)),
-            10000,
+            2000,
             "Max slippage percent should be updated"
         );
+    }
+
+    function test_setMaxSlippagePercent_ShouldRevertWhenSlippageTooHigh()
+        public
+    {
+        vm.startPrank(owner);
+        vm.expectRevert(IConfigurationFacet.SlippageTooHigh.selector);
+        facet.setMaxSlippagePercent(2001);
+        vm.stopPrank();
     }
 
     function test_setGasLimitForAccounting_ShouldUpdateGasLimitForAccounting()

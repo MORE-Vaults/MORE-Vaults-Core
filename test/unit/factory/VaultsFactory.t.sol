@@ -10,7 +10,8 @@ import {IMoreVaultsRegistry, IOracleRegistry} from "../../../src/interfaces/IMor
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
 import {MockFacet} from "../../mocks/MockFacet.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 contract VaultsFactoryTest is Test {
     // Test addresses
@@ -24,6 +25,7 @@ contract VaultsFactoryTest is Test {
     address public feeRecipient = address(4);
     address public oracle = address(5);
     address public layerZeroEndpoint = address(6);
+    uint32 public localEid = uint32(block.chainid);
     uint96 public maxFinalizationTime = 1 days;
     address public asset;
     address public wrappedNative;
@@ -50,7 +52,16 @@ contract VaultsFactoryTest is Test {
 
         // Deploy factory
         vm.prank(admin);
-        factory = new VaultsFactory();
+        factory = new VaultsFactory(layerZeroEndpoint);
+
+        vm.mockCall(
+            layerZeroEndpoint,
+            abi.encodeWithSelector(
+                ILayerZeroEndpointV2.setDelegate.selector,
+                admin
+            ),
+            abi.encode()
+        );
     }
 
     function test_initialize_ShouldSetInitialValues() public {
@@ -61,7 +72,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -75,8 +86,9 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             "Should set correct diamond cut facet"
         );
-        assertTrue(
-            VaultsFactory(factory).hasRole(0x00, admin),
+        assertEq(
+            VaultsFactory(factory).owner(),
+            admin,
             "Should set admin role"
         );
     }
@@ -89,7 +101,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -100,7 +112,7 @@ contract VaultsFactoryTest is Test {
             address(0),
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -111,7 +123,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             address(0),
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -122,7 +134,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             address(0),
-            layerZeroEndpoint,
+            uint32(block.chainid),
             maxFinalizationTime
         );
     }
@@ -135,7 +147,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -153,7 +165,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -170,7 +182,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -192,7 +204,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -210,7 +222,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -227,7 +239,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -257,7 +269,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -418,9 +430,8 @@ contract VaultsFactoryTest is Test {
     function test_linkVault_shouldRevertIfCallerIsNotAdmin() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                curator,
-                bytes32(0)
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+                curator
             )
         );
         vm.prank(curator);
@@ -435,7 +446,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -464,7 +475,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
 
@@ -706,9 +717,8 @@ contract VaultsFactoryTest is Test {
     function test_setFacetRestricted_shouldRevertIfCalledNotByAnAdmin() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                curator,
-                bytes32(0)
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+                curator
             )
         );
         vm.prank(curator);
@@ -723,7 +733,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
         vm.prank(admin);
@@ -743,7 +753,7 @@ contract VaultsFactoryTest is Test {
             diamondCutFacet,
             accessControlFacet,
             wrappedNative,
-            layerZeroEndpoint,
+            localEid,
             maxFinalizationTime
         );
         vm.prank(admin);

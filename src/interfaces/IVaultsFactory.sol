@@ -11,11 +11,6 @@ interface IVaultsFactory {
     error InvalidTimeLock();
     error InvalidFee();
 
-    struct VaultInfo {
-        uint16 chainId;
-        address vault;
-    }
-
     event VaultDeployed(
         address indexed vault,
         address registry,
@@ -25,20 +20,15 @@ interface IVaultsFactory {
 
     event DiamondCutFacetUpdated(address indexed newDiamondCutFacet);
     event AccessControlFacetUpdated(address indexed newAccessControlFacet);
-    event LayerZeroEndpointUpdated(address indexed newLayerZeroEndpoint);
     event MaxFinalizationTimeUpdated(uint96 indexed newMaxFinalizationTime);
-    event TrustedFactoryUpdated(
-        uint16 indexed chainId,
-        address indexed factory
-    );
     event CrossChainLinkRequested(
-        uint16 indexed dstChainId,
+        uint32 indexed dstChainId,
         address indexed initiator,
         address indexed vaultToLink,
         address remoteVault
     );
     event CrossChainLinked(
-        uint16 indexed linkedVaultChainId,
+        uint32 indexed linkedVaultChainId,
         address indexed linkedVault,
         address indexed localVault
     );
@@ -55,7 +45,7 @@ interface IVaultsFactory {
      * @param _diamondCutFacet Diamond cut facet address
      * @param _accessControlFacet Access control facet address
      * @param _wrappedNative Wrapped native token address
-     * @param _layerZeroEndpoint Layer zero endpoint address
+     * @param _localEid LayerZero endpoint id for this chain
      * @param _maxFinalizationTime Maximum finalization time of block for a chain
      */
     function initialize(
@@ -64,9 +54,19 @@ interface IVaultsFactory {
         address _diamondCutFacet,
         address _accessControlFacet,
         address _wrappedNative,
-        address _layerZeroEndpoint,
+        uint32 _localEid,
         uint96 _maxFinalizationTime
     ) external;
+
+    /**
+     * @notice Spoke requests registration on Hub
+     */
+    function requestRegisterSpoke(
+        uint32 _hubEid,
+        address _hubVault,
+        address _spokeVault,
+        bytes calldata _options
+    ) external payable;
 
     /**
      * @notice Get registry contract address
@@ -173,21 +173,55 @@ interface IVaultsFactory {
      * @notice Returns hub to spokes
      * @param _chainId chain id
      * @param _hubVault hub vault
-     * @return spokes info about spokes
+     * @return eids endpoint ids of spokes
+     * @return vaults addresses of spokes
      */
     function hubToSpokes(
-        uint16 _chainId,
+        uint32 _chainId,
         address _hubVault
-    ) external view returns (VaultInfo[] memory);
+    ) external view returns (uint32[] memory eids, address[] memory vaults);
 
     /**
      * @notice Returns spoke to hub
      * @param _chainId chain id
      * @param _spokeVault spoke vault
-     * @return hub info about hub
+     * @return eid endpoint id of hub
+     * @return vault address of hub vault
      */
     function spokeToHub(
-        uint16 _chainId,
+        uint32 _chainId,
         address _spokeVault
-    ) external view returns (VaultInfo memory);
+    ) external view returns (uint32 eid, address vault);
+
+    /**
+     * @notice Checks whether a hub has a given spoke linked
+     * @param _hubEid Hub endpoint id
+     * @param _hubVault Hub vault address
+     * @param _spokeEid Spoke endpoint id
+     * @param _spokeVault Spoke vault address
+     * @return bool True if the spoke is linked to the hub
+     */
+    function isSpokeOfHub(
+        uint32 _hubEid,
+        address _hubVault,
+        uint32 _spokeEid,
+        address _spokeVault
+    ) external view returns (bool);
+
+    /**
+     * @notice Checks whether a vault is a cross-chain vault
+     * @param _chainId Chain id
+     * @param _vault Vault address
+     * @return bool True if the vault is a cross-chain vault
+     */
+    function isCrossChainVault(
+        uint32 _chainId,
+        address _vault
+    ) external view returns (bool);
+
+    /**
+     * @notice Returns local EID
+     * @return local EID
+     */
+    function localEid() external view returns (uint32);
 }

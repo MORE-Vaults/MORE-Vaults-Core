@@ -20,7 +20,7 @@ abstract contract BaseVaultsRegistry is
     /// @dev Aave price oracle address
     IOracleRegistry public oracle;
 
-    /// @dev Mapping selector => facet address (показывает какому фасету принадлежит селектор)
+    /// @dev Mapping selector => facet address (shows which facet owns the selector)
     mapping(bytes4 => address) public selectorToFacet;
 
     /// @dev Mapping of facet address => all selectors

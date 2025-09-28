@@ -380,7 +380,7 @@ contract MulticallFacetTest is Test {
             )
         );
         MoreVaultsStorageHelper.setSlippagePercent(address(mock), 1);
-        uint256 nonce = mock.submitActions(newActionsData);
+        mock.submitActions(newActionsData);
     }
 }
 
