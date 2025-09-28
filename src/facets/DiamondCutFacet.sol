@@ -7,12 +7,7 @@ import {AccessControlLib} from "../libraries/AccessControlLib.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
 contract DiamondCutFacet is BaseFacetInitializer, IDiamondCut {
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.DiamondCutFacet");
     }
 
@@ -25,23 +20,19 @@ contract DiamondCutFacet is BaseFacetInitializer, IDiamondCut {
     }
 
     function initialize(bytes calldata) external initializerFacet {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = true;
     }
 
-    function onFacetRemoval(address, bool) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function onFacetRemoval(bool) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IDiamondCut).interfaceId] = false;
     }
 
     /**
      * @inheritdoc IDiamondCut
      */
-    function diamondCut(
-        IDiamondCut.FacetCut[] calldata _diamondCut
-    ) external override {
+    function diamondCut(IDiamondCut.FacetCut[] calldata _diamondCut) external override {
         AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib.diamondCut(_diamondCut);
     }

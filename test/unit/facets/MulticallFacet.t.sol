@@ -6,6 +6,7 @@ import {BaseFacetInitializer, IMulticallFacet, MulticallFacet} from "../../../sr
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {console} from "forge-std/console.sol";
 
 contract MulticallFacetTest is Test {
     MulticallFacet public facet;
@@ -30,10 +31,7 @@ contract MulticallFacetTest is Test {
         MoreVaultsStorageHelper.setGuardian(address(facet), guardian);
 
         // Set time lock period
-        MoreVaultsStorageHelper.setTimeLockPeriod(
-            address(facet),
-            timeLockPeriod
-        );
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(facet), timeLockPeriod);
 
         // Set action nonce
         MoreVaultsStorageHelper.setActionNonce(address(facet), currentNonce);
@@ -47,25 +45,25 @@ contract MulticallFacetTest is Test {
     }
 
     function test_facetName_ShouldReturnCorrectName() public view {
-        assertEq(
-            facet.facetName(),
-            "MulticallFacet",
-            "Facet name should be correct"
-        );
+        assertEq(facet.facetName(), "MulticallFacet", "Facet name should be correct");
+    }
+
+    function test_version_ShouldReturnCorrectVersion() public view {
+        assertEq(facet.facetVersion(), "1.0.0", "Version should be correct");
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        facet.onFacetRemoval(false);
+        assertFalse(MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IMulticallFacet).interfaceId));
     }
 
     function test_initialize_ShouldSetParametersCorrectly() public {
         MulticallFacet(facet).initialize(abi.encode(timeLockPeriod, 10_000));
         assertEq(
-            MoreVaultsStorageHelper.getTimeLockPeriod(address(facet)),
-            timeLockPeriod,
-            "Time lock period should be set"
+            MoreVaultsStorageHelper.getTimeLockPeriod(address(facet)), timeLockPeriod, "Time lock period should be set"
         );
         assertEq(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IMulticallFacet).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IMulticallFacet).interfaceId),
             true,
             "Supported interfaces should be set"
         );
@@ -81,61 +79,32 @@ contract MulticallFacetTest is Test {
         assertEq(nonce, currentNonce, "Nonce should match current nonce");
 
         // Verify pending actions
-        (bytes[] memory storedActions, uint256 pendingUntil) = facet
-            .getPendingActions(nonce);
-        assertEq(
-            storedActions.length,
-            actionsData.length,
-            "Actions length should match"
-        );
-        assertEq(
-            pendingUntil,
-            block.timestamp + timeLockPeriod,
-            "Pending until should be correct"
-        );
+        (bytes[] memory storedActions, uint256 pendingUntil) = facet.getPendingActions(nonce);
+        assertEq(storedActions.length, actionsData.length, "Actions length should match");
+        assertEq(pendingUntil, block.timestamp + timeLockPeriod, "Pending until should be correct");
 
         vm.stopPrank();
     }
 
-    function test_submitActions_ShouldExecuteActionsIfTimeLockPeriodIsZero()
-        public
-    {
+    function test_submitActions_ShouldExecuteActionsIfTimeLockPeriodIsZero() public {
         vm.startPrank(curator);
 
         MoreVaultsStorageHelper.setTimeLockPeriod(address(facet), 0);
 
         // Mock function calls
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("mockFunction1()"),
-            abi.encode()
-        );
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("mockFunction2()"),
-            abi.encode()
-        );
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("totalAssets()"),
-            abi.encode(1e18)
-        );
+        vm.mockCall(address(facet), abi.encodeWithSignature("mockFunction1()"), abi.encode());
+        vm.mockCall(address(facet), abi.encodeWithSignature("mockFunction2()"), abi.encode());
+        vm.mockCall(address(facet), abi.encodeWithSignature("totalAssets()"), abi.encode(1e18));
 
         vm.expectEmit();
-        emit IMulticallFacet.ActionsSubmitted(
-            curator,
-            currentNonce,
-            block.timestamp,
-            actionsData
-        );
+        emit IMulticallFacet.ActionsSubmitted(curator, currentNonce, block.timestamp, actionsData);
         vm.expectEmit();
         emit IMulticallFacet.ActionsExecuted(curator, currentNonce);
         // Submit actions
         uint256 nonce = facet.submitActions(actionsData);
 
         // Verify pending actions
-        (bytes[] memory storedActions, uint256 pendingUntil) = facet
-            .getPendingActions(nonce);
+        (bytes[] memory storedActions, uint256 pendingUntil) = facet.getPendingActions(nonce);
         assertEq(storedActions.length, 0, "Actions length should be deleted");
         assertEq(pendingUntil, 0, "Pending until should be deleted");
 
@@ -170,21 +139,9 @@ contract MulticallFacetTest is Test {
         uint256 nonce = facet.submitActions(actionsData);
 
         // Mock function calls
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("mockFunction1()"),
-            abi.encode()
-        );
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("mockFunction2()"),
-            abi.encode()
-        );
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("totalAssets()"),
-            abi.encode(1e18)
-        );
+        vm.mockCall(address(facet), abi.encodeWithSignature("mockFunction1()"), abi.encode());
+        vm.mockCall(address(facet), abi.encodeWithSignature("mockFunction2()"), abi.encode());
+        vm.mockCall(address(facet), abi.encodeWithSignature("totalAssets()"), abi.encode(1e18));
 
         // Fast forward time
         vm.warp(block.timestamp + timeLockPeriod + 1);
@@ -193,8 +150,7 @@ contract MulticallFacetTest is Test {
         facet.executeActions(nonce);
 
         // Verify actions were deleted
-        (bytes[] memory storedActions, uint256 pendingUntil) = facet
-            .getPendingActions(nonce);
+        (bytes[] memory storedActions, uint256 pendingUntil) = facet.getPendingActions(nonce);
         assertEq(storedActions.length, 0, "Actions should be deleted");
         assertEq(pendingUntil, 0, "Pending until should be zero");
 
@@ -208,12 +164,7 @@ contract MulticallFacetTest is Test {
         uint256 nonce = facet.submitActions(actionsData);
 
         // Attempt to execute actions before time lock period
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMulticallFacet.ActionsStillPending.selector,
-                nonce
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IMulticallFacet.ActionsStillPending.selector, nonce));
         facet.executeActions(nonce);
 
         vm.stopPrank();
@@ -223,9 +174,7 @@ contract MulticallFacetTest is Test {
         vm.startPrank(curator);
 
         // Attempt to execute non-existent actions
-        vm.expectRevert(
-            abi.encodeWithSelector(IMulticallFacet.NoSuchActions.selector, 999)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IMulticallFacet.NoSuchActions.selector, 999));
         facet.executeActions(999);
 
         vm.stopPrank();
@@ -240,20 +189,10 @@ contract MulticallFacetTest is Test {
         // Fast forward time
         vm.warp(block.timestamp + timeLockPeriod + 1);
 
-        vm.mockCall(
-            address(facet),
-            abi.encodeWithSignature("totalAssets()"),
-            abi.encode(1e18)
-        );
+        vm.mockCall(address(facet), abi.encodeWithSignature("totalAssets()"), abi.encode(1e18));
 
         // Attempt to execute actions
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                bytes4(keccak256("MulticallFailed(uint256,bytes)")),
-                0,
-                ""
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(bytes4(keccak256("MulticallFailed(uint256,bytes)")), 0, ""));
         facet.executeActions(nonce);
         vm.stopPrank();
     }
@@ -272,8 +211,7 @@ contract MulticallFacetTest is Test {
         facet.vetoActions(nonce);
 
         // Verify actions were deleted
-        (bytes[] memory storedActions, uint256 pendingUntil) = facet
-            .getPendingActions(nonce[0]);
+        (bytes[] memory storedActions, uint256 pendingUntil) = facet.getPendingActions(nonce[0]);
         assertEq(storedActions.length, 0, "Actions should be deleted");
         assertEq(pendingUntil, 0, "Pending until should be zero");
 
@@ -304,9 +242,7 @@ contract MulticallFacetTest is Test {
         nonce[0] = 999;
 
         // Attempt to veto non-existent actions
-        vm.expectRevert(
-            abi.encodeWithSelector(IMulticallFacet.NoSuchActions.selector, 999)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IMulticallFacet.NoSuchActions.selector, 999));
         facet.vetoActions(nonce);
 
         vm.stopPrank();
@@ -320,29 +256,43 @@ contract MulticallFacetTest is Test {
         nonce[0] = facet.submitActions(actionsData);
 
         // Get pending actions
-        (bytes[] memory storedActions, uint256 pendingUntil) = facet
-            .getPendingActions(nonce[0]);
+        (bytes[] memory storedActions, uint256 pendingUntil) = facet.getPendingActions(nonce[0]);
 
         // Verify data
-        assertEq(
-            storedActions.length,
-            actionsData.length,
-            "Actions length should match"
-        );
-        assertEq(
-            pendingUntil,
-            block.timestamp + timeLockPeriod,
-            "Pending until should be correct"
-        );
+        assertEq(storedActions.length, actionsData.length, "Actions length should match");
+        assertEq(pendingUntil, block.timestamp + timeLockPeriod, "Pending until should be correct");
 
         vm.stopPrank();
     }
 
     function test_getCurrentNonce_ShouldReturnCorrectNonce() public view {
-        assertEq(
-            facet.getCurrentNonce(),
-            currentNonce,
-            "Current nonce should match"
-        );
+        assertEq(facet.getCurrentNonce(), currentNonce, "Current nonce should match");
+    }
+
+    function test_shouldRevertWhenSlippageExceeded() public {
+        TotalAssetsMock mock = new TotalAssetsMock();
+
+        // Set roles
+        MoreVaultsStorageHelper.setCurator(address(mock), curator);
+        MoreVaultsStorageHelper.setGuardian(address(mock), guardian);
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(mock), 0);
+
+        bytes[] memory newActionsData = new bytes[](1);
+        newActionsData[0] = abi.encodeWithSignature("increaseCounter()");
+        vm.prank(curator);
+        vm.expectRevert(abi.encodeWithSelector(MulticallFacet.SlippageExceeded.selector, 9999, 1));
+        MoreVaultsStorageHelper.setSlippagePercent(address(mock), 1);
+        mock.submitActions(newActionsData);
+    }
+}
+
+contract TotalAssetsMock is MulticallFacet {
+    function totalAssets() external view returns (uint256) {
+        uint256 counter = MoreVaultsStorageHelper.getScratchSpace(address(this));
+        return counter == 0 ? 1e18 : 1e1;
+    }
+
+    function increaseCounter() external {
+        MoreVaultsStorageHelper.setScratchSpace(address(this), 1);
     }
 }

@@ -24,41 +24,27 @@ contract TestBaseVaultsRegistry is BaseVaultsRegistry {
 
     function setProtocolFeeInfo(address, address, uint96) external override {}
 
-    function protocolFeeInfo(
-        address
-    ) external view override returns (address, uint96) {}
+    function protocolFeeInfo(address) external view override returns (address, uint96) {}
 
     function addToWhitelist(address) external override {}
 
     function removeFromWhitelist(address) external override {}
 
+    function setBridge(address, bool) external override {}
+
+    function isBridgeAllowed(address) external view override returns (bool) {}
+
+    function defaultCrossChainAccountingManager() external view override returns (address) {}
+
+    function isCrossChainAccountingManager(address) external view override returns (bool) {}
+
+    function setDefaultCrossChainAccountingManager(address) external override {}
+
     function isWhitelisted(address) external view override returns (bool) {}
 
-    function setSelectorAndMask(
-        address,
-        bytes4,
-        bool,
-        bytes memory
-    ) external override {}
+    function setSelectorAndMask(address, bytes4, bool, bytes memory) external override {}
 
-    function selectorInfo(
-        address,
-        bytes4
-    ) external view override returns (bool, bytes memory) {}
-
-    function addTrustedOFT(address) external override {}
-
-    function removeTrustedOFT(address) external override {}
-
-    function setTrustedOFT(address, bool) external override {}
-
-    function setTrustedOFTs(address[] calldata, bool[] calldata) external override {}
-
-    function isTrustedOFT(address) external view override returns (bool) {}
-
-    function getTrustedOFTs() external view override returns (address[] memory) {}
-
-    function getTrustedOFTsCount() external view override returns (uint256) {}
+    function selectorInfo(address, bytes4) external view override returns (bool, bytes memory) {}
 }
 
 contract BaseVaultsRegistryTest is Test {
@@ -78,30 +64,15 @@ contract BaseVaultsRegistryTest is Test {
         registry = new TestBaseVaultsRegistry();
 
         // Mock oracle calls
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("BASE_CURRENCY()"),
-            abi.encode(baseCurrency)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("BASE_CURRENCY()"), abi.encode(baseCurrency));
     }
 
     function test_initialize_ShouldSetInitialValues() public {
         vm.prank(admin);
         registry.initialize(admin, address(oracle), address(usdc));
-        assertEq(
-            address(registry.oracle()),
-            oracle,
-            "Should set correct oracle"
-        );
-        assertEq(
-            registry.usdStableTokenAddress(),
-            address(usdc),
-            "Should set correct USDC address"
-        );
-        assertTrue(
-            registry.hasRole(registry.DEFAULT_ADMIN_ROLE(), admin),
-            "Should set admin role"
-        );
+        assertEq(address(registry.oracle()), oracle, "Should set correct oracle");
+        assertEq(registry.usdStableTokenAddress(), address(usdc), "Should set correct USDC address");
+        assertTrue(registry.hasRole(registry.DEFAULT_ADMIN_ROLE(), admin), "Should set admin role");
     }
 
     function test_initialize_ShouldRevertWithZeroOracle() public {
@@ -139,116 +110,42 @@ contract BaseVaultsRegistryTest is Test {
     function test_getDenominationAsset_ShouldReturnBaseCurrency() public {
         registry.initialize(admin, address(oracle), address(usdc));
 
-        assertEq(
-            registry.getDenominationAsset(),
-            baseCurrency,
-            "Should return base currency"
-        );
+        assertEq(registry.getDenominationAsset(), baseCurrency, "Should return base currency");
     }
 
-    function test_getDenominationAsset_ShouldReturnUsdcWhenNoBaseCurrency()
-        public
-    {
+    function test_getDenominationAsset_ShouldReturnUsdcWhenNoBaseCurrency() public {
         registry.initialize(admin, address(oracle), address(usdc));
 
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("BASE_CURRENCY()"),
-            abi.encode(address(0))
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("BASE_CURRENCY()"), abi.encode(address(0)));
 
-        assertEq(
-            registry.getDenominationAsset(),
-            address(usdc),
-            "Should return USDC address"
-        );
+        assertEq(registry.getDenominationAsset(), address(usdc), "Should return USDC address");
     }
 
-    function test_getDenominationAssetDecimals_ShouldReturnBaseCurrencyDecimals()
-        public
-    {
+    function test_getDenominationAssetDecimals_ShouldReturnBaseCurrencyDecimals() public {
         registry.initialize(admin, address(oracle), address(usdc));
 
-        vm.mockCall(
-            baseCurrency,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(18)
-        );
+        vm.mockCall(baseCurrency, abi.encodeWithSignature("decimals()"), abi.encode(18));
+
+        assertEq(registry.getDenominationAssetDecimals(), 18, "Should return base currency decimals");
+    }
+
+    function test_getDenominationAssetDecimals_ShouldReturnUsdcDecimalsWhenNoBaseCurrency() public {
+        registry.initialize(admin, address(oracle), address(usdc));
+
+        vm.mockCall(oracle, abi.encodeWithSignature("BASE_CURRENCY()"), abi.encode(address(0)));
 
         assertEq(
-            registry.getDenominationAssetDecimals(),
-            18,
-            "Should return base currency decimals"
+            registry.getDenominationAssetDecimals(), MockERC20(address(usdc)).decimals(), "Should return USDC decimals"
         );
-    }
-
-    function test_getDenominationAssetDecimals_ShouldReturnUsdcDecimalsWhenNoBaseCurrency()
-        public
-    {
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("BASE_CURRENCY()"),
-            abi.encode(address(0))
-        );
-
-        assertEq(
-            registry.getDenominationAssetDecimals(),
-            MockERC20(address(usdc)).decimals(),
-            "Should return USDC decimals"
-        );
-    }
-
-    function test_addBridgeAllowed_ShouldAddBridgeAllowed() public {
-        vm.startPrank(admin);
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        registry.addBridgeAllowed(address(1111));
-
-        assertTrue(
-            registry.isBridgeAllowed(address(1111)),
-            "Should add bridge allowed"
-        );
-        vm.stopPrank();
-    }
-
-    function test_addBridgeAllowed_ShouldRevertWhenNotAdmin() public {
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        vm.startPrank(user);
-        vm.expectRevert();
-        registry.addBridgeAllowed(address(1111));
-        vm.stopPrank();
-    }
-
-    function test_removeBridgeAllowed_ShouldRemoveBridgeAllowed() public {
-        vm.startPrank(admin);
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        registry.addBridgeAllowed(address(1111));
-        vm.stopPrank();
-    }
-
-    function test_removeBridgeAllowed_ShouldRevertWhenNotAdmin() public {
-        registry.initialize(admin, address(oracle), address(usdc));
-
-        vm.startPrank(user);
-        vm.expectRevert();
-        registry.removeBridgeAllowed(address(1111));
-        vm.stopPrank();
     }
 
     function test_isBridgeAllowed_ShouldReturnCorrectValue() public {
         vm.startPrank(admin);
         registry.initialize(admin, address(oracle), address(usdc));
 
-        assertFalse(
-            registry.isBridgeAllowed(address(1111)),
-            "Should not allow unknown bridge"
-        );
+        assertFalse(registry.isBridgeAllowed(address(1111)), "Should not allow unknown bridge");
 
-        registry.addBridgeAllowed(address(1111));
+        registry.setBridge(address(1111), true);
         vm.stopPrank();
     }
 }

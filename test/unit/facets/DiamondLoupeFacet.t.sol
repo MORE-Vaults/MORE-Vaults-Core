@@ -39,180 +39,94 @@ contract DiamondLoupeFacetTest is Test {
         // Setup selectors for first facet
         bytes4[] memory selectors1 = new bytes4[](1);
         selectors1[0] = TEST_SELECTOR_1;
-        MoreVaultsStorageHelper.setFacetFunctionSelectors(
-            facet,
-            mockFacet1Address,
-            selectors1,
-            0
-        );
-        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(
-            facet,
-            TEST_SELECTOR_1,
-            mockFacet1Address,
-            0
-        );
+        MoreVaultsStorageHelper.setFacetFunctionSelectors(facet, mockFacet1Address, selectors1, 0);
+        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(facet, TEST_SELECTOR_1, mockFacet1Address, 0);
 
         // Setup selectors for second facet
         bytes4[] memory selectors2 = new bytes4[](1);
         selectors2[0] = TEST_SELECTOR_2;
-        MoreVaultsStorageHelper.setFacetFunctionSelectors(
-            facet,
-            mockFacet2Address,
-            selectors2,
-            0
-        );
-        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(
-            facet,
-            TEST_SELECTOR_2,
-            mockFacet2Address,
-            0
-        );
+        MoreVaultsStorageHelper.setFacetFunctionSelectors(facet, mockFacet2Address, selectors2, 0);
+        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(facet, TEST_SELECTOR_2, mockFacet2Address, 0);
 
         // Setup interface support
-        MoreVaultsStorageHelper.setSupportedInterface(
-            facet,
-            INTERFACE_ID,
-            true
-        );
+        MoreVaultsStorageHelper.setSupportedInterface(facet, INTERFACE_ID, true);
     }
 
     function test_facetName_ShouldReturnCorrectName() public view {
-        assertEq(
-            DiamondLoupeFacet(facet).facetName(),
-            "DiamondLoupeFacet",
-            "Facet name should be correct"
-        );
+        assertEq(DiamondLoupeFacet(facet).facetName(), "DiamondLoupeFacet", "Facet name should be correct");
+    }
+
+    function test_facetVersion_ShouldReturnCorrectVersion() public view {
+        assertEq(DiamondLoupeFacet(facet).facetVersion(), "1.0.0", "Facet version should be correct");
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        DiamondLoupeFacet(facet).onFacetRemoval(false);
+        assertFalse(MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IDiamondLoupe).interfaceId));
     }
 
     function test_initialize_ShouldSetSupportedInterfaces() public {
         DiamondLoupeFacet(facet).initialize("");
         assertEq(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                INTERFACE_ID
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), INTERFACE_ID),
             true,
             "Supported interfaces should be set"
         );
         assertEq(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IDiamondLoupe).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IDiamondLoupe).interfaceId),
             true,
             "Supported interfaces should be set"
         );
     }
+
     function test_facets_ShouldReturnAllFacetsAndSelectors() public view {
         IDiamondLoupe.Facet[] memory facets = DiamondLoupeFacet(facet).facets();
 
         assertEq(facets.length, 2, "Should return two facets");
 
         // Check first facet
-        assertEq(
-            facets[0].facetAddress,
-            mockFacet1Address,
-            "Should have correct first facet address"
-        );
-        assertEq(
-            facets[0].functionSelectors.length,
-            1,
-            "Should have one selector for first facet"
-        );
-        assertEq(
-            facets[0].functionSelectors[0],
-            TEST_SELECTOR_1,
-            "Should have correct selector for first facet"
-        );
+        assertEq(facets[0].facetAddress, mockFacet1Address, "Should have correct first facet address");
+        assertEq(facets[0].functionSelectors.length, 1, "Should have one selector for first facet");
+        assertEq(facets[0].functionSelectors[0], TEST_SELECTOR_1, "Should have correct selector for first facet");
 
         // Check second facet
-        assertEq(
-            facets[1].facetAddress,
-            mockFacet2Address,
-            "Should have correct second facet address"
-        );
-        assertEq(
-            facets[1].functionSelectors.length,
-            1,
-            "Should have one selector for second facet"
-        );
-        assertEq(
-            facets[1].functionSelectors[0],
-            TEST_SELECTOR_2,
-            "Should have correct selector for second facet"
-        );
+        assertEq(facets[1].facetAddress, mockFacet2Address, "Should have correct second facet address");
+        assertEq(facets[1].functionSelectors.length, 1, "Should have one selector for second facet");
+        assertEq(facets[1].functionSelectors[0], TEST_SELECTOR_2, "Should have correct selector for second facet");
     }
 
-    function test_facetFunctionSelectors_ShouldReturnCorrectSelectors()
-        public
-        view
-    {
-        bytes4[] memory selectors = DiamondLoupeFacet(facet)
-            .facetFunctionSelectors(mockFacet1Address);
+    function test_facetFunctionSelectors_ShouldReturnCorrectSelectors() public view {
+        bytes4[] memory selectors = DiamondLoupeFacet(facet).facetFunctionSelectors(mockFacet1Address);
 
         assertEq(selectors.length, 1, "Should return one selector");
-        assertEq(
-            selectors[0],
-            TEST_SELECTOR_1,
-            "Should return correct selector"
-        );
+        assertEq(selectors[0], TEST_SELECTOR_1, "Should return correct selector");
     }
 
     function test_facetAddresses_ShouldReturnAllAddresses() public view {
         address[] memory addresses = DiamondLoupeFacet(facet).facetAddresses();
 
         assertEq(addresses.length, 2, "Should return two addresses");
-        assertEq(
-            addresses[0],
-            mockFacet1Address,
-            "Should have correct first address"
-        );
-        assertEq(
-            addresses[1],
-            mockFacet2Address,
-            "Should have correct second address"
-        );
+        assertEq(addresses[0], mockFacet1Address, "Should have correct first address");
+        assertEq(addresses[1], mockFacet2Address, "Should have correct second address");
     }
 
     function test_facetAddress_ShouldReturnCorrectFacet() public view {
-        address facetAddress = DiamondLoupeFacet(facet).facetAddress(
-            TEST_SELECTOR_1
-        );
-        assertEq(
-            facetAddress,
-            mockFacet1Address,
-            "Should return correct facet address"
-        );
+        address facetAddress = DiamondLoupeFacet(facet).facetAddress(TEST_SELECTOR_1);
+        assertEq(facetAddress, mockFacet1Address, "Should return correct facet address");
     }
 
-    function test_facetAddress_ShouldReturnZeroForUnknownSelector()
-        public
-        view
-    {
-        address facetAddress = DiamondLoupeFacet(facet).facetAddress(
-            bytes4(0x12345678)
-        );
-        assertEq(
-            facetAddress,
-            address(0),
-            "Should return zero address for unknown selector"
-        );
+    function test_facetAddress_ShouldReturnZeroForUnknownSelector() public view {
+        address facetAddress = DiamondLoupeFacet(facet).facetAddress(bytes4(0x12345678));
+        assertEq(facetAddress, address(0), "Should return zero address for unknown selector");
     }
 
     function test_supportsInterface_ShouldReturnTrue() public view {
-        bool supported = DiamondLoupeFacet(facet).supportsInterface(
-            INTERFACE_ID
-        );
+        bool supported = DiamondLoupeFacet(facet).supportsInterface(INTERFACE_ID);
         assertTrue(supported, "Should support ERC165 interface");
     }
 
-    function test_supportsInterface_ShouldReturnFalseForUnknownInterface()
-        public
-        view
-    {
-        bool supported = DiamondLoupeFacet(facet).supportsInterface(
-            bytes4(0x12345678)
-        );
+    function test_supportsInterface_ShouldReturnFalseForUnknownInterface() public view {
+        bool supported = DiamondLoupeFacet(facet).supportsInterface(bytes4(0x12345678));
         assertFalse(supported, "Should not support unknown interface");
     }
 }

@@ -1,0 +1,20 @@
+{
+  "lib/LayerZero-v2": {
+    "rev": "4645b5795185a196713263311f76a497a3267dcc"
+  },
+  "lib/aave-v3-core": {
+    "rev": "782f51917056a53a2c228701058a6c3fb233684a"
+  },
+  "lib/forge-std": {
+    "rev": "6bce1540c7a5d1c40eec032a1ae16f0e01f82b92"
+  },
+  "lib/openzeppelin-contracts": {
+    "rev": "8f8d61c7c8d6941d29d3bc0b8b519f1b64656e97"
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "rev": "e3ba7f6a236c55e3fb7e569ecd6043b11d567c3d"
+  },
+  "lib/v2-periphery": {
+    "rev": "0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f"
+  }
+}

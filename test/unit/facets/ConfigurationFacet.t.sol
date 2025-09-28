@@ -25,8 +25,7 @@ contract ConfigurationFacetTest is Test {
     address public oracle = address(9);
 
     // Storage slot for AccessControlStorage struct
-    bytes32 constant ACCESS_CONTROL_STORAGE_POSITION =
-        AccessControlLib.ACCESS_CONTROL_STORAGE_POSITION;
+    bytes32 constant ACCESS_CONTROL_STORAGE_POSITION = AccessControlLib.ACCESS_CONTROL_STORAGE_POSITION;
 
     function setUp() public {
         // Deploy facet
@@ -48,27 +47,17 @@ contract ConfigurationFacetTest is Test {
         MoreVaultsStorageHelper.setFee(address(facet), 100); // 1%
         MoreVaultsStorageHelper.setTimeLockPeriod(address(facet), 1 days);
 
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
+        vm.mockCall(address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
 
         vm.mockCall(
             address(oracle),
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset1
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset1),
             abi.encode(address(1000), uint96(1000))
         );
 
         vm.mockCall(
             address(oracle),
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(address(1001), uint96(1001))
         );
     }
@@ -76,20 +65,70 @@ contract ConfigurationFacetTest is Test {
     function test_initialize_shouldSetCorrectValues() public {
         facet.initialize(abi.encode(10_000));
         assertEq(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IConfigurationFacet).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IConfigurationFacet).interfaceId),
             true,
             "Supported interfaces should be set"
         );
     }
+
     function test_facetName_ShouldReturnCorrectName() public view {
-        assertEq(
-            facet.facetName(),
-            "ConfigurationFacet",
-            "Facet name should be correct"
+        assertEq(facet.facetName(), "ConfigurationFacet", "Facet name should be correct");
+    }
+
+    function test_facetVersion_ShouldReturnCorrectVersion() public view {
+        assertEq(facet.facetVersion(), "1.0.0", "Facet version should be correct");
+    }
+
+    function test_onFacetRemoval_ShouldDisableInterface() public {
+        facet.onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IConfigurationFacet).interfaceId)
         );
+    }
+
+    function test_setMaxSlippagePercent_ShouldUpdateMaxSlippagePercent() public {
+        vm.startPrank(owner);
+        facet.setMaxSlippagePercent(2000);
+        vm.stopPrank();
+        assertEq(
+            MoreVaultsStorageHelper.getSlippagePercent(address(facet)), 2000, "Max slippage percent should be updated"
+        );
+    }
+
+    function test_setMaxSlippagePercent_ShouldRevertWhenSlippageTooHigh() public {
+        vm.startPrank(owner);
+        vm.expectRevert(IConfigurationFacet.SlippageTooHigh.selector);
+        facet.setMaxSlippagePercent(2001);
+        vm.stopPrank();
+    }
+
+    function test_setGasLimitForAccounting_ShouldUpdateGasLimitForAccounting() public {
+        vm.startPrank(owner);
+        facet.setGasLimitForAccounting(10000, 10000, 10000, 10000);
+        vm.stopPrank();
+        MoreVaultsLib.GasLimit memory gasLimit = MoreVaultsStorageHelper.getGasLimitForAccounting(address(facet));
+        assertEq(gasLimit.availableTokenAccountingGas, 10000);
+        assertEq(gasLimit.heldTokenAccountingGas, 10000);
+        assertEq(gasLimit.facetAccountingGas, 10000);
+        assertEq(gasLimit.stakingTokenAccountingGas, 10000);
+        assertEq(gasLimit.nestedVaultsGas, 10000);
+        assertEq(gasLimit.value, 10000);
+    }
+
+    function test_fee_shouldReturnCorrectFee() public view {
+        assertEq(facet.fee(), 100);
+    }
+
+    function test_feeRecipient_shouldReturnCorrectFeeRecipient() public view {
+        assertEq(facet.feeRecipient(), address(1));
+    }
+
+    function test_depositCapacity_shouldReturnCorrectDepositCapacity() public view {
+        assertEq(facet.depositCapacity(), 0);
+    }
+
+    function test_timeLockPeriod_shouldReturnCorrectTimeLockPeriod() public view {
+        assertEq(facet.timeLockPeriod(), 1 days);
     }
 
     function test_setFeeRecipient_ShouldUpdateRecipient() public {
@@ -99,9 +138,7 @@ contract ConfigurationFacetTest is Test {
         facet.setFeeRecipient(newFeeRecipient);
         // Verify through getter
         assertEq(
-            MoreVaultsStorageHelper.getFeeRecipient(address(facet)),
-            newFeeRecipient,
-            "Fee recipient should be updated"
+            MoreVaultsStorageHelper.getFeeRecipient(address(facet)), newFeeRecipient, "Fee recipient should be updated"
         );
 
         vm.stopPrank();
@@ -116,9 +153,7 @@ contract ConfigurationFacetTest is Test {
 
         // Verify fee recipient remains unchanged
         assertEq(
-            MoreVaultsStorageHelper.getFeeRecipient(address(facet)),
-            address(1),
-            "Fee recipient should not be changed"
+            MoreVaultsStorageHelper.getFeeRecipient(address(facet)), address(1), "Fee recipient should not be changed"
         );
 
         vm.stopPrank();
@@ -144,9 +179,7 @@ contract ConfigurationFacetTest is Test {
 
         // Verify through getter
         assertEq(
-            MoreVaultsStorageHelper.getTimeLockPeriod(address(facet)),
-            newPeriod,
-            "Time lock period should be updated"
+            MoreVaultsStorageHelper.getTimeLockPeriod(address(facet)), newPeriod, "Time lock period should be updated"
         );
     }
 
@@ -182,24 +215,12 @@ contract ConfigurationFacetTest is Test {
         facet.addAvailableAsset(asset1);
 
         // Verify assets are available
-        assertTrue(
-            MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1),
-            "Asset1 should be available"
-        );
+        assertTrue(MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1), "Asset1 should be available");
 
         // Verify assets are in available assets array
-        address[] memory availableAssets = MoreVaultsStorageHelper
-            .getAvailableAssets(address(facet));
-        assertEq(
-            availableAssets.length,
-            1,
-            "Available assets array should have two elements"
-        );
-        assertEq(
-            availableAssets[0],
-            asset1,
-            "Asset1 should be in available assets array"
-        );
+        address[] memory availableAssets = MoreVaultsStorageHelper.getAvailableAssets(address(facet));
+        assertEq(availableAssets.length, 1, "Available assets array should have two elements");
+        assertEq(availableAssets[0], asset1, "Asset1 should be in available assets array");
 
         vm.stopPrank();
     }
@@ -212,10 +233,7 @@ contract ConfigurationFacetTest is Test {
         facet.addAvailableAsset(asset1);
 
         // Verify asset is not available
-        assertFalse(
-            MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1),
-            "Asset should not be available"
-        );
+        assertFalse(MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1), "Asset should not be available");
 
         vm.stopPrank();
     }
@@ -230,17 +248,12 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_addAvailableAsset_ShouldRevertWhenAssetAlreadyAvailable()
-        public
-    {
+    function test_addAvailableAsset_ShouldRevertWhenAssetAlreadyAvailable() public {
         vm.startPrank(curator);
 
         vm.mockCall(
             address(oracle),
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset1
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset1),
             abi.encode(address(1000), uint96(1000))
         );
 
@@ -266,33 +279,14 @@ contract ConfigurationFacetTest is Test {
         facet.addAvailableAssets(assets);
 
         // Verify assets are available
-        assertTrue(
-            MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1),
-            "Asset1 should be available"
-        );
-        assertTrue(
-            MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset2),
-            "Asset2 should be available"
-        );
+        assertTrue(MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1), "Asset1 should be available");
+        assertTrue(MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset2), "Asset2 should be available");
 
         // Verify assets are in available assets array
-        address[] memory availableAssets = MoreVaultsStorageHelper
-            .getAvailableAssets(address(facet));
-        assertEq(
-            availableAssets.length,
-            2,
-            "Available assets array should have two elements"
-        );
-        assertEq(
-            availableAssets[0],
-            asset1,
-            "Asset1 should be in available assets array"
-        );
-        assertEq(
-            availableAssets[1],
-            asset2,
-            "Asset2 should be in available assets array"
-        );
+        address[] memory availableAssets = MoreVaultsStorageHelper.getAvailableAssets(address(facet));
+        assertEq(availableAssets.length, 2, "Available assets array should have two elements");
+        assertEq(availableAssets[0], asset1, "Asset1 should be in available assets array");
+        assertEq(availableAssets[1], asset2, "Asset2 should be in available assets array");
 
         vm.stopPrank();
     }
@@ -310,14 +304,8 @@ contract ConfigurationFacetTest is Test {
         facet.addAvailableAssets(assets);
 
         // Verify assets are not available
-        assertFalse(
-            MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1),
-            "Asset1 should not be available"
-        );
-        assertFalse(
-            MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset2),
-            "Asset2 should not be available"
-        );
+        assertFalse(MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset1), "Asset1 should not be available");
+        assertFalse(MoreVaultsStorageHelper.isAssetAvailable(address(facet), asset2), "Asset2 should not be available");
 
         vm.stopPrank();
     }
@@ -346,8 +334,7 @@ contract ConfigurationFacetTest is Test {
 
         // Verify asset is not available
         assertFalse(
-            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1),
-            "Asset should not be enabled to deposit"
+            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1), "Asset should not be enabled to deposit"
         );
 
         vm.stopPrank();
@@ -363,9 +350,7 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_enableAssetToDeposit_ShouldRevertWhenAssetAlreadyAvailable()
-        public
-    {
+    function test_enableAssetToDeposit_ShouldRevertWhenAssetAlreadyAvailable() public {
         vm.startPrank(curator);
 
         // Add asset
@@ -381,18 +366,11 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_enableAssetToDeposit_ShouldRevertIfAssetIsNotAvailableForManage()
-        public
-    {
+    function test_enableAssetToDeposit_ShouldRevertIfAssetIsNotAvailableForManage() public {
         vm.startPrank(curator);
 
         // Attempt to add same asset again
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MoreVaultsLib.UnsupportedAsset.selector,
-                asset1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(MoreVaultsLib.UnsupportedAsset.selector, asset1));
         facet.enableAssetToDeposit(asset1);
 
         vm.stopPrank();
@@ -409,20 +387,11 @@ contract ConfigurationFacetTest is Test {
 
         // Verify assets are available
         assertTrue(
-            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1),
-            "Asset1 should be enabled to deposit"
+            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1), "Asset1 should be enabled to deposit"
         );
         address[] memory depositableAssets = facet.getDepositableAssets();
-        assertEq(
-            depositableAssets.length,
-            1,
-            "Depositable assets array should have one element"
-        );
-        assertEq(
-            depositableAssets[0],
-            asset1,
-            "Depositable assets array should have asset1"
-        );
+        assertEq(depositableAssets.length, 1, "Depositable assets array should have one element");
+        assertEq(depositableAssets[0], asset1, "Depositable assets array should have asset1");
 
         vm.stopPrank();
     }
@@ -431,18 +400,13 @@ contract ConfigurationFacetTest is Test {
         vm.startPrank(unauthorized);
 
         // Attempt to disable asset
-        MoreVaultsStorageHelper.setDepositableAssets(
-            address(facet),
-            asset1,
-            true
-        );
+        MoreVaultsStorageHelper.setDepositableAssets(address(facet), asset1, true);
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
         facet.disableAssetToDeposit(asset1);
 
         // Verify asset still enabled to deposit
         assertTrue(
-            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1),
-            "Asset should be enabled to deposit"
+            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1), "Asset should be enabled to deposit"
         );
 
         vm.stopPrank();
@@ -451,29 +415,18 @@ contract ConfigurationFacetTest is Test {
     function test_disableAssetToDeposit_ShouldRevertWhenZeroAddress() public {
         vm.startPrank(curator);
 
-        MoreVaultsStorageHelper.setDepositableAssets(
-            address(facet),
-            asset1,
-            true
-        );
+        MoreVaultsStorageHelper.setDepositableAssets(address(facet), asset1, true);
         vm.expectRevert(IConfigurationFacet.InvalidAddress.selector);
         facet.disableAssetToDeposit(zeroAddress);
 
         vm.stopPrank();
     }
 
-    function test_disableAssetToDeposit_ShouldRevertWhenAssetAlreadyDisabled()
-        public
-    {
+    function test_disableAssetToDeposit_ShouldRevertWhenAssetAlreadyDisabled() public {
         vm.startPrank(curator);
 
         // Attempt to add same asset again
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MoreVaultsLib.UnsupportedAsset.selector,
-                asset1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(MoreVaultsLib.UnsupportedAsset.selector, asset1));
         facet.disableAssetToDeposit(asset1);
 
         vm.stopPrank();
@@ -487,34 +440,20 @@ contract ConfigurationFacetTest is Test {
         // Enable asset first time
         facet.enableAssetToDeposit(asset1);
         assertTrue(
-            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1),
-            "Asset1 should be enabled to deposit"
+            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1), "Asset1 should be enabled to deposit"
         );
         address[] memory depositableAssets = facet.getDepositableAssets();
-        assertEq(
-            depositableAssets.length,
-            1,
-            "Depositable assets array should have one element"
-        );
-        assertEq(
-            depositableAssets[0],
-            asset1,
-            "Depositable assets array should have asset1"
-        );
+        assertEq(depositableAssets.length, 1, "Depositable assets array should have one element");
+        assertEq(depositableAssets[0], asset1, "Depositable assets array should have asset1");
 
         facet.disableAssetToDeposit(asset1);
 
         // Verify assets are available
         assertFalse(
-            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1),
-            "Asset1 should be disabled to deposit"
+            MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1), "Asset1 should be disabled to deposit"
         );
         depositableAssets = facet.getDepositableAssets();
-        assertEq(
-            depositableAssets.length,
-            0,
-            "Depositable assets array should be empty"
-        );
+        assertEq(depositableAssets.length, 0, "Depositable assets array should be empty");
 
         vm.stopPrank();
     }
@@ -529,10 +468,7 @@ contract ConfigurationFacetTest is Test {
         assertTrue(facet.isAssetAvailable(asset1), "Asset should be available");
 
         // Verify non-existent asset is not available
-        assertFalse(
-            facet.isAssetAvailable(asset2),
-            "Asset should not be available"
-        );
+        assertFalse(facet.isAssetAvailable(asset2), "Asset should not be available");
 
         vm.stopPrank();
     }
@@ -545,16 +481,10 @@ contract ConfigurationFacetTest is Test {
         facet.enableAssetToDeposit(asset1);
 
         // Verify asset is available
-        assertTrue(
-            facet.isAssetDepositable(asset1),
-            "Asset should be available to deposit"
-        );
+        assertTrue(facet.isAssetDepositable(asset1), "Asset should be available to deposit");
 
         // Verify non-existent asset is not available
-        assertFalse(
-            facet.isAssetDepositable(asset2),
-            "Asset should not be available to deposit"
-        );
+        assertFalse(facet.isAssetDepositable(asset2), "Asset should not be available to deposit");
 
         vm.stopPrank();
     }
@@ -602,26 +532,30 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
+    function test_setDepositWhitelist_ShouldRevertWhenArraysLengthsMismatch() public {
+        address[] memory depositors = new address[](1);
+        depositors[0] = address(1);
+        uint256[] memory undelyingAssetCaps = new uint256[](2);
+        undelyingAssetCaps[0] = 10 ether;
+        undelyingAssetCaps[1] = 20 ether;
+        vm.startPrank(curator);
+        vm.expectRevert(IConfigurationFacet.ArraysLengthsMismatch.selector);
+        facet.setDepositWhitelist(depositors, undelyingAssetCaps);
+        vm.stopPrank();
+    }
+
     function test_enableDepositWhitelist_ShouldEnableDepositWhitelist() public {
         vm.startPrank(curator);
         facet.enableDepositWhitelist();
         vm.stopPrank();
-        assertTrue(
-            facet.isDepositWhitelistEnabled(),
-            "Deposit whitelist should be enabled"
-        );
+        assertTrue(facet.isDepositWhitelistEnabled(), "Deposit whitelist should be enabled");
     }
 
-    function test_disableDepositWhitelist_ShouldDisableDepositWhitelist()
-        public
-    {
+    function test_disableDepositWhitelist_ShouldDisableDepositWhitelist() public {
         vm.startPrank(curator);
         facet.disableDepositWhitelist();
         vm.stopPrank();
-        assertFalse(
-            facet.isDepositWhitelistEnabled(),
-            "Deposit whitelist should be disabled"
-        );
+        assertFalse(facet.isDepositWhitelistEnabled(), "Deposit whitelist should be disabled");
     }
 
     function test_getDepositableAssets_ShouldReturnCorrectArray() public {
@@ -629,15 +563,35 @@ contract ConfigurationFacetTest is Test {
         facet.addAvailableAsset(asset1);
         facet.enableAssetToDeposit(asset1);
         address[] memory depositableAssets = facet.getDepositableAssets();
-        assertEq(
-            depositableAssets.length,
-            1,
-            "Depositable assets array should have one element"
-        );
-        assertEq(
-            depositableAssets[0],
-            asset1,
-            "Depositable assets array should have asset1"
-        );
+        assertEq(depositableAssets.length, 1, "Depositable assets array should have one element");
+        assertEq(depositableAssets[0], asset1, "Depositable assets array should have asset1");
+    }
+
+    function test_getWithdrawalFee_ShouldReturnCorrectFee() public {
+        vm.startPrank(owner);
+        facet.setWithdrawalFee(1000);
+        vm.stopPrank();
+        assertEq(facet.getWithdrawalFee(), 1000);
+    }
+
+    function test_getWithdrawalQueueStatus_ShouldReturnCorrectStatus() public {
+        vm.startPrank(owner);
+        facet.updateWithdrawalQueueStatus(true);
+        vm.stopPrank();
+        assertTrue(facet.getWithdrawalQueueStatus());
+    }
+
+    function test_getWithdrawalFee2_ShouldReturnCorrectFee() public {
+        vm.startPrank(owner);
+        MoreVaultsStorageHelper.setWithdrawalFee(address(facet), uint96(1000));
+        vm.stopPrank();
+        assertEq(facet.getWithdrawalFee(), 1000);
+    }
+
+    function test_getWithdrawalQueueStatus2_ShouldReturnCorrectStatus() public {
+        vm.startPrank(owner);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(address(facet), true);
+        vm.stopPrank();
+        assertTrue(facet.getWithdrawalQueueStatus());
     }
 }

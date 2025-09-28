@@ -9,10 +9,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
 
     function facetName() external pure returns (string memory);
 
-    function accountingAaveV3Facet()
-        external
-        view
-        returns (uint256 sum, bool isPositive);
+    function accountingAaveV3Facet() external view returns (uint256 sum, bool isPositive);
 
     /**
      * @notice Supplies an asset to a pool
@@ -21,12 +18,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param amount The amount of the asset to supply
      * @param referralCode The referral code
      */
-    function supply(
-        address pool,
-        address asset,
-        uint256 amount,
-        uint16 referralCode
-    ) external;
+    function supply(address pool, address asset, uint256 amount, uint16 referralCode) external;
 
     /**
      * @notice Withdraws an asset from a pool
@@ -35,11 +27,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param amount The amount of the asset to withdraw
      * @return withdrawnAmount The amount of the asset withdrawn
      */
-    function withdraw(
-        address pool,
-        address asset,
-        uint256 amount
-    ) external returns (uint256 withdrawnAmount);
+    function withdraw(address pool, address asset, uint256 amount) external returns (uint256 withdrawnAmount);
 
     /**
      * @notice Borrows an asset from a pool
@@ -66,12 +54,9 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param interestRateMode The interest rate mode
      * @return repaidAmount The amount of the asset repaid
      */
-    function repay(
-        address pool,
-        address asset,
-        uint256 amount,
-        uint256 interestRateMode
-    ) external returns (uint256 repaidAmount);
+    function repay(address pool, address asset, uint256 amount, uint256 interestRateMode)
+        external
+        returns (uint256 repaidAmount);
 
     /**
      * @notice Repays an asset from a pool with aTokens
@@ -81,12 +66,9 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param interestRateMode The interest rate mode
      * @return repaidAmount The amount of the asset repaid
      */
-    function repayWithATokens(
-        address pool,
-        address asset,
-        uint256 amount,
-        uint256 interestRateMode
-    ) external returns (uint256 repaidAmount);
+    function repayWithATokens(address pool, address asset, uint256 amount, uint256 interestRateMode)
+        external
+        returns (uint256 repaidAmount);
 
     /**
      * @notice Swaps the borrow rate mode of an asset
@@ -94,11 +76,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param asset The address of the asset
      * @param interestRateMode The interest rate mode
      */
-    function swapBorrowRateMode(
-        address pool,
-        address asset,
-        uint256 interestRateMode
-    ) external;
+    function swapBorrowRateMode(address pool, address asset, uint256 interestRateMode) external;
 
     /**
      * @notice Rebalances the stable borrow rate of an asset
@@ -106,11 +84,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param asset The address of the asset
      * @param user The address of the user
      */
-    function rebalanceStableBorrowRate(
-        address pool,
-        address asset,
-        address user
-    ) external;
+    function rebalanceStableBorrowRate(address pool, address asset, address user) external;
 
     /**
      * @notice Sets the user use reserve as collateral status of an asset
@@ -118,11 +92,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @param asset The address of the asset
      * @param useAsCollateral The status of the user use reserve as collateral
      */
-    function setUserUseReserveAsCollateral(
-        address pool,
-        address asset,
-        bool useAsCollateral
-    ) external;
+    function setUserUseReserveAsCollateral(address pool, address asset, bool useAsCollateral) external;
 
     /**
      * @notice Performs a flash loan
@@ -178,10 +148,7 @@ interface IAaveV3Facet is IGenericMoreVaultFacetInitializable {
      * @return rewardsList The addresses of the rewards
      * @return claimedAmounts The amounts of the rewards
      */
-    function claimAllRewards(
-        address rewardsController,
-        address[] calldata assets
-    )
+    function claimAllRewards(address rewardsController, address[] calldata assets)
         external
         returns (address[] memory rewardsList, uint256[] memory claimedAmounts);
 }

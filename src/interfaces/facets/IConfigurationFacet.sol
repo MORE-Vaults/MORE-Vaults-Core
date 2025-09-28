@@ -14,19 +14,28 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error TimeLockPeriodNotExpired();
     error NothingSubmitted();
     error ArraysLengthsMismatch();
+    error InvalidManager();
+    error SlippageTooHigh();
 
     /**
      * @dev Events
      */
     /// @notice Emitted when the MoreVaults registry is set
-    event MoreVaultRegistrySet(
-        address indexed previousRegistry,
-        address indexed newRegistry
-    );
+    event MoreVaultRegistrySet(address indexed previousRegistry, address indexed newRegistry);
     /// @notice Emitted when a new asset is added
     event AssetAdded(address indexed asset);
     /// @notice Emitted when an asset is removed
     event AssetRemoved(address indexed asset);
+    /// @notice Emitted when the withdrawal fee is set
+    event WithdrawalFeeSet(uint96 fee);
+    /// @notice Emitted when the withdrawal queue status is set
+    event WithdrawalQueueStatusSet(bool status);
+    /// @notice Emitted when the withdrawal timelock is set
+    event WithdrawalTimelockSet(uint64 duration);
+    /// @notice Emitted when the cross chain accounting manager is set
+    event CrossChainAccountingManagerSet(address indexed manager);
+    /// @notice Emitted when the max slippage percent is set
+    event MaxSlippagePercentSet(uint256 percent);
 
     /**
      * @notice Sets fee recipient address
@@ -51,10 +60,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param depositors Array of depositors
      * @param undelyingAssetCaps Array of underlying asset caps
      */
-    function setDepositWhitelist(
-        address[] calldata depositors,
-        uint256[] calldata undelyingAssetCaps
-    ) external;
+    function setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) external;
 
     /**
      * @notice Enables deposit whitelist
@@ -74,9 +80,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param depositor Depositor address
      * @return Undelying asset cap
      */
-    function getDepositWhitelist(
-        address depositor
-    ) external view returns (uint256);
+    function getDepositWhitelist(address depositor) external view returns (uint256);
 
     /**
      * @notice Adds new available asset
@@ -101,6 +105,62 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param asset Asset address to disable
      */
     function disableAssetToDeposit(address asset) external;
+
+    /**
+     * @notice Set the withdrawal fee
+     * @param _fee New withdrawal fee
+     */
+    function setWithdrawalFee(uint96 _fee) external;
+
+    /**
+     * @notice Update the withdraw timelock duration
+     * @param duration New withdraw timelock duration
+     */
+    function setWithdrawalTimelock(uint64 duration) external;
+
+    /**
+     * @notice Update the withdrawal queue status
+     * @param _status New withdrawal queue status
+     */
+    function updateWithdrawalQueueStatus(bool _status) external;
+
+    /**
+     * @notice Sets gas limit for accounting
+     * @param _availableTokenAccountingGas Gas limit for available token accounting
+     * @param _heldTokenAccountingGas Gas limit for held token accounting
+     * @param _facetAccountingGas Gas limit for facet accounting
+     * @param _newLimit New gas limit
+     */
+    function setGasLimitForAccounting(
+        uint48 _availableTokenAccountingGas,
+        uint48 _heldTokenAccountingGas,
+        uint48 _facetAccountingGas,
+        uint48 _newLimit
+    ) external;
+
+    /**
+     * @notice Sets max slippage percent
+     * @param _newPercent New max slippage percent
+     */
+    function setMaxSlippagePercent(uint256 _newPercent) external;
+
+    /**
+     * @notice Sets cross chain accounting manager
+     * @param manager New cross chain accounting manager
+     */
+    function setCrossChainAccountingManager(address manager) external;
+
+    /**
+     * @notice Get the current withdrawal fee
+     * @return The current withdrawal fee in basis points
+     */
+    function getWithdrawalFee() external view returns (uint96);
+
+    /**
+     * @notice Get the current withdrawal queue status
+     * @return The current withdrawal queue status
+     */
+    function getWithdrawalQueueStatus() external view returns (bool);
 
     /**
      * @notice Gets list of depositable assets
@@ -164,23 +224,22 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      */
     function timeLockPeriod() external view returns (uint256);
 
-    /**
-     * @notice Sets gas limit for accounting
-     * @param _availableTokenAccountingGas Gas limit for available token accounting
-     * @param _heldTokenAccountingGas Gas limit for held token accounting
-     * @param _facetAccountingGas Gas limit for facet accounting
-     * @param _newLimit New gas limit
-     */
-    function setGasLimitForAccounting(
-        uint48 _availableTokenAccountingGas,
-        uint48 _heldTokenAccountingGas,
-        uint48 _facetAccountingGas,
-        uint48 _newLimit
-    ) external;
+    /// @notice Returns the withdrawal timelock duration
+    /// @return duration The withdrawal timelock duration
+    function getWithdrawalTimelock() external view returns (uint64);
 
-    /**
-     * @notice Sets max slippage percent
-     * @param _newPercent New max slippage percent
-     */
-    function setMaxSlippagePercent(uint256 _newPercent) external;
+    /// @notice Get the lockedTokens amount of an asset
+    /// @param asset The asset to get the lockedTokens amount of
+    /// @return The lockedTokens amount of the asset
+    function lockedTokensAmountOfAsset(address asset) external view returns (uint256);
+
+    /// @notice Get the staking addresses for a given staking facet
+    /// @param stakingFacetId The staking facet to get the staking addresses of
+    /// @return The staking addresses for the given staking facet
+    function getStakingAddresses(bytes32 stakingFacetId) external view returns (address[] memory);
+
+    /// @notice Returns array of tokens held in the vault based on their IDs
+    /// @param tokenId token type ID
+    /// @return array of token addresses
+    function tokensHeld(bytes32 tokenId) external view returns (address[] memory);
 }

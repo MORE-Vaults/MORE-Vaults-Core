@@ -21,8 +21,8 @@ interface ILayerZeroEndpoint {
         uint256 lzTokenFee;
     }
 
-    function send(
-        MessagingParams calldata _params,
-        address _refundAddress
-    ) external payable returns (MessagingReceipt memory);
+    function send(MessagingParams calldata _params, address _refundAddress)
+        external
+        payable
+        returns (MessagingReceipt memory);
 }

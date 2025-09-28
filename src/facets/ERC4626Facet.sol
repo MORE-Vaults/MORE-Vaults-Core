@@ -27,16 +27,35 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     /// @dev Constant identifier for ERC4626 operations
     bytes32 constant ERC4626_ID = keccak256("ERC4626_ID");
 
+    /// @dev Structs to reduce stack depth in genericAsyncActionExecution
+    struct ValidationContext {
+        bytes4 selector;
+        bool allowed;
+        bytes maskForData;
+    }
+
+    struct BalanceSnapshot {
+        uint256 sharesBefore;
+        uint256 assetsBefore;
+        uint256 totalSupplyBefore;
+        uint256 sharesAfter;
+        uint256 assetsAfter;
+        uint256 totalSupplyAfter;
+        address asset;
+    }
+
+    struct ExecutionContext {
+        bytes32 diamondAddress;
+        bytes fixedData;
+        bool success;
+        bytes result;
+    }
+
     /**
      * @notice Returns the storage slot for this facet's initializable storage
      * @return bytes32 The storage slot identifier
      */
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.ERC4626Facet");
     }
 
@@ -61,50 +80,34 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
      * @param data Encoded data containing the facet selector
      */
     function initialize(bytes calldata data) external initializerFacet {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         bytes32 facetSelector = abi.decode(data, (bytes32));
         ds.facetsForAccounting.push(facetSelector);
 
         ds.supportedInterfaces[type(IERC4626Facet).interfaceId] = true;
-        ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].add(
-            ERC4626_ID
-        );
+        ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].add(ERC4626_ID);
     }
 
     /**
      * @notice Handles facet removal and cleanup
-     * @param facetAddress The address of the facet being removed
      * @param isReplacing Whether the facet is being replaced
      */
-    function onFacetRemoval(address facetAddress, bool isReplacing) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function onFacetRemoval(bool isReplacing) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IERC4626Facet).interfaceId] = false;
 
-        MoreVaultsLib.removeFromFacetsForAccounting(
-            ds,
-            facetAddress,
-            isReplacing
-        );
+        MoreVaultsLib.removeFromFacetsForAccounting(ds, IERC4626Facet.accountingERC4626Facet.selector, isReplacing);
         if (!isReplacing) {
-            ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].remove(
-                ERC4626_ID
-            );
+            ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].remove(ERC4626_ID);
         }
     }
 
     /**
      * @inheritdoc IERC4626Facet
      */
-    function accountingERC4626Facet()
-        public
-        view
-        returns (uint256 sum, bool isPositive)
-    {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        for (uint256 i = 0; i < ds.tokensHeld[ERC4626_ID].length(); ) {
+    function accountingERC4626Facet() public view returns (uint256 sum, bool isPositive) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        for (uint256 i = 0; i < ds.tokensHeld[ERC4626_ID].length();) {
             address vault = ds.tokensHeld[ERC4626_ID].at(i);
             if (ds.isAssetAvailable[vault]) {
                 unchecked {
@@ -113,15 +116,9 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
                 continue;
             }
             address asset = IERC4626(vault).asset();
-            uint256 balance = IERC4626(vault).balanceOf(address(this)) +
-                ds.lockedTokens[vault];
-            uint256 convertedToVaultUnderlying = IERC4626(vault)
-                .convertToAssets(balance);
-            sum += MoreVaultsLib.convertToUnderlying(
-                asset,
-                convertedToVaultUnderlying,
-                Math.Rounding.Floor
-            );
+            uint256 balance = IERC4626(vault).balanceOf(address(this)) + ds.lockedTokens[vault];
+            uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
+            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
@@ -132,33 +129,22 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC4626Facet
      */
-    function erc4626Deposit(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares) {
+    function erc4626Deposit(address vault, uint256 assets) external returns (uint256 shares) {
         if (assets == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
 
         IERC20(asset).forceApprove(vault, assets);
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         shares = IERC4626(vault).deposit(assets, address(this));
         uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         // If shares balance or assets balance didn't change, it means that action is async and should be executed with genericAsyncActionExecution or ERC7540Facet
-        if (
-            (sharesBalanceAfter == sharesBalanceBefore ||
-                assetsBalanceAfter == assetsBalanceBefore)
-        ) {
+        if ((sharesBalanceAfter == sharesBalanceBefore || assetsBalanceAfter == assetsBalanceBefore)) {
             revert AsyncBehaviorProhibited();
         }
 
@@ -168,34 +154,23 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC4626Facet
      */
-    function erc4626Mint(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets) {
+    function erc4626Mint(address vault, uint256 shares) external returns (uint256 assets) {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
 
         assets = IERC4626(vault).previewMint(shares);
         IERC20(asset).forceApprove(vault, assets);
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         assets = IERC4626(vault).mint(shares, address(this));
         uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         // If shares balance or assets balance didn't change, it means that action is async and should be executed with genericAsyncActionExecution or ERC7540Facet
-        if (
-            (sharesBalanceAfter == sharesBalanceBefore ||
-                assetsBalanceAfter == assetsBalanceBefore)
-        ) {
+        if ((sharesBalanceAfter == sharesBalanceBefore || assetsBalanceAfter == assetsBalanceBefore)) {
             revert AsyncBehaviorProhibited();
         }
 
@@ -205,30 +180,19 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC4626Facet
      */
-    function erc4626Withdraw(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares) {
+    function erc4626Withdraw(address vault, uint256 assets) external returns (uint256 shares) {
         if (assets == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         shares = IERC4626(vault).withdraw(assets, address(this), address(this));
         uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         // If shares balance or assets balance didn't change, it means that action is async and should be executed with genericAsyncActionExecution or ERC7540Facet
-        if (
-            (sharesBalanceAfter == sharesBalanceBefore ||
-                assetsBalanceAfter == assetsBalanceBefore)
-        ) {
+        if ((sharesBalanceAfter == sharesBalanceBefore || assetsBalanceAfter == assetsBalanceBefore)) {
             revert AsyncBehaviorProhibited();
         }
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
@@ -237,30 +201,19 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC4626Facet
      */
-    function erc4626Redeem(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets) {
+    function erc4626Redeem(address vault, uint256 shares) external returns (uint256 assets) {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         assets = IERC4626(vault).redeem(shares, address(this), address(this));
         uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
+        uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         // If shares balance or assets balance didn't change, it means that action is async and should be executed with genericAsyncActionExecution or ERC7540Facet
-        if (
-            (sharesBalanceAfter == sharesBalanceBefore ||
-                assetsBalanceAfter == assetsBalanceBefore)
-        ) {
+        if ((sharesBalanceAfter == sharesBalanceBefore || assetsBalanceAfter == assetsBalanceBefore)) {
             revert AsyncBehaviorProhibited();
         }
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
@@ -277,101 +230,81 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     ) external {
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
 
-        bytes4 selector = bytes4(data[:4]);
-        (bool allowed, bytes memory maskForData) = IMoreVaultsRegistry(
-            acs.moreVaultsRegistry
-        ).selectorInfo(vault, selector);
-        if (!allowed) {
-            revert SelectorNotAllowed(selector);
+        ValidationContext memory validation;
+        validation.selector = bytes4(data[:4]);
+        (validation.allowed, validation.maskForData) =
+            IMoreVaultsRegistry(acs.moreVaultsRegistry).selectorInfo(vault, validation.selector);
+        if (!validation.allowed) {
+            revert SelectorNotAllowed(validation.selector);
         }
 
-        // Check if upon request execution, the amount of assets will increase or decrease, to handle possible locks on request step
-        uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(
-            address(this)
-        );
-        uint256 totalSupplyBefore = IERC4626(vault).totalSupply();
-        address asset = IERC4626(vault).asset();
+        BalanceSnapshot memory balances;
+        balances.asset = IERC4626(vault).asset();
+        balances.sharesBefore = IERC4626(vault).balanceOf(address(this));
+        balances.assetsBefore = IERC20(balances.asset).balanceOf(address(this));
+        balances.totalSupplyBefore = IERC4626(vault).totalSupply();
 
-        IERC20(asset).forceApprove(vault, type(uint256).max);
-        bytes32 diamondAddress = bytes32(uint256(uint160(address(this))));
-        bytes memory fixedData = _replaceBytesInData(
-            data,
-            maskForData,
-            diamondAddress
-        );
+        ExecutionContext memory execution;
+        IERC20(balances.asset).forceApprove(vault, type(uint256).max);
+        execution.diamondAddress = bytes32(uint256(uint160(address(this))));
+        execution.fixedData = _replaceBytesInData(data, validation.maskForData, execution.diamondAddress);
 
-        (bool success, bytes memory result) = vault.call(fixedData);
-        if (!success) revert AsyncActionExecutionFailed(result);
-        IERC20(asset).forceApprove(vault, 0);
+        (execution.success, execution.result) = vault.call(execution.fixedData);
+        if (!execution.success) revert AsyncActionExecutionFailed(execution.result);
+        IERC20(balances.asset).forceApprove(vault, 0);
 
-        uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
-        uint256 assetsBalanceAfter = IERC20(asset).balanceOf(address(this));
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        balances.sharesAfter = IERC4626(vault).balanceOf(address(this));
+        balances.assetsAfter = IERC20(balances.asset).balanceOf(address(this));
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         // Case when upon deposit request assets will be transferred to the vault, but shares will not be minted back until request is executed
-        if (
-            sharesBalanceAfter == sharesBalanceBefore &&
-            assetsBalanceAfter < assetsBalanceBefore
-        ) {
-            ds.lockedTokens[asset] += assetsBalanceBefore - assetsBalanceAfter;
+        if (balances.sharesAfter == balances.sharesBefore && balances.assetsAfter < balances.assetsBefore) {
+            ds.lockedTokens[balances.asset] += balances.assetsBefore - balances.assetsAfter;
             return;
         }
         // Case when upon withdrawal request shares will be transferred to the vault, but assets will not be transferred back until request is executed
-        if (
-            sharesBalanceAfter < sharesBalanceBefore &&
-            assetsBalanceAfter == assetsBalanceBefore
-        ) {
-            ds.lockedTokens[vault] += sharesBalanceBefore - sharesBalanceAfter;
+        if (balances.sharesAfter < balances.sharesBefore && balances.assetsAfter == balances.assetsBefore) {
+            ds.lockedTokens[vault] += balances.sharesBefore - balances.sharesAfter;
             return;
         }
 
-        uint256 totalSupplyAfter = IERC4626(vault).totalSupply();
+        balances.totalSupplyAfter = IERC4626(vault).totalSupply();
         // Case when upon deposit finalization shares will be transferred to the reciever and assets already were locked on request
-        if (
-            sharesBalanceBefore < sharesBalanceAfter &&
-            assetsBalanceAfter == assetsBalanceBefore
-        ) {
+        if (balances.sharesBefore < balances.sharesAfter && balances.assetsAfter == balances.assetsBefore) {
             // If total supply increased, it means that deposit request was executed, otherwise withdrawal request was cancelled
-            if (totalSupplyAfter > totalSupplyBefore) {
-                ds.lockedTokens[asset] -=
-                    sharesBalanceAfter -
-                    sharesBalanceBefore;
+            if (balances.totalSupplyAfter > balances.totalSupplyBefore) {
+                ds.lockedTokens[balances.asset] -= balances.sharesAfter - balances.sharesBefore;
             } else {
                 delete ds.lockedTokens[vault];
             }
             return;
         }
         // Case when upon withdrawal finalization assets will be transferred to the reciever and shares already were locked on request
-        if (
-            sharesBalanceAfter == sharesBalanceBefore &&
-            assetsBalanceBefore < assetsBalanceAfter
-        ) {
+        if (balances.sharesAfter == balances.sharesBefore && balances.assetsBefore < balances.assetsAfter) {
             // If total supply decreased, it means that withdrawal request was executed, otherwise deposit request was cancelled
-            if (totalSupplyBefore > totalSupplyAfter) {
-                ds.lockedTokens[vault] -=
-                    assetsBalanceAfter -
-                    assetsBalanceBefore;
-                MoreVaultsLib.removeTokenIfnecessary(
-                    ds.tokensHeld[ERC4626_ID],
-                    vault
-                );
+            if (balances.totalSupplyBefore > balances.totalSupplyAfter) {
+                ds.lockedTokens[vault] -= balances.assetsAfter - balances.assetsBefore;
+                MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
             } else {
-                delete ds.lockedTokens[asset];
+                delete ds.lockedTokens[balances.asset];
             }
             return;
         }
         // Cases for request without locks
         if (
-            (sharesBalanceAfter == sharesBalanceBefore && // request was created without locks
-                assetsBalanceAfter == assetsBalanceBefore) ||
-            (sharesBalanceAfter > sharesBalanceBefore && // withdrawal request was finalized without locks
-                assetsBalanceAfter < assetsBalanceBefore) ||
-            (sharesBalanceAfter < sharesBalanceBefore && // deposit request was finalized without locks
-                assetsBalanceAfter > assetsBalanceBefore)
+            (
+                balances.sharesAfter == balances.sharesBefore // request was created without locks
+                    && balances.assetsAfter == balances.assetsBefore
+            )
+                || (
+                    balances.sharesAfter > balances.sharesBefore // withdrawal request was finalized without locks
+                        && balances.assetsAfter < balances.assetsBefore
+                )
+                || (
+                    balances.sharesAfter < balances.sharesBefore // deposit request was finalized without locks
+                        && balances.assetsAfter > balances.assetsBefore
+                )
         ) {
             return;
         } else {
@@ -386,11 +319,11 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
      * @param diamondAddress The diamond address to insert
      * @return bytes The modified data with diamond address
      */
-    function _replaceBytesInData(
-        bytes calldata data,
-        bytes memory mask,
-        bytes32 diamondAddress
-    ) internal pure returns (bytes memory) {
+    function _replaceBytesInData(bytes calldata data, bytes memory mask, bytes32 diamondAddress)
+        internal
+        pure
+        returns (bytes memory)
+    {
         uint256 lengthOfData = data.length - 4;
         uint256 lengthOfMask = mask.length;
 
@@ -430,15 +363,8 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
             calldatacopy(dest, data.offset, 4)
 
             let destData := add(dest, 4)
-            for {
-                let i := 0
-            } lt(i, partsCount) {
-                i := add(i, 1)
-            } {
-                mstore(
-                    add(destData, mul(i, 32)),
-                    mload(add(resultParts, add(32, mul(i, 32))))
-                )
+            for { let i := 0 } lt(i, partsCount) { i := add(i, 1) } {
+                mstore(add(destData, mul(i, 32)), mload(add(resultParts, add(32, mul(i, 32)))))
             }
         }
 

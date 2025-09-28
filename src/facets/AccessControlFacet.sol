@@ -8,12 +8,7 @@ import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
 contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.AccessControlFacet");
     }
 
@@ -26,13 +21,9 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
     }
 
     function initialize(bytes calldata data) external initializerFacet {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (address _owner, address _curator, address _guardian) = abi.decode(
-            data,
-            (address, address, address)
-        );
+        (address _owner, address _curator, address _guardian) = abi.decode(data, (address, address, address));
 
         AccessControlLib.setVaultOwner(_owner);
         AccessControlLib.setVaultCurator(_curator);
@@ -41,9 +32,8 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
         ds.supportedInterfaces[type(IAccessControlFacet).interfaceId] = true; // AccessControlFacet
     }
 
-    function onFacetRemoval(address, bool) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function onFacetRemoval(bool) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IAccessControlFacet).interfaceId] = false;
     }
 
@@ -55,10 +45,8 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
         if (newRegistry == address(0)) {
             revert AccessControlLib.ZeroAddress();
         }
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
 
         if (acs.moreVaultsRegistry == newRegistry) {
             revert AccessControlLib.SameAddress();
@@ -70,10 +58,7 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
         // Check if all existing facets and their selectors are allowed in the new registry
         IMoreVaultsRegistry registry = IMoreVaultsRegistry(newRegistry);
         // if address zero allowed as facet, then registry is permissionless
-        if (
-            !IMoreVaultsRegistry(previousRegistry).isFacetAllowed(address(0)) &&
-            registry.isFacetAllowed(address(0))
-        ) {
+        if (!IMoreVaultsRegistry(previousRegistry).isFacetAllowed(address(0)) && registry.isFacetAllowed(address(0))) {
             revert UnaibleToChangeRegistryToPermissionless();
         }
 
@@ -81,7 +66,7 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
         address[] memory facetAddresses = ds.facetAddresses;
 
         // Check each facet and its selectors
-        for (uint256 i; i < facetAddresses.length; ) {
+        for (uint256 i; i < facetAddresses.length;) {
             address facet = facetAddresses[i];
             if (!registry.isFacetAllowed(facet)) {
                 revert VaultHasNotAllowedFacet(facet);

@@ -25,8 +25,7 @@ contract AccessControlFacetTest is Test {
     address public facet2 = address(9);
 
     // Storage slot for AccessControlStorage struct
-    bytes32 constant ACCESS_CONTROL_STORAGE_POSITION =
-        AccessControlLib.ACCESS_CONTROL_STORAGE_POSITION;
+    bytes32 constant ACCESS_CONTROL_STORAGE_POSITION = AccessControlLib.ACCESS_CONTROL_STORAGE_POSITION;
 
     function setUp() public {
         // Deploy facet
@@ -46,42 +45,20 @@ contract AccessControlFacetTest is Test {
         // Set facet selectors
         bytes4[] memory selectors1 = new bytes4[](1);
         selectors1[0] = bytes4(0x12345678);
-        MoreVaultsStorageHelper.setFacetFunctionSelectors(
-            address(facet),
-            facet1,
-            selectors1,
-            0
-        );
+        MoreVaultsStorageHelper.setFacetFunctionSelectors(address(facet), facet1, selectors1, 0);
 
         bytes4[] memory selectors2 = new bytes4[](1);
         selectors2[0] = bytes4(0x87654321);
-        MoreVaultsStorageHelper.setFacetFunctionSelectors(
-            address(facet),
-            facet2,
-            selectors2,
-            0
-        );
+        MoreVaultsStorageHelper.setFacetFunctionSelectors(address(facet), facet2, selectors2, 0);
 
         // Mock registry behavior
+        vm.mockCall(newRegistry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(true));
         vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector),
-            abi.encode(true)
-        );
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector
-            ),
-            abi.encode(facet1)
+            newRegistry, abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector), abi.encode(facet1)
         );
 
         // Mock validateRegistryOwner to return true for registry address
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IAccessControl.hasRole.selector),
-            abi.encode(true)
-        );
+        vm.mockCall(address(registry), abi.encodeWithSelector(IAccessControl.hasRole.selector), abi.encode(true));
     }
 
     function test_initialize_ShouldSetVariablesCorrectly() public view {
@@ -90,21 +67,18 @@ contract AccessControlFacetTest is Test {
         assertEq(facet.guardian(), guardian, "Guardian should be set");
 
         assertEq(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IAccessControlFacet).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IAccessControlFacet).interfaceId),
             true,
             "Supported interfaces should be set"
         );
     }
 
     function test_facetName_ShouldReturnCorrectName() public view {
-        assertEq(
-            facet.facetName(),
-            "AccessControlFacet",
-            "Facet name should be correct"
-        );
+        assertEq(facet.facetName(), "AccessControlFacet", "Facet name should be correct");
+    }
+
+    function test_version_shouldReturnCorrectVersion() public view {
+        assertEq(facet.facetVersion(), "1.0.0", "Version should be correct");
     }
 
     function test_transferCuratorship_ShouldUpdateCurator() public {
@@ -114,11 +88,7 @@ contract AccessControlFacetTest is Test {
         facet.transferCuratorship(newCurator);
 
         // Verify new curator in storage
-        assertEq(
-            MoreVaultsStorageHelper.getOwner(address(facet)),
-            owner,
-            "Owner should be set"
-        );
+        assertEq(MoreVaultsStorageHelper.getOwner(address(facet)), owner, "Owner should be set");
 
         // Verify through getter
         assertEq(facet.curator(), newCurator, "Curator should be updated");
@@ -163,18 +133,10 @@ contract AccessControlFacetTest is Test {
         facet.transferOwnership(newOwner);
 
         // Verify new curator in storage
-        assertEq(
-            MoreVaultsStorageHelper.getPendingOwner(address(facet)),
-            newOwner,
-            "Pending owner should be set"
-        );
+        assertEq(MoreVaultsStorageHelper.getPendingOwner(address(facet)), newOwner, "Pending owner should be set");
 
         // Verify through getter
-        assertEq(
-            facet.pendingOwner(),
-            newOwner,
-            "Pending owner should be updated"
-        );
+        assertEq(facet.pendingOwner(), newOwner, "Pending owner should be updated");
 
         vm.stopPrank();
     }
@@ -202,11 +164,7 @@ contract AccessControlFacetTest is Test {
         facet.acceptOwnership();
 
         // Verify owner in storage
-        assertEq(
-            MoreVaultsStorageHelper.getOwner(address(facet)),
-            newOwner,
-            "Owner should be set"
-        );
+        assertEq(MoreVaultsStorageHelper.getOwner(address(facet)), newOwner, "Owner should be set");
 
         vm.stopPrank();
     }
@@ -224,11 +182,7 @@ contract AccessControlFacetTest is Test {
         facet.acceptOwnership();
 
         // Verify owner in storage
-        assertEq(
-            MoreVaultsStorageHelper.getPendingOwner(address(facet)),
-            address(0),
-            "Pending owner should be 0"
-        );
+        assertEq(MoreVaultsStorageHelper.getPendingOwner(address(facet)), address(0), "Pending owner should be 0");
 
         vm.stopPrank();
     }
@@ -251,9 +205,7 @@ contract AccessControlFacetTest is Test {
 
         // Verify new guardian in storage
         assertEq(
-            MoreVaultsStorageHelper.getGuardian(address(facet)),
-            newGuardian,
-            "Guardian should be updated in storage"
+            MoreVaultsStorageHelper.getGuardian(address(facet)), newGuardian, "Guardian should be updated in storage"
         );
 
         // Verify through getter
@@ -271,9 +223,7 @@ contract AccessControlFacetTest is Test {
 
         // Verify guardian remains unchanged in storage
         assertEq(
-            MoreVaultsStorageHelper.getGuardian(address(facet)),
-            guardian,
-            "Guardian should not be changed in storage"
+            MoreVaultsStorageHelper.getGuardian(address(facet)), guardian, "Guardian should not be changed in storage"
         );
 
         // Verify through getter
@@ -304,22 +254,14 @@ contract AccessControlFacetTest is Test {
 
     function test_curator_ShouldReturnCorrectAddress() public view {
         // Verify curator in storage
-        assertEq(
-            MoreVaultsStorageHelper.getCurator(address(facet)),
-            curator,
-            "Curator should be correct in storage"
-        );
+        assertEq(MoreVaultsStorageHelper.getCurator(address(facet)), curator, "Curator should be correct in storage");
 
         // Verify through getter
         assertEq(facet.curator(), curator, "Curator should be correct");
     }
 
     function test_guardian_ShouldReturnCorrectAddress() public view {
-        assertEq(
-            MoreVaultsStorageHelper.getGuardian(address(facet)),
-            guardian,
-            "Guardian should be correct in storage"
-        );
+        assertEq(MoreVaultsStorageHelper.getGuardian(address(facet)), guardian, "Guardian should be correct in storage");
 
         // Verify through getter
         assertEq(facet.guardian(), guardian, "Guardian should be correct");
@@ -329,37 +271,23 @@ contract AccessControlFacetTest is Test {
         vm.startPrank(owner);
 
         vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(0)
-            ),
-            abi.encode(false)
+            registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)), abi.encode(false)
         );
         vm.mockCall(
             newRegistry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(0)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)),
             abi.encode(false)
         );
 
         // Mock selectorToFacet to return different facets for different selectors
         vm.mockCall(
             newRegistry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                bytes4(0x12345678)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, bytes4(0x12345678)),
             abi.encode(facet1)
         );
         vm.mockCall(
             newRegistry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                bytes4(0x87654321)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, bytes4(0x87654321)),
             abi.encode(facet2)
         );
 
@@ -376,32 +304,20 @@ contract AccessControlFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_setMoreVaultsRegistry_ShouldRevertIfChangingFromPermissionedToPermissionless()
-        public
-    {
+    function test_setMoreVaultsRegistry_ShouldRevertIfChangingFromPermissionedToPermissionless() public {
         vm.startPrank(owner);
 
         vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(0)
-            ),
-            abi.encode(false)
+            registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)), abi.encode(false)
         );
         vm.mockCall(
             newRegistry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(0)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)),
             abi.encode(true)
         );
 
         // Set new registry
-        vm.expectRevert(
-            IAccessControlFacet.UnaibleToChangeRegistryToPermissionless.selector
-        );
+        vm.expectRevert(IAccessControlFacet.UnaibleToChangeRegistryToPermissionless.selector);
         facet.setMoreVaultsRegistry(newRegistry);
 
         vm.stopPrank();
@@ -411,11 +327,7 @@ contract AccessControlFacetTest is Test {
         vm.startPrank(unauthorized);
 
         // Mock validateRegistryOwner to revert for unauthorized address
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IAccessControl.hasRole.selector),
-            abi.encode(false)
-        );
+        vm.mockCall(address(registry), abi.encodeWithSelector(IAccessControl.hasRole.selector), abi.encode(false));
 
         // Attempt to set new registry
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
@@ -451,38 +363,30 @@ contract AccessControlFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_setMoreVaultsRegistry_ShouldRevertWhenFacetNotAllowed()
-        public
-    {
+    function test_setMoreVaultsRegistry_ShouldRevertWhenFacetNotAllowed() public {
         vm.startPrank(owner);
 
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector),
-            abi.encode(false)
-        );
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector),
-            abi.encode(false)
-        );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(false));
+        vm.mockCall(newRegistry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(false));
 
         // Mock registry to return false for isFacetAllowed
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector),
-            abi.encode(false)
-        );
+        vm.mockCall(newRegistry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(false));
 
         // Attempt to set new registry
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControlFacet.VaultHasNotAllowedFacet.selector,
-                address(facet1)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IAccessControlFacet.VaultHasNotAllowedFacet.selector, address(facet1)));
         facet.setMoreVaultsRegistry(newRegistry);
 
         vm.stopPrank();
+    }
+
+    function test_moreVaultRegistry_shouldReturnCorrectRegistry() public view {
+        assertEq(facet.moreVaultsRegistry(), registry, "Registry should be correct in storage");
+    }
+
+    function test_onFacetRemoval_shouldDisableInterface() public {
+        facet.onFacetRemoval(false);
+        assertFalse(
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IAccessControlFacet).interfaceId)
+        );
     }
 }

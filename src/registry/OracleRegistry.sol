@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.10;
 
-import {IAggregatorV2V3Interface} from "../interfaces/Chainlink/IAggregatorV2V3Interface.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {IOracleRegistry} from "../interfaces/IOracleRegistry.sol";
 
@@ -14,13 +13,14 @@ import {IOracleRegistry} from "../interfaces/IOracleRegistry.sol";
  */
 contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
     // Map of asset price sources (asset => priceSource)
-    mapping(address => OracleInfo) private oracleInfos;
+    mapping(address => OracleInfo) private _oracleInfos;
+    // Map of spoke value sources (hub => chainId => oracle)
+    mapping(address => mapping(uint32 => OracleInfo)) private _spokeVaultOracleInfos;
 
     address public override BASE_CURRENCY;
     uint256 public override BASE_CURRENCY_UNIT;
 
-    bytes32 public constant ORACLE_MANAGER_ROLE =
-        keccak256("ORACLE_MANAGER_ROLE");
+    bytes32 public constant ORACLE_MANAGER_ROLE = keccak256("ORACLE_MANAGER_ROLE");
 
     /**
      * @notice Initialize the OracleRegistry
@@ -47,11 +47,18 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
         emit BaseCurrencySet(baseCurrency, baseCurrencyUnit);
     }
 
-    function setOracleInfos(
-        address[] calldata assets,
-        OracleInfo[] calldata infos
-    ) external override onlyRole(ORACLE_MANAGER_ROLE) {
+    function setOracleInfos(address[] calldata assets, OracleInfo[] calldata infos)
+        external
+        onlyRole(ORACLE_MANAGER_ROLE)
+    {
         _setOracleInfos(assets, infos);
+    }
+
+    function setSpokeOracleInfos(address hub, uint32[] calldata chainIds, OracleInfo[] calldata infos)
+        external
+        onlyRole(ORACLE_MANAGER_ROLE)
+    {
+        _setSpokeOracleInfos(hub, chainIds, infos);
     }
 
     /**
@@ -59,17 +66,19 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
      * @param assets The addresses of the assets
      * @param infos The infos of each asset
      */
-    function _setOracleInfos(
-        address[] memory assets,
-        OracleInfo[] memory infos
-    ) internal {
+    function _setOracleInfos(address[] memory assets, OracleInfo[] memory infos) internal {
         if (assets.length != infos.length) {
             revert InconsistentParamsLength();
         }
-        for (uint256 i = 0; i < assets.length; ) {
-            oracleInfos[assets[i]].aggregator = infos[i].aggregator;
-            oracleInfos[assets[i]].stalenessThreshold = infos[i]
-                .stalenessThreshold;
+        for (uint256 i = 0; i < assets.length;) {
+            // If asset is not the base currency, aggregator must be set
+            if (assets[i] != BASE_CURRENCY) {
+                if (address(infos[i].aggregator) == address(0)) {
+                    revert AggregatorNotSet();
+                }
+            }
+            _oracleInfos[assets[i]].aggregator = infos[i].aggregator;
+            _oracleInfos[assets[i]].stalenessThreshold = infos[i].stalenessThreshold;
             emit OracleInfoUpdated(assets[i], infos[i]);
             unchecked {
                 ++i;
@@ -77,27 +86,51 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
         }
     }
 
-    function getAssetPrice(
-        address asset
-    ) public view override returns (uint256) {
-        OracleInfo memory info = oracleInfos[asset];
+    /**
+     * @notice Internal function to set the infos for spoke vaults
+     */
+    function _setSpokeOracleInfos(address hub, uint32[] calldata chainIds, OracleInfo[] calldata infos) internal {
+        if (chainIds.length != infos.length) {
+            revert InconsistentParamsLength();
+        }
+        for (uint256 i = 0; i < chainIds.length;) {
+            _spokeVaultOracleInfos[hub][chainIds[i]] = infos[i];
+            emit SpokeOracleInfoUpdated(hub, chainIds[i], infos[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function getSpokeValue(address hub, uint32 chainId) external view returns (uint256) {
+        OracleInfo memory info = _spokeVaultOracleInfos[hub][chainId];
+
+        (, int256 value,, uint256 updatedAt,) = info.aggregator.latestRoundData();
+
+        // originally in nanoseconds for Stork oracles
+        // workaround to convert from Stork's format to Chainlink's one.
+        if (block.timestamp < updatedAt / 1e7) {
+            updatedAt /= 1e9;
+        }
+        _verifyAnswer(value, updatedAt, info.stalenessThreshold);
+        return uint256(value);
+    }
+
+    function getAssetPrice(address asset) public view override returns (uint256) {
+        OracleInfo memory info = _oracleInfos[asset];
 
         if (asset == BASE_CURRENCY) {
             return BASE_CURRENCY_UNIT;
         } else {
-            (, int256 price, , uint256 updatedAt, ) = info
-                .aggregator
-                .latestRoundData();
-            _verifyPrice(price, updatedAt, info.stalenessThreshold);
+            (, int256 price,, uint256 updatedAt,) = info.aggregator.latestRoundData();
+            _verifyAnswer(price, updatedAt, info.stalenessThreshold);
             return uint256(price);
         }
     }
 
-    function getAssetsPrices(
-        address[] calldata assets
-    ) external view override returns (uint256[] memory) {
+    function getAssetsPrices(address[] calldata assets) external view override returns (uint256[] memory) {
         uint256[] memory prices = new uint256[](assets.length);
-        for (uint256 i = 0; i < assets.length; ) {
+        for (uint256 i = 0; i < assets.length;) {
             prices[i] = getAssetPrice(assets[i]);
             unchecked {
                 ++i;
@@ -106,17 +139,15 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
         return prices;
     }
 
-    function getOracleInfo(
-        address asset
-    ) external view override returns (OracleInfo memory) {
-        return oracleInfos[asset];
+    function getOracleInfo(address asset) external view override returns (OracleInfo memory) {
+        return _oracleInfos[asset];
     }
 
-    function _verifyPrice(
-        int256 answer,
-        uint256 updatedAt,
-        uint96 stalenessThreshold
-    ) internal view {
+    function getSpokeOracleInfo(address hub, uint32 chainId) external view returns (OracleInfo memory) {
+        return _spokeVaultOracleInfos[hub][chainId];
+    }
+
+    function _verifyAnswer(int256 answer, uint256 updatedAt, uint96 stalenessThreshold) internal view {
         if (updatedAt < block.timestamp - stalenessThreshold) {
             revert OraclePriceIsOld();
         }
@@ -125,8 +156,3 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
         }
     }
 }
-
-// TODO: Permissionless OracleRegistry
-// TODO: Permissionless deployment of the vault with flag
-// TODO: deployment script revamp
-// TODO: put timelock to any role change

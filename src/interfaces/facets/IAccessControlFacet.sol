@@ -11,10 +11,7 @@ interface IAccessControlFacet is IGenericMoreVaultFacetInitializable {
     /**
      * @dev Emitted when more vault registry is changed
      */
-    event MoreVaultRegistrySet(
-        address indexed previousRegistry,
-        address indexed newRegistry
-    );
+    event MoreVaultRegistrySet(address indexed previousRegistry, address indexed newRegistry);
 
     /**
      * @notice Sets the more vault registry address, can't be changed from permissioned to permissionless

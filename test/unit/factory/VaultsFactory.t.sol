@@ -7,11 +7,11 @@ import {DiamondCutFacet} from "../../../src/facets/DiamondCutFacet.sol";
 import {IAccessControlFacet, AccessControlFacet} from "../../../src/facets/AccessControlFacet.sol";
 import {IDiamondCut} from "../../../src/interfaces/facets/IDiamondCut.sol";
 import {IMoreVaultsRegistry, IOracleRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
-import {IAggregatorV2V3Interface} from "../../../src/interfaces/Chainlink/IAggregatorV2V3Interface.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
 import {MockFacet} from "../../mocks/MockFacet.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 contract VaultsFactoryTest is Test {
     // Test addresses
@@ -25,6 +25,7 @@ contract VaultsFactoryTest is Test {
     address public feeRecipient = address(4);
     address public oracle = address(5);
     address public layerZeroEndpoint = address(6);
+    uint32 public localEid = uint32(block.chainid);
     uint96 public maxFinalizationTime = 1 days;
     address public asset;
     address public wrappedNative;
@@ -51,93 +52,48 @@ contract VaultsFactoryTest is Test {
 
         // Deploy factory
         vm.prank(admin);
-        factory = new VaultsFactory();
+        factory = new VaultsFactory(layerZeroEndpoint);
+
+        vm.mockCall(
+            layerZeroEndpoint, abi.encodeWithSelector(ILayerZeroEndpointV2.setDelegate.selector, admin), abi.encode()
+        );
     }
 
     function test_initialize_ShouldSetInitialValues() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
-        assertEq(
-            address(VaultsFactory(factory).registry()),
-            registry,
-            "Should set correct registry"
-        );
-        assertEq(
-            VaultsFactory(factory).diamondCutFacet(),
-            diamondCutFacet,
-            "Should set correct diamond cut facet"
-        );
-        assertTrue(
-            VaultsFactory(factory).hasRole(0x00, admin),
-            "Should set admin role"
-        );
+        assertEq(address(VaultsFactory(factory).registry()), registry, "Should set correct registry");
+        assertEq(VaultsFactory(factory).diamondCutFacet(), diamondCutFacet, "Should set correct diamond cut facet");
+        assertEq(VaultsFactory(factory).owner(), admin, "Should set admin role");
     }
 
     function test_initialize_ShouldRevertIfZeroAddress() public {
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
-            admin,
-            address(0),
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, address(0), diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
-            admin,
-            registry,
-            address(0),
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, address(0), accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
-        factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            address(0),
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
-        );
+        factory.initialize(admin, registry, diamondCutFacet, address(0), wrappedNative, localEid, maxFinalizationTime);
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            address(0),
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, address(0), uint32(block.chainid), maxFinalizationTime
         );
     }
 
     function test_setDiamondCutFacet_ShouldRevertWhenNotAdmin() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         address newFacet = address(5);
@@ -149,13 +105,7 @@ contract VaultsFactoryTest is Test {
     function test_setDiamondCutFacet_ShouldRevertWithZeroAddress() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         vm.prank(admin);
@@ -166,35 +116,19 @@ contract VaultsFactoryTest is Test {
     function test_setDiamondCutFacet_ShouldUpdateFacet() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         address newFacet = address(5);
         vm.prank(admin);
         VaultsFactory(factory).setDiamondCutFacet(newFacet);
-        assertEq(
-            VaultsFactory(factory).diamondCutFacet(),
-            newFacet,
-            "Should update diamond cut facet"
-        );
+        assertEq(VaultsFactory(factory).diamondCutFacet(), newFacet, "Should update diamond cut facet");
     }
 
     function test_setAccessControlFacet_ShouldRevertWhenNotAdmin() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         address newFacet = address(5);
@@ -206,13 +140,7 @@ contract VaultsFactoryTest is Test {
     function test_setAccessControlFacet_ShouldRevertWithZeroAddress() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         vm.prank(admin);
@@ -223,43 +151,21 @@ contract VaultsFactoryTest is Test {
     function test_setAccessControlFacet_ShouldUpdateFacet() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         address newFacet = address(5);
         vm.prank(admin);
         VaultsFactory(factory).setAccessControlFacet(newFacet);
-        assertEq(
-            VaultsFactory(factory).accessControlFacet(),
-            newFacet,
-            "Should update access control facet"
-        );
+        assertEq(VaultsFactory(factory).accessControlFacet(), newFacet, "Should update access control facet");
     }
 
     function test_deployVault_ShouldDeployVaultWithFacets() public {
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isPermissionless.selector
-            ),
-            abi.encode(false)
-        );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isPermissionless.selector), abi.encode(false));
 
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         // Prepare facets
@@ -272,158 +178,86 @@ contract VaultsFactoryTest is Test {
             facetAddress: address(vaultFacet),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: selectors,
-            initData: abi.encode(
-                VAULT_NAME,
-                VAULT_SYMBOL,
-                asset,
-                feeRecipient,
-                FEE
-            )
+            initData: abi.encode(VAULT_NAME, VAULT_SYMBOL, asset, feeRecipient, FEE)
         });
 
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                diamondCutFacet
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, diamondCutFacet),
             abi.encode(true)
         );
 
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                IDiamondCut.diamondCut.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, IDiamondCut.diamondCut.selector),
             abi.encode(diamondCutFacet)
         );
 
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                accessControlFacet
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, accessControlFacet),
             abi.encode(true)
         );
 
         vm.mockCall(
             registry,
             abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                IAccessControlFacet.setMoreVaultsRegistry.selector
+                IMoreVaultsRegistry.selectorToFacet.selector, IAccessControlFacet.setMoreVaultsRegistry.selector
             ),
             abi.encode(accessControlFacet)
         );
 
         vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                vaultFacet
-            ),
-            abi.encode(true)
+            registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, vaultFacet), abi.encode(true)
         );
 
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                selectors[0]
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, selectors[0]),
             abi.encode(vaultFacet)
         );
 
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
+        vm.mockCall(address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
 
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset),
             abi.encode(address(1000), uint96(1000))
         );
 
-        bytes memory accessControlFacetInitData = abi.encode(
-            admin,
-            curator,
-            guardian
-        );
-        address vault = VaultsFactory(factory).deployVault(
-            facets,
-            accessControlFacetInitData,
-            true,
-            bytes32(0)
-        );
+        bytes memory accessControlFacetInitData = abi.encode(admin, curator, guardian);
+        address vault = VaultsFactory(factory).deployVault(facets, accessControlFacetInitData, true, bytes32(0));
 
-        assertTrue(
-            VaultsFactory(factory).isVault(vault),
-            "Should mark as factory vault"
-        );
-        assertEq(
-            VaultsFactory(factory).getVaultsCount(),
-            1,
-            "Should increment vaults count"
-        );
+        assertTrue(VaultsFactory(factory).isVault(vault), "Should mark as factory vault");
+        assertEq(VaultsFactory(factory).getVaultsCount(), 1, "Should increment vaults count");
 
         address[] memory vaults = VaultsFactory(factory).getDeployedVaults();
         assertEq(vaults.length, 1, "Should have one deployed vault");
         assertEq(vaults[0], vault, "Should store deployed vault address");
-        assertEq(
-            VaultsFactory(factory).isVault(vault),
-            true,
-            "Should be a factory vault"
-        );
+        assertEq(VaultsFactory(factory).isVault(vault), true, "Should be a factory vault");
     }
 
     function test_isVault_ShouldReturnFalseForNonFactoryVault() public view {
-        assertFalse(
-            VaultsFactory(factory).isVault(address(1)),
-            "Should return false for non-factory vault"
-        );
+        assertFalse(VaultsFactory(factory).isVault(address(1)), "Should return false for non-factory vault");
     }
 
-    function test_getDeployedVaults_ShouldReturnEmptyArrayInitially()
-        public
-        view
-    {
+    function test_getDeployedVaults_ShouldReturnEmptyArrayInitially() public view {
         address[] memory vaults = VaultsFactory(factory).getDeployedVaults();
         assertEq(vaults.length, 0, "Should return empty array initially");
     }
 
     function test_getVaultsCount_ShouldReturnZeroInitially() public view {
-        assertEq(
-            VaultsFactory(factory).getVaultsCount(),
-            0,
-            "Should return zero initially"
-        );
+        assertEq(VaultsFactory(factory).getVaultsCount(), 0, "Should return zero initially");
     }
 
     function test_linkVault_shouldRevertIfCallerIsVault() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                VaultsFactory.NotAuthorizedToLinkFacets.selector,
-                curator
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(VaultsFactory.NotAuthorizedToLinkFacets.selector, curator));
         vm.prank(curator);
         VaultsFactory(factory).link(address(0));
     }
 
     function test_linkVault_shouldRevertIfCallerIsNotAdmin() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                curator,
-                bytes32(0)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, curator));
         vm.prank(curator);
         VaultsFactory(factory).pauseFacet(address(0));
     }
@@ -431,42 +265,23 @@ contract VaultsFactoryTest is Test {
     function test_pauseFacet_ShouldAddFacetToRestricted() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         vm.prank(admin);
         VaultsFactory(factory).pauseFacet(address(diamondCutFacet));
 
-        address[] memory restricredFacets = VaultsFactory(factory)
-            .getRestrictedFacets();
+        address[] memory restricredFacets = VaultsFactory(factory).getRestrictedFacets();
         assertEq(restricredFacets.length, 1);
         assertEq(restricredFacets[0], address(diamondCutFacet));
     }
 
     function test_pauseShouldWorkForSelectedFacet() public {
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isPermissionless.selector
-            ),
-            abi.encode(false)
-        );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isPermissionless.selector), abi.encode(false));
 
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
 
         // Prepare facets
@@ -479,13 +294,7 @@ contract VaultsFactoryTest is Test {
             facetAddress: address(vaultFacet),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: vaultSelectors,
-            initData: abi.encode(
-                VAULT_NAME,
-                VAULT_SYMBOL,
-                asset,
-                feeRecipient,
-                FEE
-            )
+            initData: abi.encode(VAULT_NAME, VAULT_SYMBOL, asset, feeRecipient, FEE)
         });
 
         // Prepare facets
@@ -522,180 +331,108 @@ contract VaultsFactoryTest is Test {
             initData: ""
         });
 
-        bytes memory accessControlFacetInitData = abi.encode(
-            admin,
-            curator,
-            guardian
-        );
+        bytes memory accessControlFacetInitData = abi.encode(admin, curator, guardian);
 
         // check registry if permissionless
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isPermissionless.selector
-            ),
-            abi.encode(false)
-        );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isPermissionless.selector), abi.encode(false));
 
         // allow vault facet
         vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                vaultFacet
-            ),
-            abi.encode(true)
+            registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, vaultFacet), abi.encode(true)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                VaultFacet.initialize.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, VaultFacet.initialize.selector),
             abi.encode(vaultFacet)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                VaultFacet.paused.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, VaultFacet.paused.selector),
             abi.encode(vaultFacet)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                VaultFacet.pause.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, VaultFacet.pause.selector),
             abi.encode(vaultFacet)
         );
 
         // allow diamond cut facet
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                diamondCutFacet
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, diamondCutFacet),
             abi.encode(true)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                IDiamondCut.diamondCut.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, IDiamondCut.diamondCut.selector),
             abi.encode(diamondCutFacet)
         );
 
         // allow access control facet
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                accessControlFacet
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, accessControlFacet),
             abi.encode(true)
         );
         vm.mockCall(
             registry,
             abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                IAccessControlFacet.setMoreVaultsRegistry.selector
+                IMoreVaultsRegistry.selectorToFacet.selector, IAccessControlFacet.setMoreVaultsRegistry.selector
             ),
             abi.encode(accessControlFacet)
         );
 
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
+        vm.mockCall(address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
 
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset),
             abi.encode(address(1000), uint96(1000))
         );
 
         // allow mock1
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(mock1)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(mock1)),
             abi.encode(true)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                TEST_SELECTOR
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, TEST_SELECTOR),
             abi.encode(address(mock1))
         );
 
-        address vault1 = VaultsFactory(factory).deployVault(
-            facets1,
-            accessControlFacetInitData,
-            true,
-            bytes32(0)
-        );
+        address vault1 = VaultsFactory(factory).deployVault(facets1, accessControlFacetInitData, true, bytes32(0));
 
         // aloow mock 2
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(mock2)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(mock2)),
             abi.encode(true)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                TEST_SELECTOR
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, TEST_SELECTOR),
             abi.encode(address(mock2))
         );
 
-        address vault2 = VaultsFactory(factory).deployVault(
-            facets2,
-            accessControlFacetInitData,
-            true,
-            bytes32(uint256(1))
-        );
+        address vault2 =
+            VaultsFactory(factory).deployVault(facets2, accessControlFacetInitData, true, bytes32(uint256(1)));
 
         // allow mock3
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(mock3)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(mock3)),
             abi.encode(true)
         );
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                TEST_SELECTOR
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, TEST_SELECTOR),
             abi.encode(address(mock3))
         );
 
-        address vault3 = VaultsFactory(factory).deployVault(
-            facets3,
-            accessControlFacetInitData,
-            true,
-            bytes32(uint256(2))
-        );
+        address vault3 =
+            VaultsFactory(factory).deployVault(facets3, accessControlFacetInitData, true, bytes32(uint256(2)));
 
         vm.prank(admin);
         VaultsFactory(factory).pauseFacet(address(mock2));
@@ -705,13 +442,7 @@ contract VaultsFactoryTest is Test {
     }
 
     function test_setFacetRestricted_shouldRevertIfCalledNotByAnAdmin() public {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                curator,
-                bytes32(0)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, curator));
         vm.prank(curator);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);
     }
@@ -719,19 +450,12 @@ contract VaultsFactoryTest is Test {
     function test_setFacetRestricted_shouldSetFacetToRestricted() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);
 
-        address[] memory restricredFacets = VaultsFactory(factory)
-            .getRestrictedFacets();
+        address[] memory restricredFacets = VaultsFactory(factory).getRestrictedFacets();
         assertEq(restricredFacets.length, 1);
         assertEq(restricredFacets[0], address(diamondCutFacet));
     }
@@ -739,13 +463,7 @@ contract VaultsFactoryTest is Test {
     function test_setFacetRestricted_shouldSetFacetToNotRestricted() public {
         vm.prank(admin);
         factory.initialize(
-            admin,
-            registry,
-            diamondCutFacet,
-            accessControlFacet,
-            wrappedNative,
-            layerZeroEndpoint,
-            maxFinalizationTime
+            admin, registry, diamondCutFacet, accessControlFacet, wrappedNative, localEid, maxFinalizationTime
         );
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);
@@ -753,8 +471,7 @@ contract VaultsFactoryTest is Test {
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, false);
 
-        address[] memory restricredFacets = VaultsFactory(factory)
-            .getRestrictedFacets();
+        address[] memory restricredFacets = VaultsFactory(factory).getRestrictedFacets();
         assertEq(restricredFacets.length, 0);
     }
 }

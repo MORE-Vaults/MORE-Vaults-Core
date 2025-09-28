@@ -16,26 +16,14 @@ interface IERC7540 is IERC4626 {
 
     // Events
     event DepositRequest(
-        address indexed controller,
-        address indexed owner,
-        uint256 indexed requestId,
-        address sender,
-        uint256 assets
+        address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 assets
     );
 
     event RedeemRequest(
-        address indexed controller,
-        address indexed owner,
-        uint256 indexed requestId,
-        address sender,
-        uint256 shares
+        address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 shares
     );
 
-    event OperatorSet(
-        address indexed controller,
-        address indexed operator,
-        bool approved
-    );
+    event OperatorSet(address indexed controller, address indexed operator, bool approved);
 
     /**
      * @dev Indicates an error related to the current `shares` of a `sender`.
@@ -74,11 +62,7 @@ interface IERC7540 is IERC4626 {
      * @param owner The owner of the assets.
      * @return requestId The unique identifier for this deposit request.
      */
-    function requestDeposit(
-        uint256 assets,
-        address controller,
-        address owner
-    ) external returns (uint256 requestId);
+    function requestDeposit(uint256 assets, address controller, address owner) external returns (uint256 requestId);
 
     /**
      * @dev Initiates a redeem request.
@@ -87,11 +71,7 @@ interface IERC7540 is IERC4626 {
      * @param owner The owner of the shares.
      * @return requestId The unique identifier for this redeem request.
      */
-    function requestRedeem(
-        uint256 shares,
-        address controller,
-        address owner
-    ) external returns (uint256 requestId);
+    function requestRedeem(uint256 shares, address controller, address owner) external returns (uint256 requestId);
 
     /**
      * @dev Deposits assets to the vault.
@@ -100,11 +80,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return shares The amount of shares received.
      */
-    function deposit(
-        uint256 assets,
-        address receiver,
-        address controller
-    ) external returns (uint256 shares);
+    function deposit(uint256 assets, address receiver, address controller) external returns (uint256 shares);
 
     /**
      * @dev Mints shares to the vault.
@@ -113,11 +89,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return assets The amount of assets received.
      */
-    function mint(
-        uint256 shares,
-        address receiver,
-        address controller
-    ) external returns (uint256 assets);
+    function mint(uint256 shares, address receiver, address controller) external returns (uint256 assets);
 
     /**
      * @dev Withdraws assets from the vault.
@@ -126,11 +98,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return shares The amount of shares received.
      */
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address controller
-    ) external returns (uint256 shares);
+    function withdraw(uint256 assets, address receiver, address controller) external returns (uint256 shares);
 
     /**
      * @dev Redeems shares from the vault.
@@ -139,11 +107,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return assets The amount of assets received.
      */
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address controller
-    ) external returns (uint256 assets);
+    function redeem(uint256 shares, address receiver, address controller) external returns (uint256 assets);
 
     /**
      * @dev Gets the pending deposit request amount for a given controller and requestId.
@@ -151,10 +115,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return assets The amount of assets in the pending state.
      */
-    function pendingDepositRequest(
-        uint256 requestId,
-        address controller
-    ) external view returns (uint256 assets);
+    function pendingDepositRequest(uint256 requestId, address controller) external view returns (uint256 assets);
 
     /**
      * @dev Gets the pending redeem request amount for a given controller and requestId.
@@ -162,10 +123,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return shares The amount of shares in the pending state.
      */
-    function pendingRedeemRequest(
-        uint256 requestId,
-        address controller
-    ) external view returns (uint256 shares);
+    function pendingRedeemRequest(uint256 requestId, address controller) external view returns (uint256 shares);
 
     /**
      * @dev Gets the claimable deposit request amount for a given controller and requestId.
@@ -173,10 +131,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return assets The amount of assets in the claimable state.
      */
-    function claimableDepositRequest(
-        uint256 requestId,
-        address controller
-    ) external view returns (uint256 assets);
+    function claimableDepositRequest(uint256 requestId, address controller) external view returns (uint256 assets);
 
     /**
      * @dev Gets the claimable redeem request amount for a given controller and requestId.
@@ -184,10 +139,7 @@ interface IERC7540 is IERC4626 {
      * @param controller The address of the controller.
      * @return shares The amount of shares in the claimable state.
      */
-    function claimableRedeemRequest(
-        uint256 requestId,
-        address controller
-    ) external view returns (uint256 shares);
+    function claimableRedeemRequest(uint256 requestId, address controller) external view returns (uint256 shares);
 
     /**
      * @dev Sets or revokes an operator for the given controller.
@@ -195,10 +147,7 @@ interface IERC7540 is IERC4626 {
      * @param approved The approval status of the operator.
      * @return success Whether the operation was successful.
      */
-    function setOperator(
-        address operator,
-        bool approved
-    ) external returns (bool success);
+    function setOperator(address operator, bool approved) external returns (bool success);
 
     /**
      * @dev Checks if an operator is approved for a controller.
@@ -206,8 +155,5 @@ interface IERC7540 is IERC4626 {
      * @param operator The address of the operator.
      * @return status Whether the operator is approved.
      */
-    function isOperator(
-        address controller,
-        address operator
-    ) external view returns (bool status);
+    function isOperator(address controller, address operator) external view returns (bool status);
 }
