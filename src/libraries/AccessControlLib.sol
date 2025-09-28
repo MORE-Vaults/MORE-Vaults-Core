@@ -14,8 +14,7 @@ library AccessControlLib {
     error SameAddress();
     error NotPendingOwner();
 
-    bytes32 constant ACCESS_CONTROL_STORAGE_POSITION =
-        keccak256("MoreVaults.accessControl.storage");
+    bytes32 constant ACCESS_CONTROL_STORAGE_POSITION = keccak256("MoreVaults.accessControl.storage");
 
     struct AccessControlStorage {
         address owner;
@@ -38,24 +37,14 @@ library AccessControlLib {
     /**
      * @dev Emitted when curator address is changed
      */
-    event CuratorChanged(
-        address indexed previousCurator,
-        address indexed newCurator
-    );
+    event CuratorChanged(address indexed previousCurator, address indexed newCurator);
 
     /**
      * @dev Emitted when guardian address is changed
      */
-    event GuardianChanged(
-        address indexed previousGuardian,
-        address indexed newGuardian
-    );
+    event GuardianChanged(address indexed previousGuardian, address indexed newGuardian);
 
-    function accessControlStorage()
-        internal
-        pure
-        returns (AccessControlStorage storage acs)
-    {
+    function accessControlStorage() internal pure returns (AccessControlStorage storage acs) {
         bytes32 position = ACCESS_CONTROL_STORAGE_POSITION;
         // assigns struct storage slot to the storage position
         assembly {
@@ -84,10 +73,7 @@ library AccessControlLib {
      * @param caller Address to validate
      */
     function validateCurator(address caller) internal view {
-        if (
-            caller != accessControlStorage().curator &&
-            accessControlStorage().owner != caller
-        ) {
+        if (caller != accessControlStorage().curator && accessControlStorage().owner != caller) {
             revert UnauthorizedAccess();
         }
     }
@@ -97,10 +83,7 @@ library AccessControlLib {
      * @param caller Address to validate
      */
     function validateGuardian(address caller) internal view {
-        if (
-            accessControlStorage().guardian != caller &&
-            accessControlStorage().owner != caller
-        ) {
+        if (accessControlStorage().guardian != caller && accessControlStorage().owner != caller) {
             revert UnauthorizedAccess();
         }
     }

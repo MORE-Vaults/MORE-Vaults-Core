@@ -21,10 +21,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @dev Events
      */
     /// @notice Emitted when the MoreVaults registry is set
-    event MoreVaultRegistrySet(
-        address indexed previousRegistry,
-        address indexed newRegistry
-    );
+    event MoreVaultRegistrySet(address indexed previousRegistry, address indexed newRegistry);
     /// @notice Emitted when a new asset is added
     event AssetAdded(address indexed asset);
     /// @notice Emitted when an asset is removed
@@ -63,10 +60,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param depositors Array of depositors
      * @param undelyingAssetCaps Array of underlying asset caps
      */
-    function setDepositWhitelist(
-        address[] calldata depositors,
-        uint256[] calldata undelyingAssetCaps
-    ) external;
+    function setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) external;
 
     /**
      * @notice Enables deposit whitelist
@@ -86,9 +80,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param depositor Depositor address
      * @return Undelying asset cap
      */
-    function getDepositWhitelist(
-        address depositor
-    ) external view returns (uint256);
+    function getDepositWhitelist(address depositor) external view returns (uint256);
 
     /**
      * @notice Adds new available asset
@@ -239,21 +231,15 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     /// @notice Get the lockedTokens amount of an asset
     /// @param asset The asset to get the lockedTokens amount of
     /// @return The lockedTokens amount of the asset
-    function lockedTokensAmountOfAsset(
-        address asset
-    ) external view returns (uint256);
+    function lockedTokensAmountOfAsset(address asset) external view returns (uint256);
 
     /// @notice Get the staking addresses for a given staking facet
     /// @param stakingFacetId The staking facet to get the staking addresses of
     /// @return The staking addresses for the given staking facet
-    function getStakingAddresses(
-        bytes32 stakingFacetId
-    ) external view returns (address[] memory);
+    function getStakingAddresses(bytes32 stakingFacetId) external view returns (address[] memory);
 
     /// @notice Returns array of tokens held in the vault based on their IDs
     /// @param tokenId token type ID
     /// @return array of token addresses
-    function tokensHeld(
-        bytes32 tokenId
-    ) external view returns (address[] memory);
+    function tokensHeld(bytes32 tokenId) external view returns (address[] memory);
 }

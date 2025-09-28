@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-import {MoreVaultsLib, BEFORE_ACCOUNTING_SELECTOR, BEFORE_ACCOUNTING_FAILED_ERROR, ACCOUNTING_FAILED_ERROR, BALANCE_OF_SELECTOR} from "../libraries/MoreVaultsLib.sol";
+import {
+    MoreVaultsLib,
+    BEFORE_ACCOUNTING_SELECTOR,
+    BEFORE_ACCOUNTING_FAILED_ERROR,
+    ACCOUNTING_FAILED_ERROR,
+    BALANCE_OF_SELECTOR
+} from "../libraries/MoreVaultsLib.sol";
 import {AccessControlLib} from "../libraries/AccessControlLib.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {ERC4626Upgradeable, SafeERC20} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {
+    ERC4626Upgradeable,
+    SafeERC20
+} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -15,12 +24,7 @@ import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {MessagingReceipt} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
-contract VaultFacet is
-    ERC4626Upgradeable,
-    PausableUpgradeable,
-    IVaultFacet,
-    BaseFacetInitializer
-{
+contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, BaseFacetInitializer {
     using Math for uint256;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -38,25 +42,11 @@ contract VaultFacet is
     error RequestWasntFulfilled();
     error RequestWithdrawDisabled();
 
-    event WithdrawRequestCreated(
-        address requester,
-        uint256 sharesAmount,
-        uint256 endsAt
-    );
-    event WithdrawRequestFulfilled(
-        address requester,
-        address receiver,
-        uint256 sharesAmount,
-        uint256 assetAmount
-    );
+    event WithdrawRequestCreated(address requester, uint256 sharesAmount, uint256 endsAt);
+    event WithdrawRequestFulfilled(address requester, address receiver, uint256 sharesAmount, uint256 assetAmount);
     event WithdrawRequestDeleted(address requester);
 
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.MoreVaults");
     }
 
@@ -68,9 +58,7 @@ contract VaultFacet is
         return "1.0.0";
     }
 
-    function initialize(
-        bytes calldata data
-    ) external initializerFacet initializer {
+    function initialize(bytes calldata data) external initializerFacet initializer {
         (
             string memory name,
             string memory symbol,
@@ -78,18 +66,12 @@ contract VaultFacet is
             address feeRecipient,
             uint96 fee,
             uint256 depositCapacity
-        ) = abi.decode(
-                data,
-                (string, string, address, address, uint96, uint256)
-            );
-        if (
-            asset == address(0) ||
-            feeRecipient == address(0) ||
-            fee > MoreVaultsLib.FEE_BASIS_POINT
-        ) revert InvalidParameters();
+        ) = abi.decode(data, (string, string, address, address, uint96, uint256));
+        if (asset == address(0) || feeRecipient == address(0) || fee > MoreVaultsLib.FEE_BASIS_POINT) {
+            revert InvalidParameters();
+        }
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         // Facet interfaces
         ds.supportedInterfaces[type(IERC20).interfaceId] = true; // ERC20 interface
@@ -106,20 +88,14 @@ contract VaultFacet is
     }
 
     function onFacetRemoval(bool) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IVaultFacet).interfaceId] = false;
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function paused()
-        public
-        view
-        override(PausableUpgradeable, IVaultFacet)
-        returns (bool)
-    {
+    function paused() public view override(PausableUpgradeable, IVaultFacet) returns (bool) {
         return super.paused();
     }
 
@@ -128,9 +104,8 @@ contract VaultFacet is
      */
     function pause() external {
         if (
-            AccessControlLib.vaultOwner() != msg.sender &&
-            AccessControlLib.vaultGuardian() != msg.sender &&
-            MoreVaultsLib.factoryAddress() != msg.sender
+            AccessControlLib.vaultOwner() != msg.sender && AccessControlLib.vaultGuardian() != msg.sender
+                && MoreVaultsLib.factoryAddress() != msg.sender
         ) {
             revert AccessControlLib.UnauthorizedAccess();
         }
@@ -144,7 +119,7 @@ contract VaultFacet is
         AccessControlLib.validateGuardian(msg.sender);
         IVaultsFactory factory = IVaultsFactory(MoreVaultsLib.factoryAddress());
         address[] memory restrictedFacets = factory.getRestrictedFacets();
-        for (uint256 i = 0; i < restrictedFacets.length; ) {
+        for (uint256 i = 0; i < restrictedFacets.length;) {
             if (factory.isVaultLinked(restrictedFacets[i], address(this))) {
                 revert VaultIsUsingRestrictedFacet(restrictedFacets[i]);
             }
@@ -172,7 +147,7 @@ contract VaultFacet is
         assembly {
             mstore(_freePtr, BALANCE_OF_SELECTOR)
         }
-        for (uint i; i < _assets.length; ) {
+        for (uint256 i; i < _assets.length;) {
             address asset;
             uint256 toConvert;
             assembly {
@@ -182,14 +157,7 @@ contract VaultFacet is
                 asset := sload(add(slot, i))
                 mstore(add(_freePtr, 0x04), address())
                 let retOffset := add(_freePtr, 0x24)
-                let res := staticcall(
-                    gas(),
-                    asset,
-                    _freePtr,
-                    0x24,
-                    retOffset,
-                    0x20
-                )
+                let res := staticcall(gas(), asset, _freePtr, 0x24, retOffset, 0x20)
                 if iszero(res) {
                     switch _allowFailure
                     case 1 {
@@ -197,9 +165,7 @@ contract VaultFacet is
                         mstore(add(_freePtr, 0x04), asset)
                         revert(_freePtr, 0x24)
                     }
-                    case 0 {
-                        success := 0
-                    }
+                    case 0 { success := 0 }
                 }
                 toConvert := mload(retOffset)
 
@@ -212,15 +178,8 @@ contract VaultFacet is
                 if eq(_wrappedNative, asset) {
                     // if the vault processes native deposits, make sure to exclude msg.value
                     switch iszero(_isNativeDeposit)
-                    case 1 {
-                        toConvert := add(toConvert, selfbalance())
-                    }
-                    default {
-                        toConvert := add(
-                            toConvert,
-                            sub(selfbalance(), callvalue())
-                        )
-                    }
+                    case 1 { toConvert := add(toConvert, selfbalance()) }
+                    default { toConvert := add(toConvert, sub(selfbalance(), callvalue())) }
                 }
             }
             if (!success) {
@@ -228,23 +187,18 @@ contract VaultFacet is
             }
             // convert to underlying
             // this function will use new free mem ptr
-            _totalAssets += MoreVaultsLib.convertToUnderlying(
-                asset,
-                toConvert,
-                Math.Rounding.Floor
-            );
+            _totalAssets += MoreVaultsLib.convertToUnderlying(asset, toConvert, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
         }
     }
 
-    function _accountFacets(
-        bytes32[] storage _selectors,
-        uint256 _totalAssets,
-        uint256 _freePtr,
-        bool _allowFailure
-    ) private view returns (uint256 newTotalAssets, bool success) {
+    function _accountFacets(bytes32[] storage _selectors, uint256 _totalAssets, uint256 _freePtr, bool _allowFailure)
+        private
+        view
+        returns (uint256 newTotalAssets, bool success)
+    {
         assembly {
             // put a debt variable on the stack
             let debt := 0
@@ -256,22 +210,11 @@ contract VaultFacet is
             // set return offset
             let retOffset := add(_freePtr, 0x04)
             // loop through facets
-            for {
-                let i := 0
-            } lt(i, length) {
-                i := add(i, 1)
-            } {
+            for { let i := 0 } lt(i, length) { i := add(i, 1) } {
                 // read facet selector and execute staticcall
                 let selector := sload(add(slot, i))
                 mstore(_freePtr, selector)
-                let res := staticcall(
-                    gas(),
-                    address(),
-                    _freePtr,
-                    4,
-                    retOffset,
-                    0x40
-                )
+                let res := staticcall(gas(), address(), _freePtr, 4, retOffset, 0x40)
                 // if staticcall fails, revert with the error
                 if iszero(res) {
                     switch _allowFailure
@@ -289,33 +232,21 @@ contract VaultFacet is
                 let decodedAmount := mload(retOffset)
                 let isPositive := mload(add(retOffset, 0x20))
                 // if the amount is positive, add it to the total assets else add to debt
-                if isPositive {
-                    _totalAssets := add(_totalAssets, decodedAmount)
-                }
-                if iszero(isPositive) {
-                    debt := add(debt, decodedAmount)
-                }
+                if isPositive { _totalAssets := add(_totalAssets, decodedAmount) }
+                if iszero(isPositive) { debt := add(debt, decodedAmount) }
             }
 
             // after accounting is done check if total assets are greater than debt
             // else leave totalAssets unassigned as "lower" and "equal" should return 0
-            if gt(_totalAssets, debt) {
-                newTotalAssets := sub(_totalAssets, debt)
-            }
+            if gt(_totalAssets, debt) { newTotalAssets := sub(_totalAssets, debt) }
         }
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function totalAssets()
-        public
-        view
-        override(ERC4626Upgradeable, IVaultFacet)
-        returns (uint256 _totalAssets)
-    {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function totalAssets() public view override(ERC4626Upgradeable, IVaultFacet) returns (uint256 _totalAssets) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         // get free mem ptr for efficient calls
         uint256 freePtr;
@@ -323,30 +254,15 @@ contract VaultFacet is
             freePtr := 0x60
         }
         // account available assets
-        (_totalAssets, ) = _accountAvailableAssets(
-            ds.availableAssets,
-            ds.lockedTokens,
-            ds.wrappedNative,
-            ds.isNativeDeposit,
-            freePtr,
-            true
+        (_totalAssets,) = _accountAvailableAssets(
+            ds.availableAssets, ds.lockedTokens, ds.wrappedNative, ds.isNativeDeposit, freePtr, true
         );
         // account facets
-        (_totalAssets, ) = _accountFacets(
-            ds.facetsForAccounting,
-            _totalAssets,
-            freePtr,
-            true
-        );
+        (_totalAssets,) = _accountFacets(ds.facetsForAccounting, _totalAssets, freePtr, true);
     }
 
-    function totalAssetsUsd()
-        public
-        view
-        returns (uint256 _totalAssets, bool success)
-    {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function totalAssetsUsd() public view returns (uint256 _totalAssets, bool success) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         // get free mem ptr for efficient calls
         uint256 freePtr;
@@ -355,34 +271,18 @@ contract VaultFacet is
         }
         // account available assets
         (_totalAssets, success) = _accountAvailableAssets(
-            ds.availableAssets,
-            ds.lockedTokens,
-            ds.wrappedNative,
-            ds.isNativeDeposit,
-            freePtr,
-            false
+            ds.availableAssets, ds.lockedTokens, ds.wrappedNative, ds.isNativeDeposit, freePtr, false
         );
         if (!success) {
             return (0, false);
         }
         // account facets
-        (_totalAssets, success) = _accountFacets(
-            ds.facetsForAccounting,
-            _totalAssets,
-            freePtr,
-            false
-        );
+        (_totalAssets, success) = _accountFacets(ds.facetsForAccounting, _totalAssets, freePtr, false);
         if (!success) {
             return (0, false);
         }
 
-        return (
-            MoreVaultsLib.convertUnderlyingToUsd(
-                _totalAssets,
-                Math.Rounding.Floor
-            ),
-            true
-        );
+        return (MoreVaultsLib.convertUnderlyingToUsd(_totalAssets, Math.Rounding.Floor), true);
     }
 
     /**
@@ -392,8 +292,7 @@ contract VaultFacet is
     function maxDeposit(
         address // receiver
     ) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         uint256 assetsInVault = totalAssets();
         if (ds.depositCapacity == 0) {
             return type(uint256).max;
@@ -412,8 +311,7 @@ contract VaultFacet is
     function maxMint(
         address // receiver
     ) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         uint256 assetsInVault = totalAssets();
         if (ds.depositCapacity == 0) {
             return type(uint256).max;
@@ -421,26 +319,17 @@ contract VaultFacet is
         if (assetsInVault > ds.depositCapacity) {
             return 0;
         } else {
-            return
-                _convertToShares(
-                    ds.depositCapacity - assetsInVault,
-                    Math.Rounding.Floor
-                );
+            return _convertToShares(ds.depositCapacity - assetsInVault, Math.Rounding.Floor);
         }
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function getWithdrawalRequest(
-        address _owner
-    ) public view returns (uint256 shares, uint256 timelockEndsAt) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function getWithdrawalRequest(address _owner) public view returns (uint256 shares, uint256 timelockEndsAt) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
-            _owner
-        ];
+        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[_owner];
 
         return (request.shares, request.timelockEndsAt);
     }
@@ -449,15 +338,12 @@ contract VaultFacet is
      * @inheritdoc IVaultFacet
      */
     function clearRequest() public {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (!ds.isHub) {
             revert NotAHub();
         }
 
-        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
-            msg.sender
-        ];
+        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[msg.sender];
 
         delete request.shares;
         delete request.timelockEndsAt;
@@ -471,8 +357,7 @@ contract VaultFacet is
     function requestRedeem(uint256 _shares) external {
         MoreVaultsLib.validateNotMulticall();
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (!ds.isHub) {
             revert NotAHub();
@@ -490,9 +375,7 @@ contract VaultFacet is
             revert ERC4626ExceededMaxRedeem(msg.sender, _shares, maxRedeem_);
         }
 
-        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
-            msg.sender
-        ];
+        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[msg.sender];
         request.shares = _shares;
         uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
@@ -506,8 +389,7 @@ contract VaultFacet is
     function requestWithdraw(uint256 _assets) external {
         MoreVaultsLib.validateNotMulticall();
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (!ds.isWithdrawalQueueEnabled) {
             revert WithdrawalQueueDisabled();
         }
@@ -519,22 +401,14 @@ contract VaultFacet is
             revert NotAHub();
         }
         IVaultsFactory factory = IVaultsFactory(ds.factory);
-        if (
-            factory.isCrossChainVault(factory.localEid(), address(this)) &&
-            !ds.oraclesCrossChainAccounting
-        ) {
+        if (factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting) {
             revert RequestWithdrawDisabled();
         }
         _beforeAccounting(ds.beforeAccountingFacets);
         uint256 newTotalAssets = totalAssets();
         _accrueInterest(newTotalAssets, uint64(block.timestamp));
 
-        uint256 shares = _convertToSharesWithTotals(
-            _assets,
-            totalSupply(),
-            newTotalAssets,
-            Math.Rounding.Ceil
-        );
+        uint256 shares = _convertToSharesWithTotals(_assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
         if (shares == 0) {
             revert InvalidSharesAmount();
@@ -545,9 +419,7 @@ contract VaultFacet is
             revert ERC4626ExceededMaxRedeem(msg.sender, shares, maxRedeem_);
         }
 
-        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[
-            msg.sender
-        ];
+        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[msg.sender];
 
         request.shares = shares;
 
@@ -560,10 +432,7 @@ contract VaultFacet is
     /**
      * @inheritdoc IVaultFacet
      */
-    function deposit(
-        uint256 assets,
-        address receiver
-    )
+    function deposit(uint256 assets, address receiver)
         public
         virtual
         override(ERC4626Upgradeable, IVaultFacet)
@@ -571,36 +440,23 @@ contract VaultFacet is
         returns (uint256 shares)
     {
         MoreVaultsLib.validateNotMulticall();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (
-            uint256 newTotalAssets,
-            address msgSender,
-            uint64 timestamp
-        ) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
 
         _accrueInterest(newTotalAssets, timestamp);
         _validateCapacity(receiver, newTotalAssets, assets);
 
         ds.lastTotalAssets = newTotalAssets;
 
-        shares = _convertToSharesWithTotals(
-            assets,
-            totalSupply(),
-            newTotalAssets,
-            Math.Rounding.Floor
-        );
+        shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, assets, shares);
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function mint(
-        uint256 shares,
-        address receiver
-    )
+    function mint(uint256 shares, address receiver)
         public
         virtual
         override(ERC4626Upgradeable, IVaultFacet)
@@ -608,24 +464,14 @@ contract VaultFacet is
         returns (uint256 assets)
     {
         MoreVaultsLib.validateNotMulticall();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (
-            uint256 newTotalAssets,
-            address msgSender,
-            uint64 timestamp
-        ) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
 
         _accrueInterest(newTotalAssets, timestamp);
         ds.lastTotalAssets = newTotalAssets;
 
-        assets = _convertToAssetsWithTotals(
-            shares,
-            totalSupply(),
-            newTotalAssets,
-            Math.Rounding.Ceil
-        );
+        assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
         _validateCapacity(receiver, newTotalAssets, assets);
         _deposit(msgSender, receiver, assets, shares);
     }
@@ -633,11 +479,7 @@ contract VaultFacet is
     /**
      * @inheritdoc IVaultFacet
      */
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    )
+    function withdraw(uint256 assets, address receiver, address owner)
         public
         virtual
         override(ERC4626Upgradeable, IVaultFacet)
@@ -646,22 +488,12 @@ contract VaultFacet is
     {
         MoreVaultsLib.validateNotMulticall();
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        (
-            uint256 newTotalAssets,
-            address msgSender,
-            uint64 timestamp
-        ) = _getInfoForAction(ds);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
 
         _accrueInterest(newTotalAssets, timestamp);
 
-        shares = _convertToSharesWithTotals(
-            assets,
-            totalSupply(),
-            newTotalAssets,
-            Math.Rounding.Ceil
-        );
+        shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
         bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
@@ -674,25 +506,13 @@ contract VaultFacet is
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        _handleWithdrawal(
-            ds,
-            newTotalAssets,
-            msgSender,
-            receiver,
-            owner,
-            assets,
-            shares
-        );
+        _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    )
+    function redeem(uint256 shares, address receiver, address owner)
         public
         virtual
         override(ERC4626Upgradeable, IVaultFacet)
@@ -700,8 +520,7 @@ contract VaultFacet is
         returns (uint256 assets)
     {
         MoreVaultsLib.validateNotMulticall();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
@@ -714,86 +533,53 @@ contract VaultFacet is
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        (
-            uint256 newTotalAssets,
-            address msgSender,
-            uint64 timestamp
-        ) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
         _accrueInterest(newTotalAssets, timestamp);
 
-        assets = _convertToAssetsWithTotals(
-            shares,
-            totalSupply(),
-            newTotalAssets,
-            Math.Rounding.Floor
-        );
+        assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
 
-        _handleWithdrawal(
-            ds,
-            newTotalAssets,
-            msgSender,
-            receiver,
-            owner,
-            assets,
-            shares
-        );
+        _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function deposit(
-        address[] calldata tokens,
-        uint256[] calldata assets,
-        address receiver
-    ) external payable whenNotPaused returns (uint256 shares) {
+    function deposit(address[] calldata tokens, uint256[] calldata assets, address receiver)
+        external
+        payable
+        whenNotPaused
+        returns (uint256 shares)
+    {
         MoreVaultsLib.validateNotMulticall();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (msg.value > 0) {
             ds.isNativeDeposit = true;
         }
-        (
-            uint256 newTotalAssets,
-            address msgSender,
-            uint64 timestamp
-        ) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
         _accrueInterest(newTotalAssets, timestamp);
 
         ds.lastTotalAssets = newTotalAssets;
 
-        if (assets.length != tokens.length)
+        if (assets.length != tokens.length) {
             revert ArraysLengthsDontMatch(tokens.length, assets.length);
+        }
 
         uint256 totalConvertedAmount;
-        for (uint i; i < tokens.length; ) {
+        for (uint256 i; i < tokens.length;) {
             MoreVaultsLib.validateAssetDepositable(tokens[i]);
-            totalConvertedAmount += MoreVaultsLib.convertToUnderlying(
-                tokens[i],
-                assets[i],
-                Math.Rounding.Floor
-            );
+            totalConvertedAmount += MoreVaultsLib.convertToUnderlying(tokens[i], assets[i], Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
         }
         if (msg.value > 0) {
             MoreVaultsLib.validateAssetDepositable(ds.wrappedNative);
-            totalConvertedAmount += MoreVaultsLib.convertToUnderlying(
-                ds.wrappedNative,
-                msg.value,
-                Math.Rounding.Floor
-            );
+            totalConvertedAmount += MoreVaultsLib.convertToUnderlying(ds.wrappedNative, msg.value, Math.Rounding.Floor);
         }
 
         _validateCapacity(receiver, newTotalAssets, totalConvertedAmount);
 
-        shares = _convertToSharesWithTotals(
-            totalConvertedAmount,
-            totalSupply(),
-            newTotalAssets,
-            Math.Rounding.Floor
-        );
+        shares = _convertToSharesWithTotals(totalConvertedAmount, totalSupply(), newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, tokens, assets, shares);
 
         ds.lastTotalAssets = ds.lastTotalAssets + totalConvertedAmount;
@@ -808,9 +594,8 @@ contract VaultFacet is
     function setFee(uint96 _fee) external {
         AccessControlLib.validateOwner(msg.sender);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        (uint256 newTotalAssets, , uint64 timestamp) = _getInfoForAction(ds);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        (uint256 newTotalAssets,, uint64 timestamp) = _getInfoForAction(ds);
         _accrueInterest(newTotalAssets, timestamp);
 
         ds.lastTotalAssets = newTotalAssets;
@@ -833,12 +618,7 @@ contract VaultFacet is
         uint256 newTotalAssets,
         Math.Rounding rounding
     ) internal pure returns (uint256) {
-        return
-            assets.mulDiv(
-                newTotalSupply + 10 ** _decimalsOffset(),
-                newTotalAssets + 1,
-                rounding
-            );
+        return assets.mulDiv(newTotalSupply + 10 ** _decimalsOffset(), newTotalAssets + 1, rounding);
     }
 
     /**
@@ -856,12 +636,7 @@ contract VaultFacet is
         uint256 newTotalAssets,
         Math.Rounding rounding
     ) internal pure returns (uint256) {
-        return
-            shares.mulDiv(
-                newTotalAssets + 1,
-                newTotalSupply + 10 ** _decimalsOffset(),
-                rounding
-            );
+        return shares.mulDiv(newTotalAssets + 1, newTotalSupply + 10 ** _decimalsOffset(), rounding);
     }
 
     /**
@@ -872,16 +647,10 @@ contract VaultFacet is
      * @param assets The assets to deposit
      * @param shares The shares to mint
      */
-    function _deposit(
-        address caller,
-        address receiver,
-        uint256 assets,
-        uint256 shares
-    ) internal virtual override {
+    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
         super._deposit(caller, receiver, assets, shares);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.lastTotalAssets = ds.lastTotalAssets + assets;
     }
 
@@ -901,13 +670,8 @@ contract VaultFacet is
         uint256[] calldata assets,
         uint256 shares
     ) internal {
-        for (uint i; i < assets.length; ) {
-            SafeERC20.safeTransferFrom(
-                IERC20(tokens[i]),
-                caller,
-                address(this),
-                assets[i]
-            );
+        for (uint256 i; i < assets.length;) {
+            SafeERC20.safeTransferFrom(IERC20(tokens[i]), caller, address(this), assets[i]);
             unchecked {
                 ++i;
             }
@@ -923,15 +687,13 @@ contract VaultFacet is
      * @param _totalAssets The total assets of the vault
      */
     function _accrueInterest(uint256 _totalAssets, uint64 _timestamp) internal {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         uint256 feeShares;
         feeShares = _accruedFeeShares(_totalAssets);
         _checkVaultHealth(_totalAssets, totalSupply());
 
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
 
         // if the timestamp is less than the last accrued interest timestamp, that means the interest has already been accrued
         // it needs to prevent multiple fee accruals if cross chain accounting is used
@@ -941,22 +703,15 @@ contract VaultFacet is
         ds.lastAccruedInterestTimestamp = _timestamp;
         ds.lastTotalAssets = _totalAssets;
 
-        (
-            address protocolFeeRecipient,
-            uint96 protocolFee
-        ) = IMoreVaultsRegistry(acs.moreVaultsRegistry).protocolFeeInfo(
-                address(this)
-            );
+        (address protocolFeeRecipient, uint96 protocolFee) =
+            IMoreVaultsRegistry(acs.moreVaultsRegistry).protocolFeeInfo(address(this));
 
         emit AccrueInterest(_totalAssets, feeShares);
 
         if (feeShares == 0) return;
 
         if (protocolFee != 0) {
-            uint256 protocolFeeShares = feeShares.mulDiv(
-                protocolFee,
-                MoreVaultsLib.FEE_BASIS_POINT
-            );
+            uint256 protocolFeeShares = feeShares.mulDiv(protocolFee, MoreVaultsLib.FEE_BASIS_POINT);
             _mint(protocolFeeRecipient, protocolFeeShares);
             unchecked {
                 feeShares -= protocolFeeShares;
@@ -972,28 +727,17 @@ contract VaultFacet is
      * @param _totalAssets The total assets of the vault
      * @return feeShares The fee shares
      */
-    function _accruedFeeShares(
-        uint256 _totalAssets
-    ) internal view returns (uint256 feeShares) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function _accruedFeeShares(uint256 _totalAssets) internal view returns (uint256 feeShares) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         uint256 lastTotalAssets = ds.lastTotalAssets;
-        uint256 totalInterest = _totalAssets > lastTotalAssets
-            ? _totalAssets - lastTotalAssets
-            : 0;
+        uint256 totalInterest = _totalAssets > lastTotalAssets ? _totalAssets - lastTotalAssets : 0;
 
         uint96 fee = ds.fee;
         if (totalInterest != 0 && fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(
-                fee,
-                MoreVaultsLib.FEE_BASIS_POINT
-            );
-            feeShares = feeAssets.mulDiv(
-                totalSupply() + 10 ** _decimalsOffset(),
-                _totalAssets - feeAssets,
-                Math.Rounding.Floor
-            );
+            uint256 feeAssets = totalInterest.mulDiv(fee, MoreVaultsLib.FEE_BASIS_POINT);
+            feeShares =
+                feeAssets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
         }
     }
 
@@ -1004,24 +748,13 @@ contract VaultFacet is
      * @param newTotalAssets The total assets of the vault
      * @param newAssets The assets to deposit
      */
-    function _validateCapacity(
-        address receiver,
-        uint256 newTotalAssets,
-        uint256 newAssets
-    ) internal view {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function _validateCapacity(address receiver, uint256 newTotalAssets, uint256 newAssets) internal view {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (ds.isWhitelistEnabled) {
-            uint256 userDepositedAssets = _convertToAssetsWithTotals(
-                balanceOf(receiver),
-                totalSupply(),
-                newTotalAssets,
-                Math.Rounding.Ceil
-            );
-            if (
-                ds.depositWhitelist[receiver] < userDepositedAssets + newAssets
-            ) {
+            uint256 userDepositedAssets =
+                _convertToAssetsWithTotals(balanceOf(receiver), totalSupply(), newTotalAssets, Math.Rounding.Ceil);
+            if (ds.depositWhitelist[receiver] < userDepositedAssets + newAssets) {
                 revert ERC4626ExceededMaxDeposit(
                     receiver,
                     newAssets,
@@ -1052,10 +785,7 @@ contract VaultFacet is
      * @param _totalAssets The total assets of the vault
      * @param _totalSupply The total supply of the vault
      */
-    function _checkVaultHealth(
-        uint256 _totalAssets,
-        uint256 _totalSupply
-    ) internal pure {
+    function _checkVaultHealth(uint256 _totalAssets, uint256 _totalSupply) internal pure {
         if (_totalAssets == 0 && _totalSupply > 0) {
             revert VaultDebtIsGreaterThanAssets();
         }
@@ -1070,100 +800,52 @@ contract VaultFacet is
         return 2;
     }
 
-    function previewDeposit(
-        uint256 assets
-    ) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function previewDeposit(uint256 assets) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 newTotalAssets = totalAssets();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         uint256 ts = totalSupply();
         uint256 lastTotalAssets = ds.lastTotalAssets;
 
-        uint256 totalInterest = newTotalAssets > lastTotalAssets
-            ? (newTotalAssets - lastTotalAssets)
-            : 0;
+        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
         uint256 feeShares;
         if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(
-                ds.fee,
-                MoreVaultsLib.FEE_BASIS_POINT
-            );
-            feeShares = feeAssets.mulDiv(
-                ts + 10 ** _decimalsOffset(),
-                newTotalAssets - feeAssets,
-                Math.Rounding.Floor
-            );
+            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
+            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
         }
 
         uint256 simTotalSupply = ts + feeShares;
 
-        return
-            _convertToSharesWithTotals(
-                assets,
-                simTotalSupply,
-                newTotalAssets,
-                Math.Rounding.Floor
-            );
+        return _convertToSharesWithTotals(assets, simTotalSupply, newTotalAssets, Math.Rounding.Floor);
     }
 
-    function previewMint(
-        uint256 shares
-    ) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function previewMint(uint256 shares) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 newTotalAssets = totalAssets();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         uint256 ts = totalSupply();
         uint256 lastTotalAssets = ds.lastTotalAssets;
 
-        uint256 totalInterest = newTotalAssets > lastTotalAssets
-            ? (newTotalAssets - lastTotalAssets)
-            : 0;
+        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
         uint256 feeShares;
         if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(
-                ds.fee,
-                MoreVaultsLib.FEE_BASIS_POINT
-            );
-            feeShares = feeAssets.mulDiv(
-                ts + 10 ** _decimalsOffset(),
-                newTotalAssets - feeAssets,
-                Math.Rounding.Floor
-            );
+            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
+            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
         }
 
         uint256 simTotalSupply = ts + feeShares;
-        return
-            _convertToAssetsWithTotals(
-                shares,
-                simTotalSupply,
-                newTotalAssets,
-                Math.Rounding.Ceil
-            );
+        return _convertToAssetsWithTotals(shares, simTotalSupply, newTotalAssets, Math.Rounding.Ceil);
     }
 
-    function previewWithdraw(
-        uint256 assets
-    ) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function previewWithdraw(uint256 assets) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 newTotalAssets = totalAssets();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         uint256 ts = totalSupply();
         uint256 lastTotalAssets = ds.lastTotalAssets;
 
-        uint256 totalInterest = newTotalAssets > lastTotalAssets
-            ? (newTotalAssets - lastTotalAssets)
-            : 0;
+        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
         uint256 feeShares;
         if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(
-                ds.fee,
-                MoreVaultsLib.FEE_BASIS_POINT
-            );
-            feeShares = feeAssets.mulDiv(
-                ts + 10 ** _decimalsOffset(),
-                newTotalAssets - feeAssets,
-                Math.Rounding.Floor
-            );
+            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
+            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
         }
 
         uint256 simTotalSupply = ts + feeShares;
@@ -1171,74 +853,41 @@ contract VaultFacet is
         // Calculate withdrawal fee
         uint256 withdrawalFeeAmount = 0;
         if (ds.withdrawalFee > 0) {
-            withdrawalFeeAmount = assets.mulDiv(
-                ds.withdrawalFee,
-                MoreVaultsLib.FEE_BASIS_POINT,
-                Math.Rounding.Floor
-            );
+            withdrawalFeeAmount = assets.mulDiv(ds.withdrawalFee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
         }
 
         uint256 netAssets = assets - withdrawalFeeAmount;
 
-        return
-            _convertToSharesWithTotals(
-                netAssets,
-                simTotalSupply,
-                newTotalAssets,
-                Math.Rounding.Ceil
-            );
+        return _convertToSharesWithTotals(netAssets, simTotalSupply, newTotalAssets, Math.Rounding.Ceil);
     }
 
-    function previewRedeem(
-        uint256 shares
-    ) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function previewRedeem(uint256 shares) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         uint256 newTotalAssets = totalAssets();
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         uint256 ts = totalSupply();
         uint256 lastTotalAssets = ds.lastTotalAssets;
 
-        uint256 totalInterest = newTotalAssets > lastTotalAssets
-            ? (newTotalAssets - lastTotalAssets)
-            : 0;
+        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
         uint256 feeShares;
         if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(
-                ds.fee,
-                MoreVaultsLib.FEE_BASIS_POINT
-            );
-            feeShares = feeAssets.mulDiv(
-                ts + 10 ** _decimalsOffset(),
-                newTotalAssets - feeAssets,
-                Math.Rounding.Floor
-            );
+            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
+            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
         }
 
         uint256 simTotalSupply = ts + feeShares;
 
-        uint256 assets = _convertToAssetsWithTotals(
-            shares,
-            simTotalSupply,
-            newTotalAssets,
-            Math.Rounding.Floor
-        );
+        uint256 assets = _convertToAssetsWithTotals(shares, simTotalSupply, newTotalAssets, Math.Rounding.Floor);
 
         // Calculate withdrawal fee
         uint256 withdrawalFeeAmount = 0;
         if (ds.withdrawalFee > 0) {
-            withdrawalFeeAmount = assets.mulDiv(
-                ds.withdrawalFee,
-                MoreVaultsLib.FEE_BASIS_POINT,
-                Math.Rounding.Floor
-            );
+            withdrawalFeeAmount = assets.mulDiv(ds.withdrawalFee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
         }
 
         return assets - withdrawalFeeAmount;
     }
 
-    function _getInfoForAction(
-        MoreVaultsLib.MoreVaultsStorage storage ds
-    )
+    function _getInfoForAction(MoreVaultsLib.MoreVaultsStorage storage ds)
         internal
         returns (uint256 totalAssets_, address msgSender_, uint64 timestamp_)
     {
@@ -1246,10 +895,7 @@ contract VaultFacet is
             revert NotAHub();
         }
         IVaultsFactory factory = IVaultsFactory(ds.factory);
-        if (
-            factory.isCrossChainVault(factory.localEid(), address(this)) &&
-            !ds.oraclesCrossChainAccounting
-        ) {
+        if (factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting) {
             bytes32 guid = ds.finalizationGuid;
             if (guid == 0) {
                 revert SyncActionsDisabledInCrossChainVaults();
@@ -1278,29 +924,19 @@ contract VaultFacet is
         // calculate withdrawal fee
         uint256 withdrawalFeeAmount;
         if (ds.withdrawalFee > 0) {
-            withdrawalFeeAmount = assets.mulDiv(
-                ds.withdrawalFee,
-                MoreVaultsLib.FEE_BASIS_POINT,
-                Math.Rounding.Floor
-            );
+            withdrawalFeeAmount = assets.mulDiv(ds.withdrawalFee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
         }
 
         uint256 netAssets = assets - withdrawalFeeAmount;
 
-        ds.lastTotalAssets = newTotalAssets > assets
-            ? newTotalAssets - assets
-            : 0;
+        ds.lastTotalAssets = newTotalAssets > assets ? newTotalAssets - assets : 0;
 
         _withdraw(msgSender, receiver, owner, netAssets, shares);
 
         // mint fee shares to fee recipient if withdrawal fee is applied
         if (withdrawalFeeAmount > 0) {
-            uint256 feeShares = _convertToSharesWithTotals(
-                withdrawalFeeAmount,
-                totalSupply(),
-                newTotalAssets,
-                Math.Rounding.Floor
-            );
+            uint256 feeShares =
+                _convertToSharesWithTotals(withdrawalFeeAmount, totalSupply(), newTotalAssets, Math.Rounding.Floor);
             _mint(ds.feeRecipient, feeShares);
         }
 

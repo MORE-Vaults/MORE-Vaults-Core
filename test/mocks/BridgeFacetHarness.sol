@@ -21,25 +21,22 @@ contract BridgeFacetHarness is BridgeFacet {
     function deposit(uint256, address) external pure returns (uint256) {
         return 0;
     }
-    function deposit(
-        address[] calldata,
-        uint256[] calldata,
-        address
-    ) external payable returns (uint256) {
+
+    function deposit(address[] calldata, uint256[] calldata, address) external payable returns (uint256) {
         return 0;
     }
+
     function mint(uint256, address) external pure returns (uint256) {
         return 0;
     }
-    function withdraw(
-        uint256,
-        address,
-        address
-    ) external pure returns (uint256) {
+
+    function withdraw(uint256, address, address) external pure returns (uint256) {
         return 0;
     }
+
     function redeem(uint256, address, address) external pure returns (uint256) {
         return 0;
     }
+
     function setFee(uint96) external {}
 }

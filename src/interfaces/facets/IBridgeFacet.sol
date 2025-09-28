@@ -29,10 +29,7 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @return isPositive Flag indicating that the value is positive
      * @notice Used for calculating the total value of assets in cross-chain vault
      */
-    function accountingBridgeFacet()
-        external
-        view
-        returns (uint256 sum, bool isPositive);
+    function accountingBridgeFacet() external view returns (uint256 sum, bool isPositive);
 
     /**
      * @dev Enables or disables the use of oracles for cross-chain accounting
@@ -49,12 +46,9 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @param amount Amount of the token to bridge
      * @param bridgeSpecificParams Bridge-specific parameters
      */
-    function executeBridging(
-        address adapter,
-        address token,
-        uint256 amount,
-        bytes calldata bridgeSpecificParams
-    ) external payable;
+    function executeBridging(address adapter, address token, uint256 amount, bytes calldata bridgeSpecificParams)
+        external
+        payable;
 
     /**
      * @dev Initiates a request to perform an action in a cross-chain vault
@@ -79,11 +73,7 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @notice Can only be called by the cross-chain accounting manager
      * @notice Updates total assets and marks the request as fulfilled
      */
-    function updateAccountingInfoForRequest(
-        bytes32 guid,
-        uint256 sumOfSpokesUsdValue,
-        bool readSuccess
-    ) external;
+    function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external;
 
     /**
      * @dev Finalizes the execution of a cross-chain request
@@ -99,7 +89,5 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @param guid Request number to get info for
      * @return Request info
      */
-    function getRequestInfo(
-        bytes32 guid
-    ) external view returns (MoreVaultsLib.CrossChainRequestInfo memory);
+    function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory);
 }

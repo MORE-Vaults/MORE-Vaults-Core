@@ -27,10 +27,7 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
      * @param assets The amount of assets to deposit
      * @return requestId The unique identifier for the created request
      */
-    function erc7540RequestDeposit(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 requestId);
+    function erc7540RequestDeposit(address vault, uint256 assets) external returns (uint256 requestId);
 
     /**
      * @notice Creates a redemption request for ERC7540 vault
@@ -38,10 +35,7 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
      * @param shares The amount of shares to redeem
      * @return requestId The unique identifier for the created request
      */
-    function erc7540RequestRedeem(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 requestId);
+    function erc7540RequestRedeem(address vault, uint256 shares) external returns (uint256 requestId);
 
     /**
      * @notice Executes a deposit operation on ERC7540 vault
@@ -49,10 +43,7 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
      * @param assets The amount of assets to deposit
      * @return shares The amount of shares received from the deposit
      */
-    function erc7540Deposit(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares);
+    function erc7540Deposit(address vault, uint256 assets) external returns (uint256 shares);
 
     /**
      * @notice Executes a mint operation on ERC7540 vault
@@ -60,10 +51,7 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
      * @param shares The amount of shares to mint
      * @return assets The amount of assets required for minting
      */
-    function erc7540Mint(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets);
+    function erc7540Mint(address vault, uint256 shares) external returns (uint256 assets);
 
     /**
      * @notice Executes a withdrawal operation on ERC7540 vault
@@ -71,10 +59,7 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
      * @param assets The amount of assets to withdraw
      * @return shares The amount of shares burned for the withdrawal
      */
-    function erc7540Withdraw(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares);
+    function erc7540Withdraw(address vault, uint256 assets) external returns (uint256 shares);
 
     /**
      * @notice Executes a redemption operation on ERC7540 vault
@@ -82,8 +67,5 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
      * @param shares The amount of shares to redeem
      * @return assets The amount of assets received from the redemption
      */
-    function erc7540Redeem(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets);
+    function erc7540Redeem(address vault, uint256 shares) external returns (uint256 assets);
 }

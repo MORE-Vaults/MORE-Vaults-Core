@@ -41,30 +41,17 @@ contract BridgeFacetTest is Test {
         // Wire roles and addresses
         MoreVaultsStorageHelper.setOwner(address(facet), owner);
         MoreVaultsStorageHelper.setCurator(address(facet), curator);
-        MoreVaultsStorageHelper.setMoreVaultsRegistry(
-            address(facet),
-            address(registry)
-        );
+        MoreVaultsStorageHelper.setMoreVaultsRegistry(address(facet), address(registry));
         registry.setOracle(address(oracle));
         MoreVaultsStorageHelper.setFactory(address(facet), address(factory));
-        MoreVaultsStorageHelper.setCrossChainAccountingManager(
-            address(facet),
-            address(adapter)
-        );
+        MoreVaultsStorageHelper.setCrossChainAccountingManager(address(facet), address(adapter));
 
         // ERC4626 underlying price used in convertUsdToUnderlying
-        MoreVaultsStorageHelper.setUnderlyingAsset(
-            address(facet),
-            address(underlying)
-        );
+        MoreVaultsStorageHelper.setUnderlyingAsset(address(facet), address(underlying));
         oracle.setAssetPrice(address(underlying), 1e8); // 1 USD
     }
 
-    function _mockHubWithSpokes(
-        uint32 localEid,
-        uint32[] memory eids,
-        address[] memory spokes
-    ) internal {
+    function _mockHubWithSpokes(uint32 localEid, uint32[] memory eids, address[] memory spokes) internal {
         factory.setLocalEid(localEid);
         factory.setHubToSpokes(localEid, address(facet), eids, spokes);
     }
@@ -72,20 +59,10 @@ contract BridgeFacetTest is Test {
     // initialize/onFacetRemoval
     function test_initialize_and_onFacetRemoval_flags() public {
         facet.initialize("");
-        assertTrue(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IBridgeFacet).interfaceId
-            )
-        );
+        assertTrue(MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IBridgeFacet).interfaceId));
 
         facet.onFacetRemoval(false);
-        assertFalse(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IBridgeFacet).interfaceId
-            )
-        );
+        assertFalse(MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IBridgeFacet).interfaceId));
     }
 
     // setOraclesCrossChainAccounting success path and AlreadySet/NoOracleForSpoke
@@ -108,16 +85,10 @@ contract BridgeFacetTest is Test {
         facet.setOraclesCrossChainAccounting(true);
         vm.stopPrank();
 
-        assertTrue(
-            MoreVaultsStorageHelper.getOraclesCrossChainAccounting(
-                address(facet)
-            )
-        );
+        assertTrue(MoreVaultsStorageHelper.getOraclesCrossChainAccounting(address(facet)));
     }
 
-    function test_setOraclesCrossChainAccounting_revert_NoOracleForSpoke()
-        public
-    {
+    function test_setOraclesCrossChainAccounting_revert_NoOracleForSpoke() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
         address[] memory spokes = new address[](1);
@@ -125,12 +96,7 @@ contract BridgeFacetTest is Test {
         _mockHubWithSpokes(100, eids, spokes);
 
         vm.startPrank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBridgeFacet.NoOracleForSpoke.selector,
-                eids[0]
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.NoOracleForSpoke.selector, eids[0]));
         facet.setOraclesCrossChainAccounting(true);
         vm.stopPrank();
     }
@@ -167,30 +133,15 @@ contract BridgeFacetTest is Test {
     function test_executeBridging_allows_only_allowed_bridge() public {
         registry.setBridge(address(adapter), true);
         vm.startPrank(curator);
-        facet.executeBridging(
-            address(adapter),
-            address(oft),
-            1 ether,
-            bytes("")
-        );
+        facet.executeBridging(address(adapter), address(oft), 1 ether, bytes(""));
         vm.stopPrank();
     }
 
     function test_executeBridging_revert_not_allowed_bridge() public {
         registry.setBridge(address(adapter), false);
         vm.startPrank(curator);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBridgeFacet.AdapterNotAllowed.selector,
-                address(adapter)
-            )
-        );
-        facet.executeBridging(
-            address(adapter),
-            address(oft),
-            1 ether,
-            bytes("")
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.AdapterNotAllowed.selector, address(adapter)));
+        facet.executeBridging(address(adapter), address(oft), 1 ether, bytes(""));
         vm.stopPrank();
     }
 
@@ -207,29 +158,17 @@ contract BridgeFacetTest is Test {
         facet.h_setTotalAssets(100);
 
         // when oraclesCrossChainAccounting=true must revert, so ensure false
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(
-            address(facet),
-            false
-        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         bytes memory callData = abi.encode(uint256(10), address(0xCAFE01));
         bytes memory opts = bytes("");
-        bytes32 guid = facet.initVaultActionRequest{value: 0}(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            callData,
-            opts
-        );
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, opts);
         assertEq(guid, guidVal);
 
         // getRequestInfo
-        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(
-            guid
-        );
+        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
         assertEq(info.initiator, address(this));
-        assertEq(
-            uint256(info.actionType),
-            uint256(MoreVaultsLib.ActionType.DEPOSIT)
-        );
+        assertEq(uint256(info.actionType), uint256(MoreVaultsLib.ActionType.DEPOSIT));
         assertFalse(info.fulfilled);
         assertEq(info.totalAssets, 100);
     }
@@ -240,16 +179,9 @@ contract BridgeFacetTest is Test {
         address[] memory spokes = new address[](1);
         spokes[0] = address(0xBEEF01);
         _mockHubWithSpokes(100, eids, spokes);
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(
-            address(facet),
-            true
-        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), true);
         vm.expectRevert(IBridgeFacet.AccountingViaOracles.selector);
-        facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            bytes(""),
-            bytes("")
-        );
+        facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, bytes(""), bytes(""));
     }
 
     // updateAccountingInfoForRequest
@@ -265,48 +197,28 @@ contract BridgeFacetTest is Test {
         uint8 decimals = underlying.decimals();
         uint256 initTotalAssets = 200 * 10 ** decimals;
         facet.h_setTotalAssets(initTotalAssets);
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(
-            address(facet),
-            false
-        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
         bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            abi.encode(uint256(1), address(0xCAFE01)),
-            bytes("")
+            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(1), address(0xCAFE01)), bytes("")
         );
         assertEq(guid, guidVal);
 
         uint256 depositedTotalAssetsInUsd = 5 * 10 ** 8;
         // unauthorized caller
         vm.expectRevert(IBridgeFacet.OnlyCrossChainAccountingManager.selector);
-        facet.updateAccountingInfoForRequest(
-            guid,
-            depositedTotalAssetsInUsd,
-            true
-        );
+        facet.updateAccountingInfoForRequest(guid, depositedTotalAssetsInUsd, true);
 
         // as manager
         vm.startPrank(address(adapter));
-        facet.updateAccountingInfoForRequest(
-            guid,
-            depositedTotalAssetsInUsd,
-            true
-        ); // 5 USD -> 5 tokens at price 1 USD
+        facet.updateAccountingInfoForRequest(guid, depositedTotalAssetsInUsd, true); // 5 USD -> 5 tokens at price 1 USD
         vm.stopPrank();
 
-        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(
-            guid
-        );
+        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
         assertTrue(info.fulfilled);
-        assertEq(
-            info.totalAssets,
-            initTotalAssets + depositedTotalAssetsInUsd * 10 ** 10
-        ); // 200 + 5
+        assertEq(info.totalAssets, initTotalAssets + depositedTotalAssetsInUsd * 10 ** 10); // 200 + 5
     }
 
-    function test_updateAccountingInfoForRequest_readFailure_keeps_unfulfilled()
-        public
-    {
+    function test_updateAccountingInfoForRequest_readFailure_keeps_unfulfilled() public {
         bytes32 guidVal = keccak256("guid-2b");
         adapter.setReceiptGuid(guidVal);
         uint32[] memory eids = new uint32[](1);
@@ -315,14 +227,9 @@ contract BridgeFacetTest is Test {
         spokes[0] = address(0xBEEF01);
         _mockHubWithSpokes(100, eids, spokes);
         facet.h_setTotalAssets(200);
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(
-            address(facet),
-            false
-        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
         bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            abi.encode(uint256(1), address(0xCAFE01)),
-            bytes("")
+            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(1), address(0xCAFE01)), bytes("")
         );
         assertEq(guid, guidVal);
 
@@ -330,9 +237,7 @@ contract BridgeFacetTest is Test {
         facet.updateAccountingInfoForRequest(guid, 5e8, false);
         vm.stopPrank();
 
-        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(
-            guid
-        );
+        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
         assertFalse(info.fulfilled);
         assertEq(info.totalAssets, 200);
     }
@@ -347,16 +252,9 @@ contract BridgeFacetTest is Test {
         _mockHubWithSpokes(100, eids, spokes);
         bytes32 guidVal = keccak256("guid-3");
         adapter.setReceiptGuid(guidVal);
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(
-            address(facet),
-            false
-        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
         bytes memory callData = abi.encode(uint256(10), address(this));
-        bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            callData,
-            bytes("")
-        );
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, bytes(""));
 
         // not fulfilled -> revert
         vm.expectRevert(IBridgeFacet.RequestWasntFulfilled.selector);
@@ -373,11 +271,7 @@ contract BridgeFacetTest is Test {
         // set timestamp to past to trigger timeout
         // move time forward and re-set request to fulfilled to check RequestTimedOut
         // recreate request
-        guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            callData,
-            bytes("")
-        );
+        guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, bytes(""));
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
         vm.stopPrank();

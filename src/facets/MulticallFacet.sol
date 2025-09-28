@@ -8,20 +8,10 @@ import {IMulticallFacet} from "../interfaces/facets/IMulticallFacet.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
-contract MulticallFacet is
-    BaseFacetInitializer,
-    IMulticallFacet,
-    ContextUpgradeable,
-    ReentrancyGuard
-{
+contract MulticallFacet is BaseFacetInitializer, IMulticallFacet, ContextUpgradeable, ReentrancyGuard {
     error SlippageExceeded(uint256 slippagePercent, uint256 maxSlippagePercent);
 
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.MulticallFacet");
     }
 
@@ -36,38 +26,30 @@ contract MulticallFacet is
     function initialize(bytes calldata data) external initializerFacet {
         uint256 timeLockPeriod = abi.decode(data, (uint256));
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IMulticallFacet).interfaceId] = true;
 
         MoreVaultsLib._setTimeLockPeriod(timeLockPeriod);
     }
 
     function onFacetRemoval(bool) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IMulticallFacet).interfaceId] = false;
     }
 
     /**
      * @inheritdoc IMulticallFacet
      */
-    function submitActions(
-        bytes[] calldata actionsData
-    ) external override returns (uint256 nonce) {
+    function submitActions(bytes[] calldata actionsData) external override returns (uint256 nonce) {
         AccessControlLib.validateCurator(msg.sender);
         if (actionsData.length == 0) revert EmptyActions();
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         nonce = ds.actionNonce;
         uint256 pendingUntil = block.timestamp + ds.timeLockPeriod;
 
-        ds.pendingActions[nonce] = MoreVaultsLib.PendingActions({
-            actionsData: actionsData,
-            pendingUntil: pendingUntil
-        });
+        ds.pendingActions[nonce] = MoreVaultsLib.PendingActions({actionsData: actionsData, pendingUntil: pendingUntil});
         ds.actionNonce++;
 
         emit ActionsSubmitted(msg.sender, nonce, pendingUntil, actionsData);
@@ -83,11 +65,8 @@ contract MulticallFacet is
     function executeActions(uint256 actionsNonce) public override nonReentrant {
         AccessControlLib.validateCurator(msg.sender);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        MoreVaultsLib.PendingActions storage actions = ds.pendingActions[
-            actionsNonce
-        ];
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        MoreVaultsLib.PendingActions storage actions = ds.pendingActions[actionsNonce];
 
         if (actions.pendingUntil == 0) {
             revert NoSuchActions(actionsNonce);
@@ -132,8 +111,7 @@ contract MulticallFacet is
         }
 
         if (totalBefore > totalAfter) {
-            uint256 slippagePercent = ((totalBefore - totalAfter) * 10_000) /
-                totalBefore;
+            uint256 slippagePercent = ((totalBefore - totalAfter) * 10_000) / totalBefore;
 
             if (slippagePercent > ds.maxSlippagePercent) {
                 revert SlippageExceeded(slippagePercent, ds.maxSlippagePercent);
@@ -150,10 +128,9 @@ contract MulticallFacet is
      */
     function vetoActions(uint256[] calldata actionsNonces) external {
         AccessControlLib.validateGuardian(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        for (uint256 i = 0; i < actionsNonces.length; ) {
+        for (uint256 i = 0; i < actionsNonces.length;) {
             if (ds.pendingActions[actionsNonces[i]].pendingUntil == 0) {
                 revert NoSuchActions(actionsNonces[i]);
             }
@@ -169,17 +146,13 @@ contract MulticallFacet is
     /**
      * @inheritdoc IMulticallFacet
      */
-    function getPendingActions(
-        uint256 actionsNonce
-    )
+    function getPendingActions(uint256 actionsNonce)
         external
         view
         override
         returns (bytes[] memory actionsData, uint256 pendingUntil)
     {
-        MoreVaultsLib.PendingActions storage actions = MoreVaultsLib
-            .moreVaultsStorage()
-            .pendingActions[actionsNonce];
+        MoreVaultsLib.PendingActions storage actions = MoreVaultsLib.moreVaultsStorage().pendingActions[actionsNonce];
         return (actions.actionsData, actions.pendingUntil);
     }
 
@@ -190,11 +163,9 @@ contract MulticallFacet is
         return MoreVaultsLib.moreVaultsStorage().actionNonce;
     }
 
-    function _multicall(
-        bytes[] storage data
-    ) internal virtual returns (bytes[] memory results) {
+    function _multicall(bytes[] storage data) internal virtual returns (bytes[] memory results) {
         results = new bytes[](data.length);
-        for (uint256 i = 0; i < data.length; ) {
+        for (uint256 i = 0; i < data.length;) {
             (bool success, bytes memory result) = address(this).call(data[i]);
             if (!success) {
                 revert MulticallFailed(i, result);

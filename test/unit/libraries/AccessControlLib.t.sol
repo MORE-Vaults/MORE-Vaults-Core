@@ -31,14 +31,8 @@ contract AccessControlLibTest is Test {
         MoreVaultsStorageHelper.setMoreVaultsRegistry(address(this), registry);
 
         MoreVaultsStorageHelper.setCurator(address(mockAccessControl), curator);
-        MoreVaultsStorageHelper.setGuardian(
-            address(mockAccessControl),
-            guardian
-        );
-        MoreVaultsStorageHelper.setMoreVaultsRegistry(
-            address(mockAccessControl),
-            registry
-        );
+        MoreVaultsStorageHelper.setGuardian(address(mockAccessControl), guardian);
+        MoreVaultsStorageHelper.setMoreVaultsRegistry(address(mockAccessControl), registry);
     }
 
     function test_validateCurator_ShouldNotRevertWhenCallerIsOwner() public {
@@ -60,9 +54,7 @@ contract AccessControlLibTest is Test {
         vm.stopPrank();
     }
 
-    function test_validateGuardian_ShouldNotRevertWhenCallerIsGuardian()
-        public
-    {
+    function test_validateGuardian_ShouldNotRevertWhenCallerIsGuardian() public {
         vm.startPrank(guardian);
         AccessControlLib.validateGuardian(guardian);
         vm.stopPrank();
@@ -81,37 +73,28 @@ contract AccessControlLibTest is Test {
         vm.stopPrank();
     }
 
-    function test_validatePendingOwner_ShouldNotRevertWhenCallerIsPendingOwner()
-        public
-    {
+    function test_validatePendingOwner_ShouldNotRevertWhenCallerIsPendingOwner() public {
         MoreVaultsStorageHelper.setPendingOwner(address(this), pendingOwner);
         vm.startPrank(pendingOwner);
         AccessControlLib.validatePendingOwner(pendingOwner);
         vm.stopPrank();
     }
 
-    function test_validatePendingOwner_ShouldRevertWhenCallerIsNotPendingOwner()
-        public
-    {
+    function test_validatePendingOwner_ShouldRevertWhenCallerIsNotPendingOwner() public {
         vm.startPrank(unauthorized);
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
         AccessControlLib.validatePendingOwner(unauthorized);
         vm.stopPrank();
     }
 
-    function test_validateGuardian_ShouldRevertWhenCallerIsNotGuardian()
-        public
-    {
+    function test_validateGuardian_ShouldRevertWhenCallerIsNotGuardian() public {
         vm.startPrank(unauthorized);
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
         AccessControlLib.validateGuardian(unauthorized);
         vm.stopPrank();
     }
 
-    function test_validateDiamond_ShouldNotRevertWhenCallerIsDiamond()
-        public
-        view
-    {
+    function test_validateDiamond_ShouldNotRevertWhenCallerIsDiamond() public view {
         AccessControlLib.validateDiamond(address(this));
     }
 
@@ -125,11 +108,7 @@ contract AccessControlLibTest is Test {
     function test_setVaultOwner_ShouldSetNewOwner() public {
         address newOwner = address(5);
         AccessControlLib.setVaultOwner(newOwner);
-        assertEq(
-            AccessControlLib.vaultOwner(),
-            newOwner,
-            "Owner should be updated"
-        );
+        assertEq(AccessControlLib.vaultOwner(), newOwner, "Owner should be updated");
     }
 
     function test_setVaultOwner_ShouldRevertWhenZeroAddress() public {
@@ -145,11 +124,7 @@ contract AccessControlLibTest is Test {
     function test_setPendingOwner_ShouldSetNewPendingOwner() public {
         address newPendingOwner = address(5);
         AccessControlLib.setPendingOwner(newPendingOwner);
-        assertEq(
-            AccessControlLib.pendingOwner(),
-            newPendingOwner,
-            "Pending owner should be updated"
-        );
+        assertEq(AccessControlLib.pendingOwner(), newPendingOwner, "Pending owner should be updated");
     }
 
     function test_setPendingOwner_ShouldRevertWhenSameAddress() public {
@@ -160,11 +135,7 @@ contract AccessControlLibTest is Test {
     function test_setVaultCurator_ShouldSetNewCurator() public {
         address newCurator = address(5);
         AccessControlLib.setVaultCurator(newCurator);
-        assertEq(
-            AccessControlLib.vaultCurator(),
-            newCurator,
-            "Curator should be updated"
-        );
+        assertEq(AccessControlLib.vaultCurator(), newCurator, "Curator should be updated");
     }
 
     function test_setVaultCurator_ShouldRevertWhenZeroAddress() public {
@@ -180,11 +151,7 @@ contract AccessControlLibTest is Test {
     function test_setVaultGuardian_ShouldSetNewGuardian() public {
         address newGuardian = address(5);
         AccessControlLib.setVaultGuardian(newGuardian);
-        assertEq(
-            AccessControlLib.vaultGuardian(),
-            newGuardian,
-            "Guardian should be updated"
-        );
+        assertEq(AccessControlLib.vaultGuardian(), newGuardian, "Guardian should be updated");
     }
 
     function test_setVaultGuardian_ShouldRevertWhenZeroAddress() public {
@@ -198,34 +165,18 @@ contract AccessControlLibTest is Test {
     }
 
     function test_vaultOwner_ShouldReturnCorrectOwner() public view {
-        assertEq(
-            AccessControlLib.vaultOwner(),
-            owner,
-            "Should return correct owner"
-        );
+        assertEq(AccessControlLib.vaultOwner(), owner, "Should return correct owner");
     }
 
     function test_vaultCurator_ShouldReturnCorrectCurator() public view {
-        assertEq(
-            AccessControlLib.vaultCurator(),
-            curator,
-            "Should return correct curator"
-        );
+        assertEq(AccessControlLib.vaultCurator(), curator, "Should return correct curator");
     }
 
     function test_vaultGuardian_ShouldReturnCorrectGuardian() public view {
-        assertEq(
-            AccessControlLib.vaultGuardian(),
-            guardian,
-            "Should return correct guardian"
-        );
+        assertEq(AccessControlLib.vaultGuardian(), guardian, "Should return correct guardian");
     }
 
     function test_vaultRegistry_ShouldReturnCorrectRegistry() public view {
-        assertEq(
-            AccessControlLib.vaultRegistry(),
-            registry,
-            "Should return correct registry"
-        );
+        assertEq(AccessControlLib.vaultRegistry(), registry, "Should return correct registry");
     }
 }

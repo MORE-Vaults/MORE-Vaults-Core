@@ -30,55 +30,35 @@ contract MoreVaultsDiamondTest is Test {
         factory = address(4);
         cuts = new IDiamondCut.FacetCut[](0);
 
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isPermissionless.selector
-            ),
-            abi.encode(false)
-        );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isPermissionless.selector), abi.encode(false));
         // Mock registry calls for diamondCut
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(diamondCutFacet)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(diamondCutFacet)),
             abi.encode(true)
         );
 
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                IDiamondCut.diamondCut.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, IDiamondCut.diamondCut.selector),
             abi.encode(address(diamondCutFacet))
         );
 
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isFacetAllowed.selector,
-                address(accessControlFacet)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(accessControlFacet)),
             abi.encode(true)
         );
 
         vm.mockCall(
             registry,
             abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector,
-                AccessControlFacet.setMoreVaultsRegistry.selector
+                IMoreVaultsRegistry.selectorToFacet.selector, AccessControlFacet.setMoreVaultsRegistry.selector
             ),
             abi.encode(address(accessControlFacet))
         );
 
-        bytes memory accessControlFacetInitData = abi.encode(
-            owner,
-            curator,
-            guardian
-        );
+        bytes memory accessControlFacetInitData = abi.encode(owner, curator, guardian);
 
         diamond = new MoreVaultsDiamond(
             address(diamondCutFacet),
@@ -101,44 +81,21 @@ contract MoreVaultsDiamondTest is Test {
     }
 
     function test_Constructor_ShouldSetAccessControlParams() public view {
-        assertEq(
-            MoreVaultsStorageHelper.getOwner(address(diamond)),
-            owner,
-            "Owner should be set correctly"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.getCurator(address(diamond)),
-            curator,
-            "Curator should be set correctly"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.getGuardian(address(diamond)),
-            guardian,
-            "guardian should be set correctly"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.getFactory(address(diamond)),
-            factory,
-            "factory should be set correctly"
-        );
+        assertEq(MoreVaultsStorageHelper.getOwner(address(diamond)), owner, "Owner should be set correctly");
+        assertEq(MoreVaultsStorageHelper.getCurator(address(diamond)), curator, "Curator should be set correctly");
+        assertEq(MoreVaultsStorageHelper.getGuardian(address(diamond)), guardian, "guardian should be set correctly");
+        assertEq(MoreVaultsStorageHelper.getFactory(address(diamond)), factory, "factory should be set correctly");
     }
 
     function test_Constructor_ShouldSetDiamondCutFacet() public view {
         bytes4 selector = IDiamondCut.diamondCut.selector;
-        address facet = MoreVaultsStorageHelper.getFacetBySelector(
-            address(diamond),
-            selector
-        );
-        assertEq(
-            facet,
-            address(diamondCutFacet),
-            "DiamondCut facet should be set correctly"
-        );
+        address facet = MoreVaultsStorageHelper.getFacetBySelector(address(diamond), selector);
+        assertEq(facet, address(diamondCutFacet), "DiamondCut facet should be set correctly");
     }
 
     function test_Fallback_ShouldRevertForNonExistentFunction() public {
         bytes memory data = abi.encodeWithSignature("nonExistentFunction()");
-        (bool success, ) = address(diamond).call(data);
+        (bool success,) = address(diamond).call(data);
         assertFalse(success, "Should revert for non-existent function");
     }
 
@@ -148,35 +105,24 @@ contract MoreVaultsDiamondTest is Test {
         MoreVaultsStorageHelper.setAvailableAssets(address(diamond), assets);
         uint256 balanceBefore = address(diamond).balance;
         vm.deal(address(this), 1 ether);
-        (bool success, ) = address(diamond).call{value: 1 ether}("");
+        (bool success,) = address(diamond).call{value: 1 ether}("");
         assertTrue(success, "Should accept ether");
-        assertEq(
-            address(diamond).balance,
-            balanceBefore + 1 ether,
-            "Balance should increase"
-        );
+        assertEq(address(diamond).balance, balanceBefore + 1 ether, "Balance should increase");
     }
 
     function test_Receive_ShouldRevertIfWrappedNativeIsNotAvailable() public {
         vm.deal(address(this), 1 ether);
         uint256 balanceBefore = address(diamond).balance;
         vm.expectRevert(MoreVaultsDiamond.NativeTokenNotAvailable.selector);
-        (bool success, ) = address(diamond).call{value: 1 ether}("");
+        (bool success,) = address(diamond).call{value: 1 ether}("");
         assertTrue(success);
-        assertEq(
-            address(diamond).balance,
-            balanceBefore,
-            "Balance should not increase"
-        );
+        assertEq(address(diamond).balance, balanceBefore, "Balance should not increase");
     }
 
     function test_DiamondCutFacet_ShouldInitializeCorrectly() public view {
         // Verify that DiamondCutFacet is initialized
         assertTrue(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(diamond),
-                type(IDiamondCut).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(diamond), type(IDiamondCut).interfaceId),
             "DiamondCutFacet should be initialized"
         );
     }

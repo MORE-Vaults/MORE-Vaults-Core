@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 
 /**
  * @dev This is a base storage for the  initialization function for upgradeable diamond facet contracts
- **/
-
+ *
+ */
 abstract contract BaseFacetInitializer {
     error InvalidParameters();
     error AlreadyInitialized();
@@ -26,17 +26,9 @@ abstract contract BaseFacetInitializer {
      * @dev Returns the storage slot for this contract
      * @return bytes32 The storage slot
      */
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        virtual
-        returns (bytes32);
+    function INITIALIZABLE_STORAGE_SLOT() internal pure virtual returns (bytes32);
 
-    function layoutInitializableStorage()
-        internal
-        pure
-        returns (Layout storage l)
-    {
+    function layoutInitializableStorage() internal pure returns (Layout storage l) {
         bytes32 slot = INITIALIZABLE_STORAGE_SLOT();
         assembly {
             l.slot := slot
@@ -47,11 +39,8 @@ abstract contract BaseFacetInitializer {
      * @dev Modifier to protect an initializer function from being invoked twice.
      */
     modifier initializerFacet() {
-        if (
-            layoutInitializableStorage()._initializing
-                ? !_isConstructor()
-                : layoutInitializableStorage()._initialized
-        ) {
+        if (layoutInitializableStorage()._initializing ? !_isConstructor() : layoutInitializableStorage()._initialized)
+        {
             revert AlreadyInitialized();
         }
 

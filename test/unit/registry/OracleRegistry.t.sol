@@ -15,11 +15,7 @@ contract MockAggregator {
         updatedAt = _updatedAt;
     }
 
-    function latestRoundData()
-        external
-        view
-        returns (uint80, int256, uint256, uint256, uint80)
-    {
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
         return (0, answer, 0, updatedAt, 0);
     }
 
@@ -45,54 +41,33 @@ contract OracleRegistryTest is Test {
 
     function test_initialize_setsValuesAndRoles() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(100, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         assertEq(registry.BASE_CURRENCY(), baseCurrency);
         assertEq(registry.BASE_CURRENCY_UNIT(), baseCurrencyUnit);
         assertTrue(registry.hasRole(registry.DEFAULT_ADMIN_ROLE(), admin));
         assertTrue(registry.hasRole(registry.ORACLE_MANAGER_ROLE(), admin));
 
-        assertEq(
-            address(registry.getOracleInfo(asset).aggregator),
-            address(infos[0].aggregator)
-        );
+        assertEq(address(registry.getOracleInfo(asset).aggregator), address(infos[0].aggregator));
         assertEq(registry.getOracleInfo(asset).stalenessThreshold, staleness);
     }
 
     function test_setOracleInfos_setsInfoCorrectly() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(200, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(200, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.startPrank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         registry.setOracleInfos(assets, infos);
         IOracleRegistry.OracleInfo memory info = registry.getOracleInfo(asset);
         assertEq(address(info.aggregator), address(infos[0].aggregator));
@@ -102,16 +77,9 @@ contract OracleRegistryTest is Test {
 
     function test_setOracleInfos_revertsOnLengthMismatch() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](0);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](0);
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            new IOracleRegistry.OracleInfo[](1),
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, new IOracleRegistry.OracleInfo[](1), admin, baseCurrency, baseCurrencyUnit);
         vm.prank(admin);
         vm.expectRevert(IOracleRegistry.InconsistentParamsLength.selector);
         registry.setOracleInfos(assets, infos);
@@ -119,26 +87,16 @@ contract OracleRegistryTest is Test {
 
     function test_setOracleInfos_revert_ifAggregatorNotSet() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(123, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(123, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         vm.prank(admin);
-        IOracleRegistry.OracleInfo[]
-            memory incorrectInfos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory incorrectInfos = new IOracleRegistry.OracleInfo[](1);
         incorrectInfos[0] = IOracleRegistry.OracleInfo({
             aggregator: IAggregatorV2V3Interface(address(0)),
             stalenessThreshold: staleness
@@ -149,120 +107,71 @@ contract OracleRegistryTest is Test {
 
     function test_getAssetPrice_returnsCorrectPrice() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(123, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(123, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         uint256 price = registry.getAssetPrice(asset);
         assertEq(price, 123);
     }
 
     function test_getAssetsPrices_returnsCorrectPrices() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(123, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(123, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         uint256[] memory prices = registry.getAssetsPrices(assets);
         assertEq(prices.length, 1);
         assertEq(prices[0], 123);
     }
 
-    function test_getAssetPrice_returnsBaseCurrencyUnitForBaseCurrency()
-        public
-    {
+    function test_getAssetPrice_returnsBaseCurrencyUnitForBaseCurrency() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(123, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(123, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         uint256 price = registry.getAssetPrice(baseCurrency);
         assertEq(price, baseCurrencyUnit);
     }
 
     function test_getAssetPrice_revertsIfPriceIsOld() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(
-                    new MockAggregator(123, block.timestamp - staleness - 1)
-                )
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(123, block.timestamp - staleness - 1))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         vm.expectRevert(IOracleRegistry.OraclePriceIsOld.selector);
         registry.getAssetPrice(asset);
     }
 
     function test_getAssetPrice_revertsIfPriceIsNegativeOrZero() public {
         address[] memory assets = new address[](1);
-        IOracleRegistry.OracleInfo[]
-            memory infos = new IOracleRegistry.OracleInfo[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
         assets[0] = asset;
         infos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(
-                address(new MockAggregator(0, block.timestamp))
-            ),
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(0, block.timestamp))),
             stalenessThreshold: staleness
         });
         vm.prank(admin);
-        registry.initialize(
-            assets,
-            infos,
-            admin,
-            baseCurrency,
-            baseCurrencyUnit
-        );
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
         vm.expectRevert(IOracleRegistry.PriceIsNotAvailable.selector);
         registry.getAssetPrice(asset);
     }

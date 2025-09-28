@@ -17,9 +17,7 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
         emit BridgeUpdated(bridge, allowed);
     }
 
-    function isBridgeAllowed(
-        address bridge
-    ) external view override returns (bool) {
+    function isBridgeAllowed(address bridge) external view override returns (bool) {
         return allowedBridges[bridge];
     }
 
@@ -29,9 +27,11 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
 
     // Unused interface parts for tests
     function initialize(address, address, address) external {}
+
     function isPermissionless() external pure returns (bool) {
         return false;
     }
+
     function addFacet(address, bytes4[] calldata) external {}
     function editFacet(address, bytes4[] calldata, bool[] calldata) external {}
     function removeFacet(address) external {}
@@ -39,55 +39,57 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     function setProtocolFeeInfo(address, address, uint96) external {}
     function setSelectorAndMask(address, bytes4, bool, bytes memory) external {}
     function setDefaultCrossChainAccountingManager(address) external {}
-    function getFacetSelectors(
-        address
-    ) external pure returns (bytes4[] memory) {
+
+    function getFacetSelectors(address) external pure returns (bytes4[] memory) {
         bytes4[] memory a;
         return a;
     }
+
     function getAllowedFacets() external pure returns (address[] memory) {
         address[] memory a;
         return a;
     }
+
     function protocolFeeInfo(address) external pure returns (address, uint96) {
         return (address(0), 0);
     }
+
     function selectorToFacet(bytes4) external pure returns (address) {
         return address(0);
     }
+
     function facetsList(uint256) external pure returns (address) {
         return address(0);
     }
+
     function getDenominationAssetDecimals() external pure returns (uint8) {
         return 18;
     }
+
     function getDenominationAsset() external pure returns (address) {
         return address(0);
     }
+
     function isFacetAllowed(address) external pure returns (bool) {
         return true;
     }
+
     function addToWhitelist(address) external {}
     function removeFromWhitelist(address) external {}
+
     function isWhitelisted(address) external pure returns (bool) {
         return true;
     }
-    function selectorInfo(
-        address,
-        bytes4
-    ) external pure returns (bool, bytes memory) {
+
+    function selectorInfo(address, bytes4) external pure returns (bool, bytes memory) {
         return (true, "");
     }
-    function isCrossChainAccountingManager(
-        address
-    ) external pure returns (bool) {
+
+    function isCrossChainAccountingManager(address) external pure returns (bool) {
         return false;
     }
-    function defaultCrossChainAccountingManager()
-        external
-        pure
-        returns (address)
-    {
+
+    function defaultCrossChainAccountingManager() external pure returns (address) {
         return address(0);
     }
 }

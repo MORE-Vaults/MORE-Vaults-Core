@@ -11,12 +11,7 @@ import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.ConfigurationFacet");
     }
 
@@ -30,22 +25,19 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
 
     function initialize(bytes calldata data) external initializerFacet {
         uint256 maxSlippagePercent = abi.decode(data, (uint256));
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IConfigurationFacet).interfaceId] = true;
         ds.maxSlippagePercent = maxSlippagePercent;
     }
 
     function onFacetRemoval(bool) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IConfigurationFacet).interfaceId] = false;
     }
 
     function setMaxSlippagePercent(uint256 _newPercent) external {
         AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (_newPercent > 2000) revert SlippageTooHigh();
         ds.maxSlippagePercent = _newPercent;
 
@@ -59,9 +51,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         uint48 _newLimit
     ) external {
         AccessControlLib.validateCurator(msg.sender);
-        MoreVaultsLib.GasLimit storage gl = MoreVaultsLib
-            .moreVaultsStorage()
-            .gasLimit;
+        MoreVaultsLib.GasLimit storage gl = MoreVaultsLib.moreVaultsStorage().gasLimit;
         gl.availableTokenAccountingGas = _availableTokenAccountingGas;
         gl.heldTokenAccountingGas = _heldTokenAccountingGas;
         gl.facetAccountingGas = _facetAccountingGas;
@@ -87,10 +77,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function setDepositWhitelist(
-        address[] calldata depositors,
-        uint256[] calldata underlyingAssetCaps
-    ) external {
+    function setDepositWhitelist(address[] calldata depositors, uint256[] calldata underlyingAssetCaps) external {
         if (depositors.length != underlyingAssetCaps.length) {
             revert ArraysLengthsMismatch();
         }
@@ -137,7 +124,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function addAvailableAssets(address[] calldata assets) external {
         AccessControlLib.validateCurator(msg.sender);
 
-        for (uint256 i = 0; i < assets.length; ) {
+        for (uint256 i = 0; i < assets.length;) {
             MoreVaultsLib._addAvailableAsset(assets[i]);
             unchecked {
                 ++i;
@@ -167,8 +154,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function setWithdrawalTimelock(uint64 _duration) external {
         AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         ds.witdrawTimelock = _duration;
         emit WithdrawalTimelockSet(_duration);
@@ -176,14 +162,9 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
 
     function setCrossChainAccountingManager(address manager) external {
         AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
-        if (
-            !IMoreVaultsRegistry(acs.moreVaultsRegistry)
-                .isCrossChainAccountingManager(manager)
-        ) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (!IMoreVaultsRegistry(acs.moreVaultsRegistry).isCrossChainAccountingManager(manager)) {
             revert InvalidManager();
         }
         ds.crossChainAccountingManager = manager;
@@ -196,8 +177,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function setWithdrawalFee(uint96 _fee) external {
         AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.withdrawalFee = _fee;
         emit WithdrawalFeeSet(_fee);
     }
@@ -207,8 +187,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function updateWithdrawalQueueStatus(bool _status) external {
         AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.isWithdrawalQueueEnabled = _status;
         emit WithdrawalQueueStatusSet(_status);
     }
@@ -217,8 +196,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function getWithdrawalFee() external view returns (uint96) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.withdrawalFee;
     }
 
@@ -226,8 +204,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function getWithdrawalQueueStatus() external view returns (bool) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.isWithdrawalQueueEnabled;
     }
 
@@ -290,9 +267,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function getDepositWhitelist(
-        address depositor
-    ) external view returns (uint256) {
+    function getDepositWhitelist(address depositor) external view returns (uint256) {
         return MoreVaultsLib.moreVaultsStorage().depositWhitelist[depositor];
     }
 
@@ -313,33 +288,24 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function lockedTokensAmountOfAsset(
-        address asset
-    ) external view returns (uint256) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function lockedTokensAmountOfAsset(address asset) external view returns (uint256) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.lockedTokens[asset];
     }
 
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function getStakingAddresses(
-        bytes32 stakingFacetId
-    ) external view returns (address[] memory) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function getStakingAddresses(bytes32 stakingFacetId) external view returns (address[] memory) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return EnumerableSet.values(ds.stakingAddresses[stakingFacetId]);
     }
 
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function tokensHeld(
-        bytes32 tokenId
-    ) external view returns (address[] memory) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+    function tokensHeld(bytes32 tokenId) external view returns (address[] memory) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return EnumerableSet.values(ds.tokensHeld[tokenId]);
     }
 
@@ -347,8 +313,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function getWithdrawalTimelock() external view returns (uint64) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.witdrawTimelock;
     }
 }

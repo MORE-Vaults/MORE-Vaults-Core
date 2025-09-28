@@ -31,12 +31,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
      * @notice Returns the storage slot for this facet's initializable storage
      * @return bytes32 The storage slot identifier
      */
-    function INITIALIZABLE_STORAGE_SLOT()
-        internal
-        pure
-        override
-        returns (bytes32)
-    {
+    function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.ERC7540Facet");
     }
 
@@ -61,15 +56,12 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
      * @param data Encoded data containing the facet selector
      */
     function initialize(bytes calldata data) external initializerFacet {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         bytes32 facetSelector = abi.decode(data, (bytes32));
         ds.facetsForAccounting.push(facetSelector);
 
         ds.supportedInterfaces[type(IERC7540Facet).interfaceId] = true;
-        ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].add(
-            ERC7540_ID
-        );
+        ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].add(ERC7540_ID);
     }
 
     /**
@@ -77,33 +69,21 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
      * @param isReplacing Whether the facet is being replaced
      */
     function onFacetRemoval(bool isReplacing) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IERC7540Facet).interfaceId] = false;
 
-        MoreVaultsLib.removeFromFacetsForAccounting(
-            ds,
-            IERC7540Facet.accountingERC7540Facet.selector,
-            isReplacing
-        );
+        MoreVaultsLib.removeFromFacetsForAccounting(ds, IERC7540Facet.accountingERC7540Facet.selector, isReplacing);
         if (!isReplacing) {
-            ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].remove(
-                ERC7540_ID
-            );
+            ds.vaultExternalAssets[MoreVaultsLib.TokenType.HeldToken].remove(ERC7540_ID);
         }
     }
 
     /**
      * @inheritdoc IERC7540Facet
      */
-    function accountingERC7540Facet()
-        public
-        view
-        returns (uint256 sum, bool isPositive)
-    {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        for (uint256 i = 0; i < ds.tokensHeld[ERC7540_ID].length(); ) {
+    function accountingERC7540Facet() public view returns (uint256 sum, bool isPositive) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        for (uint256 i = 0; i < ds.tokensHeld[ERC7540_ID].length();) {
             address vault = ds.tokensHeld[ERC7540_ID].at(i);
             if (ds.isAssetAvailable[vault]) {
                 unchecked {
@@ -113,13 +93,8 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
             }
             address asset = IERC4626(vault).asset();
             uint256 balance = IERC20(vault).balanceOf(address(this));
-            uint256 convertedToVaultUnderlying = IERC4626(vault)
-                .convertToAssets(balance);
-            sum += MoreVaultsLib.convertToUnderlying(
-                asset,
-                convertedToVaultUnderlying,
-                Math.Rounding.Floor
-            );
+            uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
+            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
@@ -130,10 +105,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC7540Facet
      */
-    function erc7540RequestDeposit(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 requestId) {
+    function erc7540RequestDeposit(address vault, uint256 assets) external returns (uint256 requestId) {
         if (assets == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
@@ -141,43 +113,28 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         address asset = IERC4626(vault).asset();
 
         IERC20(asset).forceApprove(vault, assets);
-        requestId = IERC7540(vault).requestDeposit(
-            assets,
-            address(this),
-            address(this)
-        );
+        requestId = IERC7540(vault).requestDeposit(assets, address(this), address(this));
     }
 
     /**
      * @inheritdoc IERC7540Facet
      */
-    function erc7540RequestRedeem(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 requestId) {
+    function erc7540RequestRedeem(address vault, uint256 shares) external returns (uint256 requestId) {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
 
-        requestId = IERC7540(vault).requestRedeem(
-            shares,
-            address(this),
-            address(this)
-        );
+        requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
     }
 
     /**
      * @inheritdoc IERC7540Facet
      */
-    function erc7540Deposit(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares) {
+    function erc7540Deposit(address vault, uint256 assets) external returns (uint256 shares) {
         if (assets == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         shares = IERC7540(vault).deposit(assets, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
@@ -186,15 +143,11 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC7540Facet
      */
-    function erc7540Mint(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets) {
+    function erc7540Mint(address vault, uint256 shares) external returns (uint256 assets) {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         assets = IERC7540(vault).mint(shares, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
@@ -203,15 +156,11 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC7540Facet
      */
-    function erc7540Withdraw(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares) {
+    function erc7540Withdraw(address vault, uint256 assets) external returns (uint256 shares) {
         if (assets == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         shares = IERC7540(vault).withdraw(assets, address(this), address(this));
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
@@ -220,15 +169,11 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
     /**
      * @inheritdoc IERC7540Facet
      */
-    function erc7540Redeem(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets) {
+    function erc7540Redeem(address vault, uint256 shares) external returns (uint256 assets) {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         assets = IERC7540(vault).redeem(shares, address(this), address(this));
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);

@@ -31,11 +31,7 @@ interface IMoreVaultsRegistry {
      * @param selectors Array of function selectors
      * @param addOrRemove Array with flags for add/remove of selector with same index
      */
-    event FacetEdited(
-        address indexed facet,
-        bytes4[] selectors,
-        bool[] addOrRemove
-    );
+    event FacetEdited(address indexed facet, bytes4[] selectors, bool[] addOrRemove);
 
     /**
      * @dev Emitted when facet is removed
@@ -48,10 +44,7 @@ interface IMoreVaultsRegistry {
      * @param oldOracleRegistry Previous oracle registry address
      * @param newOracleRegistry New oracle registry address
      */
-    event OracleRegistryUpdated(
-        address indexed oldOracleRegistry,
-        address indexed newOracleRegistry
-    );
+    event OracleRegistryUpdated(address indexed oldOracleRegistry, address indexed newOracleRegistry);
 
     /**
      * @dev Emitted when protocol fee info is updated
@@ -59,11 +52,7 @@ interface IMoreVaultsRegistry {
      * @param recipient Address of the protocol fee recipient
      * @param fee Protocol fee
      */
-    event ProtocolFeeInfoUpdated(
-        address indexed vault,
-        address indexed recipient,
-        uint96 fee
-    );
+    event ProtocolFeeInfoUpdated(address indexed vault, address indexed recipient, uint96 fee);
 
     /**
      * @dev Emitted when protocol is whitelisted
@@ -84,11 +73,7 @@ interface IMoreVaultsRegistry {
      * @param manager Address of the cross chain accounting manager
      * @param isManager True if cross chain accounting manager is allowed, false otherwise
      */
-    event CrossChainAccountingManagerSet(
-        address indexed manager,
-        bool isManager
-    );
-
+    event CrossChainAccountingManagerSet(address indexed manager, bool isManager);
 
     /**
      * @dev Emitted when default cross chain accounting manager is set
@@ -102,11 +87,7 @@ interface IMoreVaultsRegistry {
      * @param _oracle Address of the oracle
      * @param _usdStableTokenAddress Address of the USD stable token
      */
-    function initialize(
-        address _owner,
-        address _oracle,
-        address _usdStableTokenAddress
-    ) external;
+    function initialize(address _owner, address _oracle, address _usdStableTokenAddress) external;
 
     /**
      * @notice returns bool flag if registry is permissionless
@@ -127,11 +108,7 @@ interface IMoreVaultsRegistry {
      * @param selectors Array of function selectors
      * @param addOrRemove Array with flags for add/remove of selector with same index
      */
-    function editFacet(
-        address facet,
-        bytes4[] calldata selectors,
-        bool[] calldata addOrRemove
-    ) external;
+    function editFacet(address facet, bytes4[] calldata selectors, bool[] calldata addOrRemove) external;
 
     /**
      * @notice Remove facet and all its selectors
@@ -151,11 +128,7 @@ interface IMoreVaultsRegistry {
      * @param recipient Address of the protocol fee recipient
      * @param fee Protocol fee
      */
-    function setProtocolFeeInfo(
-        address vault,
-        address recipient,
-        uint96 fee
-    ) external;
+    function setProtocolFeeInfo(address vault, address recipient, uint96 fee) external;
 
     /**
      * @notice Set selector allowed
@@ -164,12 +137,7 @@ interface IMoreVaultsRegistry {
      * @param allowed True if selector is allowed, false otherwise
      * @param mask Mask for the selector
      */
-    function setSelectorAndMask(
-        address vault,
-        bytes4 selector,
-        bool allowed,
-        bytes memory mask
-    ) external;
+    function setSelectorAndMask(address vault, bytes4 selector, bool allowed, bytes memory mask) external;
 
     function setDefaultCrossChainAccountingManager(address manager) external;
 
@@ -178,9 +146,7 @@ interface IMoreVaultsRegistry {
      * @param facet Address of the facet contract
      * @return Array of selectors
      */
-    function getFacetSelectors(
-        address facet
-    ) external view returns (bytes4[] memory);
+    function getFacetSelectors(address facet) external view returns (bytes4[] memory);
 
     /**
      * @notice Get list of all allowed facets
@@ -194,9 +160,7 @@ interface IMoreVaultsRegistry {
      * @return address Address of the protocol fee recipient
      * @return uint96 Protocol fee
      */
-    function protocolFeeInfo(
-        address vault
-    ) external view returns (address, uint96);
+    function protocolFeeInfo(address vault) external view returns (address, uint96);
 
     /**
      * @notice Get oracle address
@@ -277,29 +241,18 @@ interface IMoreVaultsRegistry {
      * @return bool True if selector is allowed
      * @return bytes Mask for the selector
      */
-    function selectorInfo(
-        address vault,
-        bytes4 selector
-    ) external view returns (bool, bytes memory);
-
-
-
+    function selectorInfo(address vault, bytes4 selector) external view returns (bool, bytes memory);
 
     /**
      * @notice Check if an address is a cross chain accounting manager
      * @param manager Address of the manager to check
      * @return bool True if the address is a cross chain accounting manager, false otherwise
      */
-    function isCrossChainAccountingManager(
-        address manager
-    ) external view returns (bool);
+    function isCrossChainAccountingManager(address manager) external view returns (bool);
 
     /**
      * @notice Get default cross chain accounting manager
      * @return address Default cross chain accounting manager
      */
-    function defaultCrossChainAccountingManager()
-        external
-        view
-        returns (address);
+    function defaultCrossChainAccountingManager() external view returns (address);
 }

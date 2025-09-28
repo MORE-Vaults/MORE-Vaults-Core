@@ -11,7 +11,10 @@ import {IAggregatorV2V3Interface} from "../interfaces/Chainlink/IAggregatorV2V3I
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {IGenericMoreVaultFacet, IGenericMoreVaultFacetInitializable} from "../interfaces/facets/IGenericMoreVaultFacetInitializable.sol";
+import {
+    IGenericMoreVaultFacet,
+    IGenericMoreVaultFacetInitializable
+} from "../interfaces/facets/IGenericMoreVaultFacetInitializable.sol";
 
 bytes32 constant BEFORE_ACCOUNTING_SELECTOR = 0xa85367f800000000000000000000000000000000000000000000000000000000;
 bytes32 constant BEFORE_ACCOUNTING_FAILED_ERROR = 0xc5361f8d00000000000000000000000000000000000000000000000000000000;
@@ -23,10 +26,7 @@ bytes32 constant TOTAL_ASSETS_RUN_FAILED = 0xb5a70477000000000000000000000000000
 uint256 constant MAX_WITHDRAWAL_DELAY = 14 days;
 
 library MoreVaultsLib {
-    error InitializationFunctionReverted(
-        address _initializationContractAddress,
-        bytes _calldata
-    );
+    error InitializationFunctionReverted(address _initializationContractAddress, bytes _calldata);
     error UnsupportedAsset(address);
     error FacetNotAllowed(address facet);
     error SelectorNotAllowed(bytes4 selector);
@@ -57,8 +57,7 @@ library MoreVaultsLib {
     using Math for uint256;
 
     // 32 bytes keccak hash of a string to use as a diamond storage location.
-    bytes32 constant MORE_VAULTS_STORAGE_POSITION =
-        keccak256("MoreVaults.diamond.storage");
+    bytes32 constant MORE_VAULTS_STORAGE_POSITION = keccak256("MoreVaults.diamond.storage");
 
     uint96 constant FEE_BASIS_POINT = 10000; // 100%
 
@@ -70,8 +69,7 @@ library MoreVaultsLib {
     }
 
     // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC4626")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 constant ERC4626StorageLocation =
-        0x0773e532dfede91f04b12a73d3d2acd361424f41f76b4fb79f090161e36b4e00;
+    bytes32 constant ERC4626StorageLocation = 0x0773e532dfede91f04b12a73d3d2acd361424f41f76b4fb79f090161e36b4e00;
 
     struct FacetAddressAndPosition {
         address facetAddress;
@@ -180,21 +178,14 @@ library MoreVaultsLib {
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
     event FeeSet(uint96 previousFee, uint96 newFee);
-    event FeeRecipientSet(
-        address indexed previousRecipient,
-        address indexed newRecipient
-    );
+    event FeeRecipientSet(address indexed previousRecipient, address indexed newRecipient);
     event AssetToManageAdded(address indexed asset);
     event AssetToDepositEnabled(address indexed asset);
     event AssetToDepositDisabled(address indexed asset);
     event TimeLockPeriodSet(uint256 previousPeriod, uint256 newPeriod);
     event DepositCapacitySet(uint256 previousCapacity, uint256 newCapacity);
 
-    function moreVaultsStorage()
-        internal
-        pure
-        returns (MoreVaultsStorage storage ds)
-    {
+    function moreVaultsStorage() internal pure returns (MoreVaultsStorage storage ds) {
         bytes32 position = MORE_VAULTS_STORAGE_POSITION;
         // assigns struct storage slot to the storage position
         assembly {
@@ -202,22 +193,15 @@ library MoreVaultsLib {
         }
     }
 
-    function getERC4626Storage()
-        internal
-        pure
-        returns (ERC4626Storage storage $)
-    {
+    function getERC4626Storage() internal pure returns (ERC4626Storage storage $) {
         assembly {
             $.slot := ERC4626StorageLocation
         }
     }
 
     function validateAddressWhitelisted(address protocol) internal view {
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
-        if (
-            !IMoreVaultsRegistry(acs.moreVaultsRegistry).isWhitelisted(protocol)
-        ) revert UnsupportedProtocol(protocol);
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (!IMoreVaultsRegistry(acs.moreVaultsRegistry).isWhitelisted(protocol)) revert UnsupportedProtocol(protocol);
     }
 
     function validateAssetAvailable(address asset) internal view {
@@ -239,24 +223,18 @@ library MoreVaultsLib {
         }
     }
 
-    function removeTokenIfnecessary(
-        EnumerableSet.AddressSet storage tokensHeld,
-        address token
-    ) internal {
+    function removeTokenIfnecessary(EnumerableSet.AddressSet storage tokensHeld, address token) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        if (
-            IERC20(token).balanceOf(address(this)) + ds.lockedTokens[token] <
-            10e3
-        ) {
+        if (IERC20(token).balanceOf(address(this)) + ds.lockedTokens[token] < 10e3) {
             tokensHeld.remove(token);
         }
     }
 
-    function convertToUnderlying(
-        address _token,
-        uint amount,
-        Math.Rounding rounding
-    ) internal view returns (uint) {
+    function convertToUnderlying(address _token, uint256 amount, Math.Rounding rounding)
+        internal
+        view
+        returns (uint256)
+    {
         if (amount == 0) return 0;
 
         // Scope 1: Token validation and setup
@@ -264,9 +242,7 @@ library MoreVaultsLib {
         address underlyingToken;
         {
             MoreVaultsStorage storage ds = moreVaultsStorage();
-            resolvedToken = _token == address(0)
-                ? address(ds.wrappedNative)
-                : _token;
+            resolvedToken = _token == address(0) ? address(ds.wrappedNative) : _token;
             underlyingToken = address(getERC4626Storage()._asset);
 
             if (resolvedToken == underlyingToken) {
@@ -279,15 +255,12 @@ library MoreVaultsLib {
         uint8 inputTokenOracleDecimals;
         address oracleDenominationAsset;
         {
-            IMoreVaultsRegistry registry = IMoreVaultsRegistry(
-                AccessControlLib.vaultRegistry()
-            );
+            IMoreVaultsRegistry registry = IMoreVaultsRegistry(AccessControlLib.vaultRegistry());
             IOracleRegistry oracle = registry.oracle();
             oracleDenominationAsset = registry.getDenominationAsset();
 
-            IAggregatorV2V3Interface aggregator = IAggregatorV2V3Interface(
-                oracle.getOracleInfo(resolvedToken).aggregator
-            );
+            IAggregatorV2V3Interface aggregator =
+                IAggregatorV2V3Interface(oracle.getOracleInfo(resolvedToken).aggregator);
             inputTokenPrice = oracle.getAssetPrice(resolvedToken);
             inputTokenOracleDecimals = aggregator.decimals();
         }
@@ -295,68 +268,40 @@ library MoreVaultsLib {
         // Scope 3: Price conversion calculation
         uint256 finalPriceForConversion = inputTokenPrice;
         if (underlyingToken != oracleDenominationAsset) {
-            IMoreVaultsRegistry registry = IMoreVaultsRegistry(
-                AccessControlLib.vaultRegistry()
-            );
+            IMoreVaultsRegistry registry = IMoreVaultsRegistry(AccessControlLib.vaultRegistry());
             IOracleRegistry oracle = registry.oracle();
 
-            IAggregatorV2V3Interface aggregator = IAggregatorV2V3Interface(
-                oracle.getOracleInfo(underlyingToken).aggregator
-            );
-            uint256 underlyingTokenPrice = oracle.getAssetPrice(
-                underlyingToken
-            );
+            IAggregatorV2V3Interface aggregator =
+                IAggregatorV2V3Interface(oracle.getOracleInfo(underlyingToken).aggregator);
+            uint256 underlyingTokenPrice = oracle.getAssetPrice(underlyingToken);
             uint8 underlyingTokenOracleDecimals = aggregator.decimals();
 
-            finalPriceForConversion = inputTokenPrice.mulDiv(
-                10 ** underlyingTokenOracleDecimals,
-                underlyingTokenPrice,
-                rounding
-            );
+            finalPriceForConversion =
+                inputTokenPrice.mulDiv(10 ** underlyingTokenOracleDecimals, underlyingTokenPrice, rounding);
         }
 
         // Final conversion calculation
-        return
-            amount.mulDiv(
-                finalPriceForConversion *
-                    10 ** IERC20Metadata(underlyingToken).decimals(),
-                10 **
-                    (inputTokenOracleDecimals +
-                        IERC20Metadata(resolvedToken).decimals()),
-                rounding
-            );
+        return amount.mulDiv(
+            finalPriceForConversion * 10 ** IERC20Metadata(underlyingToken).decimals(),
+            10 ** (inputTokenOracleDecimals + IERC20Metadata(resolvedToken).decimals()),
+            rounding
+        );
     }
 
-    function convertUnderlyingToUsd(
-        uint amount,
-        Math.Rounding rounding
-    ) internal view returns (uint) {
-        IOracleRegistry oracle = IMoreVaultsRegistry(
-            AccessControlLib.vaultRegistry()
-        ).oracle();
+    function convertUnderlyingToUsd(uint256 amount, Math.Rounding rounding) internal view returns (uint256) {
+        IOracleRegistry oracle = IMoreVaultsRegistry(AccessControlLib.vaultRegistry()).oracle();
         address underlyingToken = address(getERC4626Storage()._asset);
-        return
-            amount.mulDiv(
-                oracle.getAssetPrice(underlyingToken),
-                10 ** IERC20Metadata(underlyingToken).decimals(),
-                rounding
-            );
+        return amount.mulDiv(
+            oracle.getAssetPrice(underlyingToken), 10 ** IERC20Metadata(underlyingToken).decimals(), rounding
+        );
     }
 
-    function convertUsdToUnderlying(
-        uint amount,
-        Math.Rounding rounding
-    ) internal view returns (uint) {
-        IOracleRegistry oracle = IMoreVaultsRegistry(
-            AccessControlLib.vaultRegistry()
-        ).oracle();
+    function convertUsdToUnderlying(uint256 amount, Math.Rounding rounding) internal view returns (uint256) {
+        IOracleRegistry oracle = IMoreVaultsRegistry(AccessControlLib.vaultRegistry()).oracle();
         address underlyingToken = address(getERC4626Storage()._asset);
-        return
-            amount.mulDiv(
-                10 ** IERC20Metadata(underlyingToken).decimals(),
-                oracle.getAssetPrice(underlyingToken),
-                rounding
-            );
+        return amount.mulDiv(
+            10 ** IERC20Metadata(underlyingToken).decimals(), oracle.getAssetPrice(underlyingToken), rounding
+        );
     }
 
     function _setFeeRecipient(address recipient) internal {
@@ -388,12 +333,9 @@ library MoreVaultsLib {
         emit DepositCapacitySet(previousCapacity, capacity);
     }
 
-    function _setDepositWhitelist(
-        address[] calldata depositors,
-        uint256[] calldata undelyingAssetCaps
-    ) internal {
+    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        for (uint256 i; i < depositors.length; ) {
+        for (uint256 i; i < depositors.length;) {
             ds.depositWhitelist[depositors[i]] = undelyingAssetCaps[i];
             unchecked {
                 ++i;
@@ -414,17 +356,13 @@ library MoreVaultsLib {
             revert InvalidAddress();
         }
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (ds.isAssetAvailable[asset]) {
             revert AssetAlreadyAvailable();
         }
 
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
-        IMoreVaultsRegistry registry = IMoreVaultsRegistry(
-            acs.moreVaultsRegistry
-        );
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        IMoreVaultsRegistry registry = IMoreVaultsRegistry(acs.moreVaultsRegistry);
         IOracleRegistry oracle = registry.oracle();
         if (address(oracle.getOracleInfo(asset).aggregator) == address(0)) {
             revert NoOracleForAsset();
@@ -441,8 +379,7 @@ library MoreVaultsLib {
             revert InvalidAddress();
         }
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (!ds.isAssetAvailable[asset]) {
             revert UnsupportedAsset(asset);
         }
@@ -460,18 +397,15 @@ library MoreVaultsLib {
             revert InvalidAddress();
         }
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (!ds.isAssetDepositable[asset]) {
             revert UnsupportedAsset(asset);
         }
 
         ds.isAssetDepositable[asset] = false;
-        for (uint256 i; i < ds.depositableAssets.length; ) {
+        for (uint256 i; i < ds.depositableAssets.length;) {
             if (ds.depositableAssets[i] == asset) {
-                ds.depositableAssets[i] = ds.depositableAssets[
-                    ds.depositableAssets.length - 1
-                ];
+                ds.depositableAssets[i] = ds.depositableAssets[ds.depositableAssets.length - 1];
                 ds.depositableAssets.pop();
                 break;
             }
@@ -485,45 +419,27 @@ library MoreVaultsLib {
 
     // Internal function version of diamondCut
     function diamondCut(IDiamondCut.FacetCut[] memory _diamondCut) internal {
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
-        IMoreVaultsRegistry registry = IMoreVaultsRegistry(
-            acs.moreVaultsRegistry
-        );
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        IMoreVaultsRegistry registry = IMoreVaultsRegistry(acs.moreVaultsRegistry);
 
-        for (uint256 facetIndex; facetIndex < _diamondCut.length; ) {
+        for (uint256 facetIndex; facetIndex < _diamondCut.length;) {
             IDiamondCut.FacetCutAction action = _diamondCut[facetIndex].action;
             address facetAddress = _diamondCut[facetIndex].facetAddress;
 
             // Validate facet and selectors for Add and Replace actions
-            if (
-                action == IDiamondCut.FacetCutAction.Add ||
-                action == IDiamondCut.FacetCutAction.Replace
-            ) {
+            if (action == IDiamondCut.FacetCutAction.Add || action == IDiamondCut.FacetCutAction.Replace) {
                 // Check if facet is allowed in registry
                 if (!registry.isPermissionless()) {
                     if (!registry.isFacetAllowed(facetAddress)) {
                         revert FacetNotAllowed(facetAddress);
                     }
 
-                    for (
-                        uint256 selectorIndex;
-                        selectorIndex <
-                        _diamondCut[facetIndex].functionSelectors.length;
-
-                    ) {
+                    for (uint256 selectorIndex; selectorIndex < _diamondCut[facetIndex].functionSelectors.length;) {
                         if (
-                            registry.selectorToFacet(
-                                _diamondCut[facetIndex].functionSelectors[
-                                    selectorIndex
-                                ]
-                            ) != facetAddress
+                            registry.selectorToFacet(_diamondCut[facetIndex].functionSelectors[selectorIndex])
+                                != facetAddress
                         ) {
-                            revert SelectorNotAllowed(
-                                _diamondCut[facetIndex].functionSelectors[
-                                    selectorIndex
-                                ]
-                            );
+                            revert SelectorNotAllowed(_diamondCut[facetIndex].functionSelectors[selectorIndex]);
                         }
                         unchecked {
                             ++selectorIndex;
@@ -533,28 +449,13 @@ library MoreVaultsLib {
             }
 
             if (action == IDiamondCut.FacetCutAction.Add) {
-                addFunctions(
-                    _diamondCut[facetIndex].facetAddress,
-                    _diamondCut[facetIndex].functionSelectors
-                );
-                initializeAfterAddition(
-                    _diamondCut[facetIndex].facetAddress,
-                    _diamondCut[facetIndex].initData
-                );
+                addFunctions(_diamondCut[facetIndex].facetAddress, _diamondCut[facetIndex].functionSelectors);
+                initializeAfterAddition(_diamondCut[facetIndex].facetAddress, _diamondCut[facetIndex].initData);
             } else if (action == IDiamondCut.FacetCutAction.Replace) {
-                replaceFunctions(
-                    _diamondCut[facetIndex].facetAddress,
-                    _diamondCut[facetIndex].functionSelectors
-                );
-                initializeAfterAddition(
-                    _diamondCut[facetIndex].facetAddress,
-                    _diamondCut[facetIndex].initData
-                );
+                replaceFunctions(_diamondCut[facetIndex].facetAddress, _diamondCut[facetIndex].functionSelectors);
+                initializeAfterAddition(_diamondCut[facetIndex].facetAddress, _diamondCut[facetIndex].initData);
             } else if (action == IDiamondCut.FacetCutAction.Remove) {
-                removeFunctions(
-                    _diamondCut[facetIndex].facetAddress,
-                    _diamondCut[facetIndex].functionSelectors
-                );
+                removeFunctions(_diamondCut[facetIndex].facetAddress, _diamondCut[facetIndex].functionSelectors);
             } else {
                 revert IncorrectFacetCutAction(uint8(action));
             }
@@ -565,10 +466,7 @@ library MoreVaultsLib {
         emit DiamondCut(_diamondCut);
     }
 
-    function addFunctions(
-        address _facetAddress,
-        bytes4[] memory _functionSelectors
-    ) internal {
+    function addFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         if (_functionSelectors.length == 0) {
             revert NoSelectorsInFacetToCut();
         }
@@ -576,22 +474,14 @@ library MoreVaultsLib {
         if (_facetAddress == address(0)) {
             revert ZeroAddress();
         }
-        uint96 selectorPosition = uint96(
-            ds.facetFunctionSelectors[_facetAddress].functionSelectors.length
-        );
+        uint96 selectorPosition = uint96(ds.facetFunctionSelectors[_facetAddress].functionSelectors.length);
         // add new facet address if it does not exist
         if (selectorPosition == 0) {
             addFacet(ds, _facetAddress);
         }
-        for (
-            uint256 selectorIndex;
-            selectorIndex < _functionSelectors.length;
-
-        ) {
+        for (uint256 selectorIndex; selectorIndex < _functionSelectors.length;) {
             bytes4 selector = _functionSelectors[selectorIndex];
-            address oldFacetAddress = ds
-                .selectorToFacetAndPosition[selector]
-                .facetAddress;
+            address oldFacetAddress = ds.selectorToFacetAndPosition[selector].facetAddress;
             if (oldFacetAddress != address(0)) {
                 revert FunctionAlreadyExists(oldFacetAddress, selector);
             }
@@ -607,10 +497,7 @@ library MoreVaultsLib {
         }
     }
 
-    function replaceFunctions(
-        address _facetAddress,
-        bytes4[] memory _functionSelectors
-    ) internal {
+    function replaceFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         if (_functionSelectors.length == 0) {
             revert NoSelectorsInFacetToCut();
         }
@@ -618,24 +505,16 @@ library MoreVaultsLib {
         if (_facetAddress == address(0)) {
             revert ZeroAddress();
         }
-        uint96 selectorPosition = uint96(
-            ds.facetFunctionSelectors[_facetAddress].functionSelectors.length
-        );
+        uint96 selectorPosition = uint96(ds.facetFunctionSelectors[_facetAddress].functionSelectors.length);
         // add new facet address if it does not exist
         if (selectorPosition == 0) {
             addFacet(ds, _facetAddress);
         }
 
         address factory = ds.factory;
-        for (
-            uint256 selectorIndex;
-            selectorIndex < _functionSelectors.length;
-
-        ) {
+        for (uint256 selectorIndex; selectorIndex < _functionSelectors.length;) {
             bytes4 selector = _functionSelectors[selectorIndex];
-            address oldFacetAddress = ds
-                .selectorToFacetAndPosition[selector]
-                .facetAddress;
+            address oldFacetAddress = ds.selectorToFacetAndPosition[selector].facetAddress;
             if (oldFacetAddress == _facetAddress) {
                 revert FunctionAlreadyExists(oldFacetAddress, selector);
             }
@@ -649,10 +528,7 @@ library MoreVaultsLib {
         IVaultsFactory(factory).link(_facetAddress);
     }
 
-    function removeFunctions(
-        address _facetAddress,
-        bytes4[] memory _functionSelectors
-    ) internal {
+    function removeFunctions(address _facetAddress, bytes4[] memory _functionSelectors) internal {
         if (_functionSelectors.length == 0) {
             revert NoSelectorsInFacetToCut();
         }
@@ -662,15 +538,9 @@ library MoreVaultsLib {
             revert ZeroAddress();
         }
 
-        for (
-            uint256 selectorIndex;
-            selectorIndex < _functionSelectors.length;
-
-        ) {
+        for (uint256 selectorIndex; selectorIndex < _functionSelectors.length;) {
             bytes4 selector = _functionSelectors[selectorIndex];
-            address oldFacetAddress = ds
-                .selectorToFacetAndPosition[selector]
-                .facetAddress;
+            address oldFacetAddress = ds.selectorToFacetAndPosition[selector].facetAddress;
             removeFunction(ds, oldFacetAddress, selector, false);
             unchecked {
                 ++selectorIndex;
@@ -678,17 +548,9 @@ library MoreVaultsLib {
         }
     }
 
-    function addFacet(
-        MoreVaultsStorage storage ds,
-        address _facetAddress
-    ) internal {
-        enforceHasContractCode(
-            _facetAddress,
-            "MoreVaultsLibCut: New facet has no code"
-        );
-        ds.facetFunctionSelectors[_facetAddress].facetAddressPosition = ds
-            .facetAddresses
-            .length;
+    function addFacet(MoreVaultsStorage storage ds, address _facetAddress) internal {
+        enforceHasContractCode(_facetAddress, "MoreVaultsLibCut: New facet has no code");
+        ds.facetFunctionSelectors[_facetAddress].facetAddressPosition = ds.facetAddresses.length;
         ds.facetAddresses.push(_facetAddress);
     }
 
@@ -698,21 +560,14 @@ library MoreVaultsLib {
         uint96 _selectorPosition,
         address _facetAddress
     ) internal {
-        ds
-            .selectorToFacetAndPosition[_selector]
-            .functionSelectorPosition = _selectorPosition;
-        ds.facetFunctionSelectors[_facetAddress].functionSelectors.push(
-            _selector
-        );
+        ds.selectorToFacetAndPosition[_selector].functionSelectorPosition = _selectorPosition;
+        ds.facetFunctionSelectors[_facetAddress].functionSelectors.push(_selector);
         ds.selectorToFacetAndPosition[_selector].facetAddress = _facetAddress;
     }
 
-    function removeFunction(
-        MoreVaultsStorage storage ds,
-        address _facetAddress,
-        bytes4 _selector,
-        bool _isReplacing
-    ) internal {
+    function removeFunction(MoreVaultsStorage storage ds, address _facetAddress, bytes4 _selector, bool _isReplacing)
+        internal
+    {
         if (_facetAddress == address(0)) {
             revert FunctionDoesNotExist();
         }
@@ -721,41 +576,24 @@ library MoreVaultsLib {
             revert ImmutableFunction();
         }
         // replace selector with last selector, then delete last selector
-        uint256 selectorPosition = ds
-            .selectorToFacetAndPosition[_selector]
-            .functionSelectorPosition;
-        uint256 lastSelectorPosition = ds
-            .facetFunctionSelectors[_facetAddress]
-            .functionSelectors
-            .length - 1;
+        uint256 selectorPosition = ds.selectorToFacetAndPosition[_selector].functionSelectorPosition;
+        uint256 lastSelectorPosition = ds.facetFunctionSelectors[_facetAddress].functionSelectors.length - 1;
         // if not the same then replace _selector with lastSelector
         if (selectorPosition != lastSelectorPosition) {
-            bytes4 lastSelector = ds
-                .facetFunctionSelectors[_facetAddress]
-                .functionSelectors[lastSelectorPosition];
-            ds.facetFunctionSelectors[_facetAddress].functionSelectors[
-                selectorPosition
-            ] = lastSelector;
-            ds
-                .selectorToFacetAndPosition[lastSelector]
-                .functionSelectorPosition = uint96(selectorPosition);
+            bytes4 lastSelector = ds.facetFunctionSelectors[_facetAddress].functionSelectors[lastSelectorPosition];
+            ds.facetFunctionSelectors[_facetAddress].functionSelectors[selectorPosition] = lastSelector;
+            ds.selectorToFacetAndPosition[lastSelector].functionSelectorPosition = uint96(selectorPosition);
         }
 
         // if no more selectors for facet address then delete the facet address
         if (lastSelectorPosition == 0) {
             // replace facet address with last facet address and delete last facet address
             uint256 lastFacetAddressPosition = ds.facetAddresses.length - 1;
-            uint256 facetAddressPosition = ds
-                .facetFunctionSelectors[_facetAddress]
-                .facetAddressPosition;
+            uint256 facetAddressPosition = ds.facetFunctionSelectors[_facetAddress].facetAddressPosition;
             if (facetAddressPosition != lastFacetAddressPosition) {
-                address lastFacetAddress = ds.facetAddresses[
-                    lastFacetAddressPosition
-                ];
+                address lastFacetAddress = ds.facetAddresses[lastFacetAddressPosition];
                 ds.facetAddresses[facetAddressPosition] = lastFacetAddress;
-                ds
-                    .facetFunctionSelectors[lastFacetAddress]
-                    .facetAddressPosition = facetAddressPosition;
+                ds.facetFunctionSelectors[lastFacetAddress].facetAddressPosition = facetAddressPosition;
             }
             ds.facetAddresses.pop();
             delete ds
@@ -764,17 +602,11 @@ library MoreVaultsLib {
             address factory = ds.factory;
             IVaultsFactory(factory).unlink(_facetAddress);
 
-            (bool success, bytes memory result) = address(_facetAddress)
-                .delegatecall(
-                    abi.encodeWithSelector(
-                        bytes4(
-                            IGenericMoreVaultFacetInitializable
-                                .onFacetRemoval
-                                .selector
-                        ),
-                        _isReplacing
-                    )
-                );
+            (bool success, bytes memory result) = address(_facetAddress).delegatecall(
+                abi.encodeWithSelector(
+                    bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
+                )
+            );
             // revert if onFacetRemoval exists on facet and failed
             if (!success && result.length > 0) {
                 revert OnFacetRemovalFailed(_facetAddress, result);
@@ -786,22 +618,12 @@ library MoreVaultsLib {
         delete ds.selectorToFacetAndPosition[_selector];
     }
 
-    function initializeAfterAddition(
-        address _facetAddress,
-        bytes memory _initData
-    ) internal {
-        enforceHasContractCode(
-            _facetAddress,
-            "MoreVaultsLibCut: _facetAddress has no code"
-        );
+    function initializeAfterAddition(address _facetAddress, bytes memory _initData) internal {
+        enforceHasContractCode(_facetAddress, "MoreVaultsLibCut: _facetAddress has no code");
 
-        bytes memory callData = abi.encodeWithSelector(
-            IGenericMoreVaultFacetInitializable.initialize.selector,
-            _initData
-        );
-        (bool success, bytes memory error) = _facetAddress.delegatecall(
-            callData
-        );
+        bytes memory callData =
+            abi.encodeWithSelector(IGenericMoreVaultFacetInitializable.initialize.selector, _initData);
+        (bool success, bytes memory error) = _facetAddress.delegatecall(callData);
         // 0x0dc149f0 is selector of error AlreadyInitialized()
         if (bytes4(error) == bytes4(hex"0dc149f0")) {
             return;
@@ -820,19 +642,14 @@ library MoreVaultsLib {
         }
     }
 
-    function removeFromBeforeAccounting(
-        MoreVaultsStorage storage ds,
-        address _facetAddress,
-        bool _isReplacing
-    ) internal {
-        for (uint256 i; i < ds.beforeAccountingFacets.length; ) {
+    function removeFromBeforeAccounting(MoreVaultsStorage storage ds, address _facetAddress, bool _isReplacing)
+        internal
+    {
+        for (uint256 i; i < ds.beforeAccountingFacets.length;) {
             if (ds.beforeAccountingFacets[i] == _facetAddress) {
                 if (!_isReplacing) {
-                    (bool success, ) = address(_facetAddress).delegatecall(
-                        abi.encodeWithSelector(
-                            bytes4(BEFORE_ACCOUNTING_SELECTOR)
-                        )
-                    );
+                    (bool success,) =
+                        address(_facetAddress).delegatecall(abi.encodeWithSelector(bytes4(BEFORE_ACCOUNTING_SELECTOR)));
                     assembly {
                         if iszero(success) {
                             mstore(0x40, BEFORE_ACCOUNTING_FAILED_ERROR)
@@ -841,9 +658,7 @@ library MoreVaultsLib {
                         }
                     }
                 }
-                ds.beforeAccountingFacets[i] = ds.beforeAccountingFacets[
-                    ds.beforeAccountingFacets.length - 1
-                ];
+                ds.beforeAccountingFacets[i] = ds.beforeAccountingFacets[ds.beforeAccountingFacets.length - 1];
                 ds.beforeAccountingFacets.pop();
                 break;
             }
@@ -853,16 +668,11 @@ library MoreVaultsLib {
         }
     }
 
-    function removeFromFacetsForAccounting(
-        MoreVaultsStorage storage ds,
-        bytes4 selector,
-        bool _isReplacing
-    ) internal {
-        for (uint256 i; i < ds.facetsForAccounting.length; ) {
+    function removeFromFacetsForAccounting(MoreVaultsStorage storage ds, bytes4 selector, bool _isReplacing) internal {
+        for (uint256 i; i < ds.facetsForAccounting.length;) {
             if (ds.facetsForAccounting[i] == selector) {
                 if (!_isReplacing) {
-                    (bool success, bytes memory result) = address(this)
-                        .staticcall(abi.encodeWithSelector(selector));
+                    (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
                     if (!success) {
                         revert AccountingFailed(selector);
                     }
@@ -871,9 +681,7 @@ library MoreVaultsLib {
                         revert FacetHasBalance(decodedAmount);
                     }
                 }
-                ds.facetsForAccounting[i] = ds.facetsForAccounting[
-                    ds.facetsForAccounting.length - 1
-                ];
+                ds.facetsForAccounting[i] = ds.facetsForAccounting[ds.facetsForAccounting.length - 1];
                 ds.facetsForAccounting.pop();
                 break;
             }
@@ -883,10 +691,7 @@ library MoreVaultsLib {
         }
     }
 
-    function enforceHasContractCode(
-        address _contract,
-        string memory _errorMessage
-    ) internal view {
+    function enforceHasContractCode(address _contract, string memory _errorMessage) internal view {
         uint256 contractSize;
         assembly {
             contractSize := extcodesize(_contract)
@@ -903,25 +708,19 @@ library MoreVaultsLib {
 
         if (gl.value == 0) return;
 
-        bytes32[] memory stakingIds = ds
-            .vaultExternalAssets[TokenType.StakingToken]
-            .values();
-        bytes32[] memory heldIds = ds
-            .vaultExternalAssets[TokenType.HeldToken]
-            .values();
+        bytes32[] memory stakingIds = ds.vaultExternalAssets[TokenType.StakingToken].values();
+        bytes32[] memory heldIds = ds.vaultExternalAssets[TokenType.HeldToken].values();
 
         uint256 stakingTokensLength;
-        for (uint256 i = 0; i < stakingIds.length; ) {
+        for (uint256 i = 0; i < stakingIds.length;) {
             unchecked {
-                stakingTokensLength += ds
-                    .stakingAddresses[stakingIds[i]]
-                    .length();
+                stakingTokensLength += ds.stakingAddresses[stakingIds[i]].length();
                 ++i;
             }
         }
 
         uint256 tokensHeldLength;
-        for (uint256 i = 0; i < heldIds.length; ) {
+        for (uint256 i = 0; i < heldIds.length;) {
             unchecked {
                 tokensHeldLength += ds.tokensHeld[heldIds[i]].length();
                 ++i;
@@ -930,16 +729,10 @@ library MoreVaultsLib {
 
         uint256 consumption;
         unchecked {
-            consumption =
-                tokensHeldLength *
-                gl.heldTokenAccountingGas +
-                stakingTokensLength *
-                gl.stakingTokenAccountingGas +
-                ds.availableAssets.length *
-                gl.availableTokenAccountingGas +
-                ds.facetsForAccounting.length *
-                gl.facetAccountingGas +
-                gl.nestedVaultsGas;
+            consumption = tokensHeldLength * gl.heldTokenAccountingGas
+                + stakingTokensLength * gl.stakingTokenAccountingGas
+                + ds.availableAssets.length * gl.availableTokenAccountingGas
+                + ds.facetsForAccounting.length * gl.facetAccountingGas + gl.nestedVaultsGas;
         }
 
         if (consumption > ds.gasLimit.value) {
@@ -947,10 +740,7 @@ library MoreVaultsLib {
         }
     }
 
-    function withdrawFromRequest(
-        address _requester,
-        uint256 _shares
-    ) internal returns (bool) {
+    function withdrawFromRequest(address _requester, uint256 _shares) internal returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         WithdrawRequest storage request = ds.withdrawalRequests[_requester];
         // if withdrawal queue is disabled, request can be processed immediately
@@ -959,10 +749,7 @@ library MoreVaultsLib {
             return msg.sender == _requester;
         }
 
-        if (
-            isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) &&
-            request.shares >= _shares
-        ) {
+        if (isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) && request.shares >= _shares) {
             request.shares -= _shares;
             return true;
         }
@@ -970,14 +757,9 @@ library MoreVaultsLib {
         return false;
     }
 
-    function isWithdrawableRequest(
-        uint256 _timelockEndsAt,
-        uint256 _witdrawTimelock
-    ) private view returns (bool) {
+    function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
         uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
-        return
-            block.timestamp >= _timelockEndsAt ||
-            block.timestamp - requestTimestamp > MAX_WITHDRAWAL_DELAY;
+        return block.timestamp >= _timelockEndsAt || block.timestamp - requestTimestamp > MAX_WITHDRAWAL_DELAY;
     }
 
     function factoryAddress() internal view returns (address) {
@@ -997,11 +779,7 @@ library MoreVaultsLib {
             mstore(0, _baf.slot)
             let slot := keccak256(0, 0x20)
             mstore(freePtr, BEFORE_ACCOUNTING_SELECTOR)
-            for {
-                let i := 0
-            } lt(i, length) {
-                i := add(i, 1)
-            } {
+            for { let i := 0 } lt(i, length) { i := add(i, 1) } {
                 let facet := sload(add(slot, i))
                 let res := delegatecall(gas(), facet, freePtr, 4, 0, 0) // call facets for acounting, ignore return values
                 // if delegatecall fails, revert with the error
@@ -1016,12 +794,9 @@ library MoreVaultsLib {
 
     function _getCrossChainAccountingManager() internal view returns (address) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib
-            .accessControlStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
         if (ds.crossChainAccountingManager == address(0)) {
-            return
-                IMoreVaultsRegistry(acs.moreVaultsRegistry)
-                    .defaultCrossChainAccountingManager();
+            return IMoreVaultsRegistry(acs.moreVaultsRegistry).defaultCrossChainAccountingManager();
         }
 
         return ds.crossChainAccountingManager;

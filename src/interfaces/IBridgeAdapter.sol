@@ -2,7 +2,10 @@
 pragma solidity ^0.8.20;
 
 import {IVaultsFactory} from "./IVaultsFactory.sol";
-import {MessagingReceipt, MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import {
+    MessagingReceipt,
+    MessagingFee
+} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 /// @title IBridgeAdapter - Common interface for bridge adapters
 interface IBridgeAdapter {
@@ -43,20 +46,17 @@ interface IBridgeAdapter {
      * @param _extraOptions Extra options for the read operation
      * @return fee The fee for the read operation
      */
-    function quoteReadFee(
-        address[] memory vaults,
-        uint32[] memory eids,
-        bytes calldata _extraOptions
-    ) external view returns (MessagingFee memory fee);
+    function quoteReadFee(address[] memory vaults, uint32[] memory eids, bytes calldata _extraOptions)
+        external
+        view
+        returns (MessagingFee memory fee);
 
     /**
      * @notice Execute a cross-chain bridge operation
      * @param bridgeSpecificParams Encoded parameters specific to the bridge implementation
      * @dev Implementation should emit BridgeExecuted event
      */
-    function executeBridging(
-        bytes calldata bridgeSpecificParams
-    ) external payable;
+    function executeBridging(bytes calldata bridgeSpecificParams) external payable;
 
     /**
      * @notice Initiate a cross-chain accounting operation
@@ -86,20 +86,14 @@ interface IBridgeAdapter {
      * @param to Recipient address
      * @param amount Amount to rescue
      */
-    function rescueToken(
-        address token,
-        address payable to,
-        uint256 amount
-    ) external;
+    function rescueToken(address token, address payable to, uint256 amount) external;
 
     /**
      * @notice Get quote for bridge operation
      * @param bridgeSpecificParams Encoded parameters specific to the bridge implementation
      * @return nativeFee The native token fee required for the bridge operation
      */
-    function quoteBridgeFee(
-        bytes calldata bridgeSpecificParams
-    ) external view returns (uint256 nativeFee);
+    function quoteBridgeFee(bytes calldata bridgeSpecificParams) external view returns (uint256 nativeFee);
 
     /**
      * @notice Pause/unpause bridge operations (admin only)
@@ -132,10 +126,7 @@ interface IBridgeAdapter {
      * @dev Moved from VaultsRegistry to adapter for better separation of concerns
      *      Protected against reentrancy in implementations
      */
-    function setTrustedOFTs(
-        address[] calldata ofts,
-        bool[] calldata trusted
-    ) external;
+    function setTrustedOFTs(address[] calldata ofts, bool[] calldata trusted) external;
 
     /**
      * @notice Check if an OFT token is trusted for bridging

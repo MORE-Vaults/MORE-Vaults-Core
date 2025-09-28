@@ -11,32 +11,17 @@ interface IVaultsFactory {
     error InvalidTimeLock();
     error InvalidFee();
 
-    event VaultDeployed(
-        address indexed vault,
-        address registry,
-        address wrappedNative,
-        IDiamondCut.FacetCut[] facets
-    );
+    event VaultDeployed(address indexed vault, address registry, address wrappedNative, IDiamondCut.FacetCut[] facets);
 
     event DiamondCutFacetUpdated(address indexed newDiamondCutFacet);
     event AccessControlFacetUpdated(address indexed newAccessControlFacet);
     event MaxFinalizationTimeUpdated(uint96 indexed newMaxFinalizationTime);
     event CrossChainLinkRequested(
-        uint32 indexed dstChainId,
-        address indexed initiator,
-        address indexed vaultToLink,
-        address remoteVault
+        uint32 indexed dstChainId, address indexed initiator, address indexed vaultToLink, address remoteVault
     );
-    event CrossChainLinked(
-        uint32 indexed linkedVaultChainId,
-        address indexed linkedVault,
-        address indexed localVault
-    );
+    event CrossChainLinked(uint32 indexed linkedVaultChainId, address indexed linkedVault, address indexed localVault);
 
-    event SetFacetRestricted(
-        address indexed _facet,
-        bool indexed _isRestricted
-    );
+    event SetFacetRestricted(address indexed _facet, bool indexed _isRestricted);
 
     /**
      * @notice Initialize the factory
@@ -61,12 +46,9 @@ interface IVaultsFactory {
     /**
      * @notice Spoke requests registration on Hub
      */
-    function requestRegisterSpoke(
-        uint32 _hubEid,
-        address _hubVault,
-        address _spokeVault,
-        bytes calldata _options
-    ) external payable;
+    function requestRegisterSpoke(uint32 _hubEid, address _hubVault, address _spokeVault, bytes calldata _options)
+        external
+        payable;
 
     /**
      * @notice Get registry contract address
@@ -149,19 +131,14 @@ interface IVaultsFactory {
      * @notice Returns vaults addresses using this facet
      * @param _facet address of the facet
      */
-    function getLinkedVaults(
-        address _facet
-    ) external returns (address[] memory vaults);
+    function getLinkedVaults(address _facet) external returns (address[] memory vaults);
 
     /**
      * @notice Returns bool flag if vault linked to the facet
      * @param _facet address of the facet
      * @param _vault address of the vault
      */
-    function isVaultLinked(
-        address _facet,
-        address _vault
-    ) external returns (bool);
+    function isVaultLinked(address _facet, address _vault) external returns (bool);
 
     /**
      * @notice Returns facet addresses that are restricted
@@ -176,10 +153,10 @@ interface IVaultsFactory {
      * @return eids endpoint ids of spokes
      * @return vaults addresses of spokes
      */
-    function hubToSpokes(
-        uint32 _chainId,
-        address _hubVault
-    ) external view returns (uint32[] memory eids, address[] memory vaults);
+    function hubToSpokes(uint32 _chainId, address _hubVault)
+        external
+        view
+        returns (uint32[] memory eids, address[] memory vaults);
 
     /**
      * @notice Returns spoke to hub
@@ -188,10 +165,7 @@ interface IVaultsFactory {
      * @return eid endpoint id of hub
      * @return vault address of hub vault
      */
-    function spokeToHub(
-        uint32 _chainId,
-        address _spokeVault
-    ) external view returns (uint32 eid, address vault);
+    function spokeToHub(uint32 _chainId, address _spokeVault) external view returns (uint32 eid, address vault);
 
     /**
      * @notice Checks whether a hub has a given spoke linked
@@ -201,12 +175,10 @@ interface IVaultsFactory {
      * @param _spokeVault Spoke vault address
      * @return bool True if the spoke is linked to the hub
      */
-    function isSpokeOfHub(
-        uint32 _hubEid,
-        address _hubVault,
-        uint32 _spokeEid,
-        address _spokeVault
-    ) external view returns (bool);
+    function isSpokeOfHub(uint32 _hubEid, address _hubVault, uint32 _spokeEid, address _spokeVault)
+        external
+        view
+        returns (bool);
 
     /**
      * @notice Checks whether a vault is a cross-chain vault
@@ -214,10 +186,7 @@ interface IVaultsFactory {
      * @param _vault Vault address
      * @return bool True if the vault is a cross-chain vault
      */
-    function isCrossChainVault(
-        uint32 _chainId,
-        address _vault
-    ) external view returns (bool);
+    function isCrossChainVault(uint32 _chainId, address _vault) external view returns (bool);
 
     /**
      * @notice Returns local EID

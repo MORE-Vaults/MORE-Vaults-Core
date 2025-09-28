@@ -20,12 +20,7 @@ interface IMulticallFacet is IGenericMoreVaultFacetInitializable {
      * @param pendingUntil Timestamp until which actions are pending
      * @param actionsData Array of encoded function calls
      */
-    event ActionsSubmitted(
-        address indexed curator,
-        uint256 indexed nonce,
-        uint256 pendingUntil,
-        bytes[] actionsData
-    );
+    event ActionsSubmitted(address indexed curator, uint256 indexed nonce, uint256 pendingUntil, bytes[] actionsData);
 
     /**
      * @dev Emitted when actions sequence is vetoed by guardian
@@ -39,19 +34,14 @@ interface IMulticallFacet is IGenericMoreVaultFacetInitializable {
      * @param executor Address that executed the sequence
      * @param actionsNonce Nonce of executed actions sequence
      */
-    event ActionsExecuted(
-        address indexed executor,
-        uint256 indexed actionsNonce
-    );
+    event ActionsExecuted(address indexed executor, uint256 indexed actionsNonce);
 
     /**
      * @notice Submit new sequence of actions for time-locked execution
      * @param actionsData Array of encoded function calls
      * @return nonce Nonce assigned to this sequence
      */
-    function submitActions(
-        bytes[] calldata actionsData
-    ) external returns (uint256 nonce);
+    function submitActions(bytes[] calldata actionsData) external returns (uint256 nonce);
 
     /**
      * @notice Execute pending sequence of actions after time lock period
@@ -71,9 +61,10 @@ interface IMulticallFacet is IGenericMoreVaultFacetInitializable {
      * @return actionsData Array of encoded function calls
      * @return pendingUntil Timestamp until which actions are pending
      */
-    function getPendingActions(
-        uint256 actionsNonce
-    ) external view returns (bytes[] memory actionsData, uint256 pendingUntil);
+    function getPendingActions(uint256 actionsNonce)
+        external
+        view
+        returns (bytes[] memory actionsData, uint256 pendingUntil);
 
     /**
      * @notice Get current actions nonce

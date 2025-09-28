@@ -29,10 +29,7 @@ interface IOracleRegistry {
      * @param baseCurrency The address of the base currency
      * @param baseCurrencyUnit The unit of the base currency
      */
-    event BaseCurrencySet(
-        address indexed baseCurrency,
-        uint256 baseCurrencyUnit
-    );
+    event BaseCurrencySet(address indexed baseCurrency, uint256 baseCurrencyUnit);
 
     /**
      * @notice Emitted when an asset source is updated
@@ -41,11 +38,7 @@ interface IOracleRegistry {
      */
     event OracleInfoUpdated(address indexed asset, OracleInfo info);
 
-    event SpokeOracleInfoUpdated(
-        address indexed hub,
-        uint32 indexed chaindId,
-        OracleInfo info
-    );
+    event SpokeOracleInfoUpdated(address indexed hub, uint32 indexed chaindId, OracleInfo info);
 
     /**
      * @notice Returns the base currency address used for price quotes
@@ -65,26 +58,13 @@ interface IOracleRegistry {
      * @param assets The addresses of the assets
      * @param infos The OracleInfo struct for each asset
      */
-    function setOracleInfos(
-        address[] calldata assets,
-        OracleInfo[] calldata infos
-    ) external;
+    function setOracleInfos(address[] calldata assets, OracleInfo[] calldata infos) external;
 
-    function setSpokeOracleInfos(
-        address hub,
-        uint32[] calldata chainIds,
-        OracleInfo[] calldata infos
-    ) external;
+    function setSpokeOracleInfos(address hub, uint32[] calldata chainIds, OracleInfo[] calldata infos) external;
 
-    function getSpokeValue(
-        address hub,
-        uint32 chainId
-    ) external view returns (uint256);
+    function getSpokeValue(address hub, uint32 chainId) external view returns (uint256);
 
-    function getSpokeOracleInfo(
-        address hub,
-        uint32 chainId
-    ) external view returns (OracleInfo memory);
+    function getSpokeOracleInfo(address hub, uint32 chainId) external view returns (OracleInfo memory);
 
     /**
      * @notice Returns the price of a given asset
@@ -98,16 +78,12 @@ interface IOracleRegistry {
      * @param assets The addresses of the assets
      * @return An array of prices for each asset in the base currency
      */
-    function getAssetsPrices(
-        address[] calldata assets
-    ) external view returns (uint256[] memory);
+    function getAssetsPrices(address[] calldata assets) external view returns (uint256[] memory);
 
     /**
      * @notice Returns the OracleInfo struct for a given asset
      * @param asset The address of the asset
      * @return The OracleInfo struct containing aggregator and staleness threshold
      */
-    function getOracleInfo(
-        address asset
-    ) external view returns (OracleInfo memory);
+    function getOracleInfo(address asset) external view returns (OracleInfo memory);
 }

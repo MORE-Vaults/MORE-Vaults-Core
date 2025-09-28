@@ -28,10 +28,7 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
      * @return sum The total sum of underlying assets
      * @return isPositive Whether the sum is positive
      */
-    function accountingERC4626Facet()
-        external
-        view
-        returns (uint256 sum, bool isPositive);
+    function accountingERC4626Facet() external view returns (uint256 sum, bool isPositive);
 
     /**
      * @notice Deposits assets into an ERC4626 vault, doesn't support async behavior
@@ -39,10 +36,7 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
      * @param assets The amount of assets to deposit
      * @return shares The amount of shares received from the deposit
      */
-    function erc4626Deposit(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares);
+    function erc4626Deposit(address vault, uint256 assets) external returns (uint256 shares);
 
     /**
      * @notice Mints shares from an ERC4626 vault, doesn't support async behavior
@@ -50,10 +44,7 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
      * @param shares The amount of shares to mint
      * @return assets The amount of assets required for minting
      */
-    function erc4626Mint(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets);
+    function erc4626Mint(address vault, uint256 shares) external returns (uint256 assets);
 
     /**
      * @notice Withdraws assets from an ERC4626 vault, doesn't support async behavior, only withdrawing MORE Vault's position
@@ -61,10 +52,7 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
      * @param assets The amount of assets to withdraw
      * @return shares The amount of shares burned for the withdrawal
      */
-    function erc4626Withdraw(
-        address vault,
-        uint256 assets
-    ) external returns (uint256 shares);
+    function erc4626Withdraw(address vault, uint256 assets) external returns (uint256 shares);
 
     /**
      * @notice Redeems shares from an ERC4626 vault, doesn't support async behavior, only redeeming MORE Vault's position
@@ -72,18 +60,12 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
      * @param shares The amount of shares to redeem
      * @return assets The amount of assets received from the redemption
      */
-    function erc4626Redeem(
-        address vault,
-        uint256 shares
-    ) external returns (uint256 assets);
+    function erc4626Redeem(address vault, uint256 shares) external returns (uint256 assets);
 
     /**
      * @notice Executes a generic async action on a vault that is approved by registry for it
      * @param vault The address of the vault to execute an action on
      * @param data The encoded data for the async action execution
      */
-    function genericAsyncActionExecution(
-        address vault,
-        bytes calldata data
-    ) external;
+    function genericAsyncActionExecution(address vault, bytes calldata data) external;
 }

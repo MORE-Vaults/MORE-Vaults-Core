@@ -13,13 +13,7 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     error VaultDebtIsGreaterThanAssets();
 
     /// @dev Events
-    event Deposit(
-        address indexed sender,
-        address indexed owner,
-        address[] tokens,
-        uint256[] assets,
-        uint256 shares
-    );
+    event Deposit(address indexed sender, address indexed owner, address[] tokens, uint256[] assets, uint256 shares);
 
     event AccrueInterest(uint256 newTotalAssets, uint256 interestAccrued);
 
@@ -44,60 +38,43 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /// @param _owner The owner of the request
     /// @return shares The shares of the request
     /// @return timelockEndsAt The timelock end time of the request
-    function getWithdrawalRequest(
-        address _owner
-    ) external view returns (uint256 shares, uint256 timelockEndsAt);
+    function getWithdrawalRequest(address _owner) external view returns (uint256 shares, uint256 timelockEndsAt);
 
     /// @notice Allows deposit of multiple tokens in a single transaction
     /// @param tokens Array of token addresses to deposit
     /// @param assets Array of amounts to deposit for each token
     /// @param receiver Address that will receive the vault shares
     /// @return shares Amount of vault shares minted
-    function deposit(
-        address[] calldata tokens,
-        uint256[] calldata assets,
-        address receiver
-    ) external payable returns (uint256 shares);
+    function deposit(address[] calldata tokens, uint256[] calldata assets, address receiver)
+        external
+        payable
+        returns (uint256 shares);
 
     /// @notice Deposit a single asset for shares
     /// @param assets Amount of asset to deposit
     /// @param receiver Address that will receive the vault shares
     /// @return shares Amount of vault shares minted
-    function deposit(
-        uint256 assets,
-        address receiver
-    ) external returns (uint256 shares);
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
 
     /// @notice Mint exact amount of shares by depositing assets
     /// @param shares Amount of shares to mint
     /// @param receiver Address that will receive the vault shares
     /// @return assets Amount of assets deposited
-    function mint(
-        uint256 shares,
-        address receiver
-    ) external returns (uint256 assets);
+    function mint(uint256 shares, address receiver) external returns (uint256 assets);
 
     /// @notice Withdraw assets by burning shares
     /// @param assets Amount of assets to withdraw
     /// @param receiver Address that will receive the assets
     /// @param owner Owner of the shares
     /// @return shares Amount of shares burned
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    ) external returns (uint256 shares);
+    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
 
     /// @notice Redeem shares for assets
     /// @param shares Amount of shares to redeem
     /// @param receiver Address that will receive the assets
     /// @param owner Owner of the shares
     /// @return assets Amount of assets withdrawn
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    ) external returns (uint256 assets);
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
 
     /**
      * @notice Sets fee amount

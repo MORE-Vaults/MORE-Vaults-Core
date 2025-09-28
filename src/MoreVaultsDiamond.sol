@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
-/******************************************************************************\
-* EIP-2535 Diamonds: https://eips.ethereum.org/EIPS/eip-2535
-/******************************************************************************/
-
+/**
+ * \
+ * EIP-2535 Diamonds: https://eips.ethereum.org/EIPS/eip-2535
+ * /*****************************************************************************
+ */
 import {MoreVaultsLib} from "./libraries/MoreVaultsLib.sol";
 import {AccessControlLib} from "./libraries/AccessControlLib.sol";
 import {IDiamondCut} from "./interfaces/facets/IDiamondCut.sol";
@@ -35,9 +36,7 @@ contract MoreVaultsDiamond {
         });
 
         bytes4[] memory functionSelectorsAc = new bytes4[](1);
-        functionSelectorsAc[0] = IAccessControlFacet
-            .setMoreVaultsRegistry
-            .selector;
+        functionSelectorsAc[0] = IAccessControlFacet.setMoreVaultsRegistry.selector;
         cut[1] = IDiamondCut.FacetCut({
             facetAddress: _accessControlFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -46,8 +45,7 @@ contract MoreVaultsDiamond {
         });
         AccessControlLib.setMoreVaultsRegistry(_registry);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.wrappedNative = _wrappedNative;
         ds.isHub = _isHub;
 
@@ -82,18 +80,13 @@ contract MoreVaultsDiamond {
             returndatacopy(0, 0, returndatasize())
             // return any return value or error back to the caller
             switch result
-            case 0 {
-                revert(0, returndatasize())
-            }
-            default {
-                return(0, returndatasize())
-            }
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
         }
     }
 
     receive() external payable {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (!ds.isAssetAvailable[ds.wrappedNative]) {
             revert NativeTokenNotAvailable();
         }

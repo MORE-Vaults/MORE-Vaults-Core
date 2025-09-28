@@ -17,12 +17,9 @@ contract MockVaultsFactory {
         _localEid = eid;
     }
 
-    function setHubToSpokes(
-        uint32 chainId,
-        address hubVault,
-        uint32[] calldata eids,
-        address[] calldata vaults
-    ) external {
+    function setHubToSpokes(uint32 chainId, address hubVault, uint32[] calldata eids, address[] calldata vaults)
+        external
+    {
         bytes32 key = keccak256(abi.encode(chainId, hubVault));
         _hubToSpokes[key] = HubToSpokes({eids: eids, vaults: vaults});
     }
@@ -31,13 +28,12 @@ contract MockVaultsFactory {
         return _localEid;
     }
 
-    function hubToSpokes(
-        uint32 _chainId,
-        address _hubVault
-    ) external view returns (uint32[] memory eids, address[] memory vaults) {
-        HubToSpokes storage h = _hubToSpokes[
-            keccak256(abi.encode(_chainId, _hubVault))
-        ];
+    function hubToSpokes(uint32 _chainId, address _hubVault)
+        external
+        view
+        returns (uint32[] memory eids, address[] memory vaults)
+    {
+        HubToSpokes storage h = _hubToSpokes[keccak256(abi.encode(_chainId, _hubVault))];
         return (h.eids, h.vaults);
     }
 }

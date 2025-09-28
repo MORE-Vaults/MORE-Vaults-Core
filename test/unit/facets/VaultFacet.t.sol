@@ -72,27 +72,15 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setFactory(facet, factory);
 
         // Initialize vault
-        bytes memory initData = abi.encode(
-            VAULT_NAME,
-            VAULT_SYMBOL,
-            asset,
-            feeRecipient,
-            FEE,
-            DEPOSIT_CAPACITY
-        );
+        bytes memory initData = abi.encode(VAULT_NAME, VAULT_SYMBOL, asset, feeRecipient, FEE, DEPOSIT_CAPACITY);
 
         vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracleRegistry)
+            address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracleRegistry)
         );
 
         vm.mockCall(
             address(oracleRegistry),
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset),
             abi.encode(address(2000), uint96(1000))
         );
 
@@ -102,25 +90,15 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setMoreVaultsRegistry(facet, registry);
         MoreVaultsStorageHelper.setCurator(facet, curator);
         MoreVaultsStorageHelper.setGuardian(facet, guardian);
-        MoreVaultsStorageHelper.setDepositWhitelist(
-            facet,
-            user,
-            10_000_000 ether
-        );
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, user, 10_000_000 ether);
         MoreVaultsStorageHelper.setIsHub(facet, true);
 
         vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.localEid.selector),
-            abi.encode(uint32(block.chainid))
+            factory, abi.encodeWithSelector(IVaultsFactory.localEid.selector), abi.encode(uint32(block.chainid))
         );
         vm.mockCall(
             factory,
-            abi.encodeWithSelector(
-                IVaultsFactory.isCrossChainVault.selector,
-                uint32(block.chainid),
-                facet
-            ),
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), facet),
             abi.encode(false)
         );
 
@@ -131,67 +109,29 @@ contract VaultFacetTest is Test {
     }
 
     function test_initialize_ShouldSetInitialValues() public view {
+        assertEq(IERC20Metadata(facet).name(), VAULT_NAME, "Should set correct name");
+        assertEq(IERC20Metadata(facet).symbol(), VAULT_SYMBOL, "Should set correct symbol");
+        assertEq(IERC20Metadata(facet).decimals(), 18 + decimalsOffset, "Should set correct decimals");
+        assertEq(MoreVaultsStorageHelper.getFeeRecipient(facet), feeRecipient, "Should set correct fee recipient");
+        assertEq(MoreVaultsStorageHelper.getFee(facet), FEE, "Should set correct fee");
         assertEq(
-            IERC20Metadata(facet).name(),
-            VAULT_NAME,
-            "Should set correct name"
+            MoreVaultsStorageHelper.getDepositCapacity(facet), DEPOSIT_CAPACITY, "Should set correct deposit capacity"
         );
-        assertEq(
-            IERC20Metadata(facet).symbol(),
-            VAULT_SYMBOL,
-            "Should set correct symbol"
-        );
-        assertEq(
-            IERC20Metadata(facet).decimals(),
-            18 + decimalsOffset,
-            "Should set correct decimals"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.getFeeRecipient(facet),
-            feeRecipient,
-            "Should set correct fee recipient"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.getFee(facet),
-            FEE,
-            "Should set correct fee"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.getDepositCapacity(facet),
-            DEPOSIT_CAPACITY,
-            "Should set correct deposit capacity"
-        );
-        assertEq(
-            MoreVaultsStorageHelper.isAssetAvailable(facet, asset),
-            true,
-            "Should set asset available"
-        );
+        assertEq(MoreVaultsStorageHelper.isAssetAvailable(facet, asset), true, "Should set asset available");
 
         assertTrue(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                facet,
-                type(IVaultFacet).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(facet, type(IVaultFacet).interfaceId),
             "Should set supported interface"
         );
         assertTrue(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                facet,
-                type(IERC4626).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(facet, type(IERC4626).interfaceId),
             "Should set supported interface"
         );
         assertTrue(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                facet,
-                type(IERC20).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(facet, type(IERC20).interfaceId),
             "Should set supported interface"
         );
-        assertTrue(
-            MoreVaultsStorageHelper.getIsHub(facet),
-            "Should set as hub"
-        );
+        assertTrue(MoreVaultsStorageHelper.getIsHub(facet), "Should set as hub");
     }
 
     function test_initialize_ShouldRevertWithInvalidParameters() public {
@@ -212,69 +152,33 @@ contract VaultFacetTest is Test {
     }
 
     function test_facetName_ShouldReturnCorrectName() public view {
-        assertEq(
-            VaultFacet(facet).facetName(),
-            "VaultFacet",
-            "Should return correct facet name"
-        );
+        assertEq(VaultFacet(facet).facetName(), "VaultFacet", "Should return correct facet name");
     }
 
     function test_deposit_ShouldMintShares() public {
         uint256 depositAmount = 100 ether;
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.prank(user);
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
 
-        assertEq(
-            IERC20(facet).balanceOf(user),
-            shares,
-            "Should mint correct amount of shares"
-        );
-        assertEq(
-            IERC20(asset).balanceOf(facet),
-            depositAmount,
-            "Should receive correct amount of assets"
-        );
+        assertEq(IERC20(facet).balanceOf(user), shares, "Should mint correct amount of shares");
+        assertEq(IERC20(asset).balanceOf(facet), depositAmount, "Should receive correct amount of assets");
     }
 
     function test_deposit_ShouldRevertWhenCalledInMulticall() public {
@@ -302,57 +206,27 @@ contract VaultFacetTest is Test {
         amounts[1] = depositAmount2;
         MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
         for (uint256 i = 0; i < tokens.length; i++) {
-            MoreVaultsStorageHelper.setDepositableAssets(
-                facet,
-                tokens[i],
-                true
-            );
+            MoreVaultsStorageHelper.setDepositableAssets(facet, tokens[i], true);
         }
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(oracle, uint96(1000))
         );
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, asset2),
             abi.encode(1 * 10 ** 8)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.prank(user);
         VaultFacet(facet).deposit(tokens, amounts, user);
@@ -360,25 +234,13 @@ contract VaultFacetTest is Test {
         // apply generic slippage 1% for conversion of non underlying asset
         uint256 expectedShares = depositAmount + depositAmount2;
         assertEq(
-            IERC20(facet).balanceOf(user),
-            expectedShares * 10 ** decimalsOffset,
-            "Should mint correct amount of shares"
+            IERC20(facet).balanceOf(user), expectedShares * 10 ** decimalsOffset, "Should mint correct amount of shares"
         );
-        assertEq(
-            IERC20(asset).balanceOf(facet),
-            depositAmount,
-            "Should receive correct amount of assets1"
-        );
-        assertEq(
-            IERC20(asset2).balanceOf(facet),
-            depositAmount2,
-            "Should receive correct amount of assets2"
-        );
+        assertEq(IERC20(asset).balanceOf(facet), depositAmount, "Should receive correct amount of assets1");
+        assertEq(IERC20(asset2).balanceOf(facet), depositAmount2, "Should receive correct amount of assets2");
     }
 
-    function test_deposit_ShouldRevertWhenDepositMultipleAssetsInMulticall()
-        public
-    {
+    function test_deposit_ShouldRevertWhenDepositMultipleAssetsInMulticall() public {
         MockERC20 mockAsset2 = new MockERC20("Test Asset 2", "TA2");
         address asset2 = address(mockAsset2);
         uint256 depositAmount = 100 ether;
@@ -415,150 +277,68 @@ contract VaultFacetTest is Test {
         amounts[1] = depositAmount2;
         MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
         for (uint256 i = 0; i < tokens.length; i++) {
-            MoreVaultsStorageHelper.setDepositableAssets(
-                facet,
-                tokens[i],
-                true
-            );
+            MoreVaultsStorageHelper.setDepositableAssets(facet, tokens[i], true);
         }
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(oracle, uint96(1000))
         );
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, asset2),
             abi.encode(1 * 10 ** 8)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.prank(user);
         uint256 depositAmountInNative = 100 ether;
         vm.deal(user, depositAmountInNative);
         MoreVaultsStorageHelper.setWrappedNative(facet, asset);
-        VaultFacet(facet).deposit{value: depositAmountInNative}(
-            tokens,
-            amounts,
-            user
-        );
+        VaultFacet(facet).deposit{value: depositAmountInNative}(tokens, amounts, user);
 
         // apply generic slippage 1% for conversion of non underlying asset
-        uint256 expectedShares = depositAmount +
-            depositAmount2 +
-            depositAmountInNative;
+        uint256 expectedShares = depositAmount + depositAmount2 + depositAmountInNative;
         assertEq(
-            IERC20(facet).balanceOf(user),
-            expectedShares * 10 ** decimalsOffset,
-            "Should mint correct amount of shares"
+            IERC20(facet).balanceOf(user), expectedShares * 10 ** decimalsOffset, "Should mint correct amount of shares"
         );
-        assertEq(
-            IERC20(asset).balanceOf(facet),
-            depositAmount,
-            "Should receive correct amount of assets1"
-        );
-        assertEq(
-            IERC20(asset2).balanceOf(facet),
-            depositAmount2,
-            "Should receive correct amount of assets2"
-        );
+        assertEq(IERC20(asset).balanceOf(facet), depositAmount, "Should receive correct amount of assets1");
+        assertEq(IERC20(asset2).balanceOf(facet), depositAmount2, "Should receive correct amount of assets2");
 
-        assertEq(
-            address(facet).balance,
-            depositAmountInNative,
-            "Should receive correct amount of native"
-        );
+        assertEq(address(facet).balance, depositAmountInNative, "Should receive correct amount of native");
     }
 
     function test_mint_ShouldMintShares() public {
         uint256 mintAmount = 100 ether;
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.prank(user);
         uint256 assets = VaultFacet(facet).mint(mintAmount, user);
 
-        assertEq(
-            IERC20(facet).balanceOf(user),
-            mintAmount,
-            "Should mint correct amount of shares"
-        );
-        assertEq(
-            IERC20(asset).balanceOf(facet),
-            assets,
-            "Should receive correct amount of assets"
-        );
+        assertEq(IERC20(facet).balanceOf(user), mintAmount, "Should mint correct amount of shares");
+        assertEq(IERC20(asset).balanceOf(facet), assets, "Should receive correct amount of assets");
     }
 
     function test_mint_ShouldRevertinMulticall() public {
@@ -566,11 +346,7 @@ contract VaultFacetTest is Test {
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
         VaultFacet(facet).mint(100 ether, user);
@@ -579,43 +355,19 @@ contract VaultFacetTest is Test {
     function test_depositCapacty_shouldPassIfSetToZero() public {
         MoreVaultsStorageHelper.setDepositCapacity(facet, 0);
         uint256 depositAmount = 100 ether;
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.prank(user);
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
         assertEq(IERC20(facet).balanceOf(user), shares);
@@ -628,43 +380,19 @@ contract VaultFacetTest is Test {
     function test_MaxDeposit_MaxMint_ShouldReturnZeroIfExceeded() public {
         MoreVaultsStorageHelper.setDepositCapacity(facet, 0);
         uint256 depositAmount = 100 ether;
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.prank(user);
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
         assertEq(IERC20(facet).balanceOf(user), shares);
@@ -679,43 +407,19 @@ contract VaultFacetTest is Test {
         uint256 mintAmount = 1000001 * 10 ** IERC20Metadata(facet).decimals();
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.prank(user);
         vm.expectRevert(
@@ -731,11 +435,7 @@ contract VaultFacetTest is Test {
 
     function test_withdraw_ShouldBurnShares() public {
         MoreVaultsStorageHelper.setWithdrawTimelock(facet, 110);
-        assertEq(
-            MoreVaultsStorageHelper.getWithdrawTimelock(facet),
-            110,
-            "Should set correct timelock duration"
-        );
+        assertEq(MoreVaultsStorageHelper.getWithdrawTimelock(facet), 110, "Should set correct timelock duration");
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         assertEq(
             MoreVaultsStorageHelper.getIsWithdrawalQueueEnabled(facet),
@@ -743,44 +443,20 @@ contract VaultFacetTest is Test {
             "Should set correct withdrawal queue status"
         );
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
 
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // First deposit
         uint256 depositAmount = 100 ether;
@@ -788,50 +464,23 @@ contract VaultFacetTest is Test {
         VaultFacet(facet).deposit(depositAmount, user);
         // Then withdraw
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
 
         uint256 withdrawAmount = 50 ether;
-        uint256 expectedShares = IVaultFacet(facet).convertToShares(
-            withdrawAmount
-        );
+        uint256 expectedShares = IVaultFacet(facet).convertToShares(withdrawAmount);
         vm.prank(user);
         VaultFacet(facet).requestWithdraw(withdrawAmount);
-        (uint256 sharesRequest, uint256 timelockEndsAt) = VaultFacet(facet)
-            .getWithdrawalRequest(user);
-        assertEq(
-            sharesRequest,
-            expectedShares,
-            "Should request correct amount of shares"
-        );
-        assertEq(
-            timelockEndsAt,
-            block.timestamp + 110,
-            "Should set correct timelock end time"
-        );
+        (uint256 sharesRequest, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
+        assertEq(sharesRequest, expectedShares, "Should request correct amount of shares");
+        assertEq(timelockEndsAt, block.timestamp + 110, "Should set correct timelock end time");
         uint256 currentTimestamp = block.timestamp;
         vm.warp(currentTimestamp + 200);
         vm.prank(user);
@@ -865,11 +514,7 @@ contract VaultFacetTest is Test {
 
     function test_redeem_ShouldBurnShares() public {
         MoreVaultsStorageHelper.setWithdrawTimelock(facet, 110);
-        assertEq(
-            MoreVaultsStorageHelper.getWithdrawTimelock(facet),
-            110,
-            "Should set correct timelock duration"
-        );
+        assertEq(MoreVaultsStorageHelper.getWithdrawTimelock(facet), 110, "Should set correct timelock duration");
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         assertEq(
             MoreVaultsStorageHelper.getIsWithdrawalQueueEnabled(facet),
@@ -877,44 +522,20 @@ contract VaultFacetTest is Test {
             "Should set correct withdrawal queue status"
         );
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
 
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // First deposit
         uint256 depositAmount = 100 ether;
@@ -922,62 +543,29 @@ contract VaultFacetTest is Test {
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
         // Then withdraw
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
 
         uint256 balanceBefore = IERC20(asset).balanceOf(user);
         vm.prank(user);
         VaultFacet(facet).requestRedeem(shares);
-        (uint256 sharesRequest, uint256 timelockEndsAt) = VaultFacet(facet)
-            .getWithdrawalRequest(user);
-        assertEq(
-            sharesRequest,
-            shares,
-            "Should request correct amount of shares"
-        );
-        assertEq(
-            timelockEndsAt,
-            block.timestamp + 110,
-            "Should set correct timelock end time"
-        );
+        (uint256 sharesRequest, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
+        assertEq(sharesRequest, shares, "Should request correct amount of shares");
+        assertEq(timelockEndsAt, block.timestamp + 110, "Should set correct timelock end time");
         uint256 currentTimestamp = block.timestamp;
         vm.warp(currentTimestamp + 200);
         vm.prank(user);
         uint256 assets = VaultFacet(facet).redeem(shares, user, user);
 
-        assertEq(
-            IERC20(asset).balanceOf(user),
-            balanceBefore + assets,
-            "Should return correct amount of assets"
-        );
-        assertEq(
-            IERC20(facet).balanceOf(user),
-            shares - shares,
-            "Should burn correct amount of shares"
-        );
+        assertEq(IERC20(asset).balanceOf(user), balanceBefore + assets, "Should return correct amount of assets");
+        assertEq(IERC20(facet).balanceOf(user), shares - shares, "Should burn correct amount of shares");
     }
 
     function test_redeem_ShouldRevertInMulticall() public {
@@ -1020,17 +608,9 @@ contract VaultFacetTest is Test {
 
         address[] memory restrictedFacets = new address[](1);
         restrictedFacets[0] = address(101);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSignature("getRestrictedFacets()"),
-            abi.encode(restrictedFacets)
-        );
+        vm.mockCall(factory, abi.encodeWithSignature("getRestrictedFacets()"), abi.encode(restrictedFacets));
 
-        vm.mockCall(
-            factory,
-            abi.encodeWithSignature("isVaultLinked(address,address)"),
-            abi.encode(false)
-        );
+        vm.mockCall(factory, abi.encodeWithSignature("isVaultLinked(address,address)"), abi.encode(false));
         // Then unpause
         vm.prank(owner);
         VaultFacet(facet).unpause();
@@ -1044,25 +624,12 @@ contract VaultFacetTest is Test {
 
         address[] memory restrictedFacets = new address[](1);
         restrictedFacets[0] = address(101);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSignature("getRestrictedFacets()"),
-            abi.encode(restrictedFacets)
-        );
+        vm.mockCall(factory, abi.encodeWithSignature("getRestrictedFacets()"), abi.encode(restrictedFacets));
 
-        vm.mockCall(
-            factory,
-            abi.encodeWithSignature("isVaultLinked(address,address)"),
-            abi.encode(true)
-        );
+        vm.mockCall(factory, abi.encodeWithSignature("isVaultLinked(address,address)"), abi.encode(true));
         // Then unpause
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                VaultFacet.VaultIsUsingRestrictedFacet.selector,
-                address(101)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(VaultFacet.VaultIsUsingRestrictedFacet.selector, address(101)));
         VaultFacet(facet).unpause();
     }
 
@@ -1079,36 +646,16 @@ contract VaultFacetTest is Test {
 
     function test_deposit_ShouldRevertWhenExceededDepositCapacity() public {
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
 
         deal(asset, user, 1000001 ether);
         vm.prank(user);
@@ -1116,28 +663,19 @@ contract VaultFacetTest is Test {
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Try to deposit
         vm.prank(user);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
-                user,
-                1000001 ether,
-                1000000 ether
+                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user, 1000001 ether, 1000000 ether
             )
         );
         VaultFacet(facet).deposit(1000001 ether, user);
     }
 
-    function test_deposit_ShouldRevertWhenExceededDepositCapacityMultipleAssets()
-        public
-    {
+    function test_deposit_ShouldRevertWhenExceededDepositCapacityMultipleAssets() public {
         MockERC20 mockAsset2 = new MockERC20("Test Asset 2", "TA2");
         address asset2 = address(mockAsset2);
         uint256 depositAmount = 500000 ether;
@@ -1155,57 +693,27 @@ contract VaultFacetTest is Test {
         amounts[1] = depositAmount2;
         MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
         for (uint256 i = 0; i < tokens.length; i++) {
-            MoreVaultsStorageHelper.setDepositableAssets(
-                facet,
-                tokens[i],
-                true
-            );
+            MoreVaultsStorageHelper.setDepositableAssets(facet, tokens[i], true);
         }
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(oracle, uint96(1000))
         );
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, asset2),
             abi.encode(1 * 10 ** 8)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         deal(asset, user, 1000001 ether);
 
@@ -1213,10 +721,7 @@ contract VaultFacetTest is Test {
         vm.prank(user);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
-                user,
-                1000001 ether,
-                1000000 ether
+                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user, 1000001 ether, 1000000 ether
             )
         );
         VaultFacet(facet).deposit(tokens, amounts, user);
@@ -1250,9 +755,7 @@ contract VaultFacetTest is Test {
         VaultFacet(facet).deposit(tokens, amounts, user);
     }
 
-    function test_deposit_ShouldRevertWhenDepositWithMultipleAssetsAndArrayLengthsDoesntMatch()
-        public
-    {
+    function test_deposit_ShouldRevertWhenDepositWithMultipleAssetsAndArrayLengthsDoesntMatch() public {
         MockERC20 mockAsset2 = new MockERC20("Test Asset 2", "TA2");
         address asset2 = address(mockAsset2);
         uint256 depositAmount = 100 ether;
@@ -1270,36 +773,20 @@ contract VaultFacetTest is Test {
         amounts[1] = depositAmount2;
         MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
 
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Try to deposit
         vm.prank(user);
         uint256[] memory corruptedAmounts = new uint256[](1);
         corruptedAmounts[0] = depositAmount;
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVaultFacet.ArraysLengthsDontMatch.selector,
-                2,
-                1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.ArraysLengthsDontMatch.selector, 2, 1));
         VaultFacet(facet).deposit(tokens, corruptedAmounts, user);
     }
 
-    function test_deposit_ShouldRevertWhenDepositWithMultipleAssetsAndAssetIsNotDepositable()
-        public
-    {
+    function test_deposit_ShouldRevertWhenDepositWithMultipleAssetsAndAssetIsNotDepositable() public {
         MockERC20 mockAsset2 = new MockERC20("Test Asset 2", "TA2");
         address asset2 = address(mockAsset2);
         uint256 depositAmount = 100 ether;
@@ -1318,26 +805,13 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
         MoreVaultsStorageHelper.setDepositableAssets(facet, asset2, false);
 
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Try to deposit
         vm.prank(user);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVaultFacet.UnsupportedAsset.selector,
-                asset2
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.UnsupportedAsset.selector, asset2));
         VaultFacet(facet).deposit(tokens, amounts, user);
     }
 
@@ -1347,79 +821,39 @@ contract VaultFacetTest is Test {
         vm.prank(user);
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
         vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(protocolFeeRecipient, protocolFee)
+            registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(protocolFeeRecipient, protocolFee)
         );
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
 
         // Move time forward to accrue interest
         vm.warp(block.timestamp + 1 days);
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 * 10 ** 8, block.timestamp, block.timestamp, 0) // 10% price increase
         );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
         vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(protocolFeeRecipient, protocolFee)
+            registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(protocolFeeRecipient, protocolFee)
         );
 
         vm.mockCall(
@@ -1460,38 +894,20 @@ contract VaultFacetTest is Test {
         );
     }
 
-    function test_accrueInterest_ShouldDistributeFeesWithoutProtocolFee()
-        public
-    {
+    function test_accrueInterest_ShouldDistributeFeesWithoutProtocolFee() public {
         // Setup initial deposit
         uint256 depositAmount = 100 ether;
         vm.prank(user);
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
         vm.mockCall(
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
@@ -1499,42 +915,22 @@ contract VaultFacetTest is Test {
         );
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         VaultFacet(facet).deposit(depositAmount, user);
 
         // Move time forward to accrue interest
         vm.warp(block.timestamp + 1 days);
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
         vm.mockCall(
             registry,
             abi.encodeWithSignature("protocolFeeInfo(address)"),
@@ -1559,10 +955,7 @@ contract VaultFacetTest is Test {
         );
         assertApproxEqAbs(
             IERC20(facet).totalSupply(),
-            depositAmount *
-                10 ** decimalsOffset +
-                newShares +
-                VaultFacet(facet).convertToShares(totalFee),
+            depositAmount * 10 ** decimalsOffset + newShares + VaultFacet(facet).convertToShares(totalFee),
             10,
             "Should increase total supply by fee amount"
         );
@@ -1573,43 +966,19 @@ contract VaultFacetTest is Test {
         uint256 depositAmount = 100 ether;
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1620,98 +989,46 @@ contract VaultFacetTest is Test {
         vm.warp(block.timestamp + 1 days);
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
 
         // Trigger interest accrual
         vm.prank(user);
         VaultFacet(facet).deposit(0, user);
 
         // Check that no fees were distributed
+        assertEq(IERC20(facet).balanceOf(feeRecipient), 0, "Should not distribute any fees");
         assertEq(
-            IERC20(facet).balanceOf(feeRecipient),
-            0,
-            "Should not distribute any fees"
-        );
-        assertEq(
-            IERC20(facet).totalSupply(),
-            depositAmount * 10 ** decimalsOffset,
-            "Should not mint extra shares for fee"
+            IERC20(facet).totalSupply(), depositAmount * 10 ** decimalsOffset, "Should not mint extra shares for fee"
         );
     }
 
-    function test_accrueInterest_ShouldNotDistributeFeesWhenInterestIsZero()
-        public
-    {
+    function test_accrueInterest_ShouldNotDistributeFeesWhenInterestIsZero() public {
         // Setup initial deposit
         uint256 depositAmount = 100 ether;
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1719,51 +1036,25 @@ contract VaultFacetTest is Test {
         vm.warp(block.timestamp + 1 days);
 
         // Mock oracle calls with no price change
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0) // No price change
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
 
         // Trigger interest accrual
         vm.prank(user);
         VaultFacet(facet).deposit(0, user);
 
         // Check that no fees were distributed
+        assertEq(IERC20(facet).balanceOf(feeRecipient), 0, "Should not distribute any fees when no price change");
         assertEq(
-            IERC20(facet).balanceOf(feeRecipient),
-            0,
-            "Should not distribute any fees when no price change"
-        );
-        assertEq(
-            IERC20(facet).totalSupply(),
-            depositAmount * 10 ** decimalsOffset,
-            "Should not mint extra shares for fee"
+            IERC20(facet).totalSupply(), depositAmount * 10 ** decimalsOffset, "Should not mint extra shares for fee"
         );
     }
 
@@ -1772,43 +1063,19 @@ contract VaultFacetTest is Test {
         uint256 depositAmount = 100 ether;
 
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.prank(user);
         VaultFacet(facet).deposit(depositAmount, user);
 
@@ -1816,36 +1083,16 @@ contract VaultFacetTest is Test {
         vm.warp(block.timestamp + 1 days);
 
         // Mock oracle calls with no price change
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0) // No price change
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
 
         MockERC20(asset).burn(facet, depositAmount);
 
@@ -1860,30 +1107,20 @@ contract VaultFacetTest is Test {
 
         vm.mockCall(
             address(registry),
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.protocolFeeInfo.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.protocolFeeInfo.selector),
             abi.encode(address(0), 0)
         );
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Set new fee
         uint96 newFee = 200; // 2%
         IVaultFacet(facet).setFee(newFee);
 
         // Verify through getter
-        assertEq(
-            MoreVaultsStorageHelper.getFee(address(facet)),
-            newFee,
-            "Fee should be updated"
-        );
+        assertEq(MoreVaultsStorageHelper.getFee(address(facet)), newFee, "Fee should be updated");
 
         vm.stopPrank();
     }
@@ -1899,11 +1136,7 @@ contract VaultFacetTest is Test {
         IVaultFacet(facet).setFee(200);
 
         // Verify fee remains unchanged
-        assertEq(
-            MoreVaultsStorageHelper.getFee(address(facet)),
-            100,
-            "Fee should not be changed"
-        );
+        assertEq(MoreVaultsStorageHelper.getFee(address(facet)), 100, "Fee should not be changed");
 
         vm.stopPrank();
     }
@@ -1913,19 +1146,13 @@ contract VaultFacetTest is Test {
 
         vm.mockCall(
             address(registry),
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.protocolFeeInfo.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.protocolFeeInfo.selector),
             abi.encode(address(0), 0)
         );
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.startPrank(owner);
 
@@ -1945,55 +1172,26 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setDepositWhitelist(facet, user2, 10 ether);
         MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         vm.startPrank(user2);
         MockERC20(asset).mint(user2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
-                user2,
-                100 ether,
-                10 ether
-            )
+            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user2, 100 ether, 10 ether)
         );
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         VaultFacet(facet).deposit(100 ether, user2);
         vm.stopPrank();
@@ -2008,62 +1206,31 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setDepositWhitelist(facet, user2, 10 ether);
         MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
         // Mock oracle calls for price increase
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
-        vm.mockCall(
-            oracleRegistry,
-            abi.encodeWithSignature("getSourceOfAsset(address)"),
-            abi.encode(oracle)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
         vm.mockCall(
             oracle,
             abi.encodeWithSignature("latestRoundData()"),
             abi.encode(0, 1.1 ether, block.timestamp, block.timestamp, 0) // 10% price increase
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.startPrank(user2);
         MockERC20(asset).mint(user2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
-                user2,
-                100 ether,
-                10 ether
-            )
+            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user2, 100 ether, 10 ether)
         );
         VaultFacet(facet).mint(10_000 ether, user2);
         vm.stopPrank();
     }
 
-    function test_multiAssetDeposit_ShouldRevertWhenDeposit_WhitelistIsExceeded()
-        public
-    {
+    function test_multiAssetDeposit_ShouldRevertWhenDeposit_WhitelistIsExceeded() public {
         address[] memory depositors = new address[](1);
         address user2 = address(114);
         depositors[0] = user2;
@@ -2088,67 +1255,32 @@ contract VaultFacetTest is Test {
         amounts[1] = depositAmount2;
         MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
         for (uint256 i = 0; i < tokens.length; i++) {
-            MoreVaultsStorageHelper.setDepositableAssets(
-                facet,
-                tokens[i],
-                true
-            );
+            MoreVaultsStorageHelper.setDepositableAssets(facet, tokens[i], true);
         }
 
         // Mock oracle call
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("oracle()"),
-            abi.encode(oracleRegistry)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("getDenominationAsset()"),
-            abi.encode(asset)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(oracle, uint96(1000))
         );
         vm.mockCall(
             oracleRegistry,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                asset2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, asset2),
             abi.encode(1 * 10 ** 8)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSignature("decimals()"),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         vm.startPrank(user2);
         MockERC20(asset).mint(user2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
-                user2,
-                300 ether,
-                10 ether
-            )
+            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user2, 300 ether, 10 ether)
         );
         VaultFacet(facet).deposit(tokens, amounts, user2);
         vm.stopPrank();
@@ -2194,18 +1326,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Deposit first
         uint256 depositAmount = 1000 ether;
         MockERC20(asset).mint(user, depositAmount);
@@ -2224,9 +1348,7 @@ contract VaultFacetTest is Test {
 
         // Check balances before withdrawal
         uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
-        uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(
-            feeRecipient
-        );
+        uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(feeRecipient);
 
         // Execute withdrawal
         vm.prank(user);
@@ -2234,9 +1356,7 @@ contract VaultFacetTest is Test {
 
         // Check balances after withdrawal
         uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
-        uint256 feeRecipientBalanceAfter = IERC20(facet).balanceOf(
-            feeRecipient
-        );
+        uint256 feeRecipientBalanceAfter = IERC20(facet).balanceOf(feeRecipient);
 
         // Calculate expected fee (10% of 100 ether = 10 ether)
         uint256 expectedFee = (withdrawAmount * withdrawalFee) / 10000;
@@ -2256,18 +1376,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Deposit first
         uint256 depositAmount = 1000 ether;
         MockERC20(asset).mint(user, depositAmount);
@@ -2286,9 +1398,7 @@ contract VaultFacetTest is Test {
 
         // Check balances before redeem
         uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
-        uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(
-            feeRecipient
-        );
+        uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(feeRecipient);
 
         // Execute redeem
         vm.prank(user);
@@ -2296,9 +1406,7 @@ contract VaultFacetTest is Test {
 
         // Check balances after redeem
         uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
-        uint256 feeRecipientBalanceAfter = IERC20(facet).balanceOf(
-            feeRecipient
-        );
+        uint256 feeRecipientBalanceAfter = IERC20(facet).balanceOf(feeRecipient);
 
         // Calculate expected fee (10% of assets)
         uint256 expectedFee = (assets * withdrawalFee) / 10000;
@@ -2317,18 +1425,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setWithdrawalFee(facet, withdrawalFee);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Deposit first
         uint256 depositAmount = 1000 ether;
         MockERC20(asset).mint(user, depositAmount);
@@ -2338,9 +1438,7 @@ contract VaultFacetTest is Test {
         vm.stopPrank();
 
         uint256 withdrawAmount = 100 ether;
-        uint256 expectedShares = VaultFacet(facet).previewWithdraw(
-            withdrawAmount
-        );
+        uint256 expectedShares = VaultFacet(facet).previewWithdraw(withdrawAmount);
 
         // The preview should account for the fee
         assertTrue(expectedShares > 0);
@@ -2353,18 +1451,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setWithdrawalFee(facet, withdrawalFee);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Deposit first
         uint256 depositAmount = 1000 ether;
@@ -2409,18 +1499,10 @@ contract VaultFacetTest is Test {
 
     function test_previewDeposit_ShouldCalculateCorrectShares() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         uint256 assets = 100 ether;
         uint256 expectedShares = VaultFacet(facet).previewDeposit(assets);
@@ -2441,18 +1523,10 @@ contract VaultFacetTest is Test {
 
     function test_previewMint_ShouldCalculateCorrectAssets() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         uint256 shares = 100 ether;
         uint256 expectedAssets = VaultFacet(facet).previewMint(shares);
 
@@ -2478,18 +1552,10 @@ contract VaultFacetTest is Test {
 
     function test_previewWithdraw_ShouldCalculateCorrectShares() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // First deposit to initialize vault
         uint256 depositAmount = 1000 ether;
         MockERC20(asset).mint(user, depositAmount);
@@ -2507,18 +1573,10 @@ contract VaultFacetTest is Test {
 
     function test_previewRedeem_ShouldCalculateCorrectAssets() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // First deposit to initialize vault
         uint256 depositAmount = 1000 ether;
         MockERC20(asset).mint(user, depositAmount);
@@ -2538,18 +1596,10 @@ contract VaultFacetTest is Test {
 
     function test_maxDeposit_ShouldReturnCorrectValue() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Test with deposit capacity
         uint256 maxDeposit = VaultFacet(facet).maxDeposit(user);
@@ -2569,18 +1619,10 @@ contract VaultFacetTest is Test {
 
     function test_maxMint_ShouldReturnCorrectValue() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Test with deposit capacity
         uint256 maxMint = VaultFacet(facet).maxMint(user);
         assertTrue(maxMint > 0);
@@ -2604,18 +1646,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // First deposit to get shares
         uint256 depositAmount = 1000 ether;
@@ -2631,8 +1665,7 @@ contract VaultFacetTest is Test {
         VaultFacet(facet).requestRedeem(shares);
 
         // Check request exists
-        (uint256 requestShares, uint256 timelockEndsAt) = VaultFacet(facet)
-            .getWithdrawalRequest(user);
+        (uint256 requestShares, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
         assertEq(requestShares, shares);
         assertTrue(timelockEndsAt > 0);
 
@@ -2641,8 +1674,7 @@ contract VaultFacetTest is Test {
         VaultFacet(facet).clearRequest();
 
         // Check request is cleared
-        (requestShares, timelockEndsAt) = VaultFacet(facet)
-            .getWithdrawalRequest(user);
+        (requestShares, timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
         assertEq(requestShares, 0);
         assertEq(timelockEndsAt, 0);
     }
@@ -2658,18 +1690,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Deposit first
         uint256 depositAmount = 1000 ether;
@@ -2708,18 +1732,10 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Deposit first
         uint256 depositAmount = 1000 ether;
@@ -2751,18 +1767,10 @@ contract VaultFacetTest is Test {
 
     function test_maxDeposit_ShouldReturnZeroWhenCapacityExceeded() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         // Fill up the vault to capacity
         uint256 depositAmount = DEPOSIT_CAPACITY;
@@ -2779,18 +1787,10 @@ contract VaultFacetTest is Test {
 
     function test_maxMint_ShouldReturnZeroWhenCapacityExceeded() public {
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Fill up the vault to capacity
         uint256 depositAmount = DEPOSIT_CAPACITY;
         MockERC20(asset).mint(user, depositAmount);
@@ -2816,10 +1816,7 @@ contract VaultFacetTest is Test {
 
         // The function should execute without reverting
         assertFalse(
-            MoreVaultsStorageHelper.getSupportedInterface(
-                address(facet),
-                type(IVaultFacet).interfaceId
-            ),
+            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IVaultFacet).interfaceId),
             "Should disable IVaultFacet interface"
         );
     }
@@ -2834,11 +1831,7 @@ contract VaultFacetTest is Test {
         assertTrue(VaultFacet(facet).paused());
 
         // Mock factory call for unpause
-        vm.mockCall(
-            factory,
-            abi.encodeWithSignature("getRestrictedFacets()"),
-            abi.encode(new address[](0))
-        );
+        vm.mockCall(factory, abi.encodeWithSignature("getRestrictedFacets()"), abi.encode(new address[](0)));
 
         // Unpause the vault
         vm.prank(owner);
@@ -2852,21 +1845,12 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
 
         // Mock protocol fee info
-        vm.mockCall(
-            registry,
-            abi.encodeWithSignature("protocolFeeInfo(address)"),
-            abi.encode(address(0), 0)
-        );
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
         // Initially should be empty
-        (uint256 shares, uint256 timelockEndsAt) = VaultFacet(facet)
-            .getWithdrawalRequest(user);
+        (uint256 shares, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
         assertEq(shares, 0);
         assertEq(timelockEndsAt, 0);
 
@@ -2899,14 +1883,8 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setWithdrawTimelock(facet, newTimelock);
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
-        vm.mockCall(
-            factory,
-            abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector),
-            abi.encode(eids, vaults)
-        );
-        uint64 updatedTimelock = MoreVaultsStorageHelper.getWithdrawTimelock(
-            facet
-        );
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+        uint64 updatedTimelock = MoreVaultsStorageHelper.getWithdrawTimelock(facet);
         assertEq(updatedTimelock, newTimelock);
     }
 

@@ -12,11 +12,19 @@ import {OptionsBuilder} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/libs/
 import {OAppRead} from "@layerzerolabs/oapp-evm/contracts/oapp/OAppRead.sol";
 import {OAppOptionsType3} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OAppOptionsType3.sol";
 import {AddressCast} from "@layerzerolabs/lz-evm-protocol-v2/contracts/libs/AddressCast.sol";
-import {ReadCodecV1, EVMCallRequestV1, EVMCallComputeV1} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/ReadCodecV1.sol";
+import {
+    ReadCodecV1,
+    EVMCallRequestV1,
+    EVMCallComputeV1
+} from "@layerzerolabs/oapp-evm/contracts/oapp/libs/ReadCodecV1.sol";
 import {IBridgeAdapter} from "../../interfaces/IBridgeAdapter.sol";
 import {IMoreVaultsRegistry} from "../../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../../interfaces/IVaultsFactory.sol";
-import {MessagingFee, MessagingReceipt, ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import {
+    MessagingFee,
+    MessagingReceipt,
+    ILayerZeroEndpointV2
+} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {IVaultFacet} from "../../interfaces/facets/IVaultFacet.sol";
 import {IBridgeFacet} from "../../interfaces/facets/IBridgeFacet.sol";
 import {ILzComposer} from "../../interfaces/ILzComposer.sol";
@@ -24,13 +32,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MoreVaultsLib} from "../../libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../interfaces/facets/IConfigurationFacet.sol";
 
-contract LzAdapter is
-    IBridgeAdapter,
-    OAppRead,
-    OAppOptionsType3,
-    Pausable,
-    ReentrancyGuard
-{
+contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using OptionsBuilder for bytes;
     using Math for uint256;
@@ -116,48 +118,29 @@ contract LzAdapter is
     /**
      * @notice Return if the adapter is paused
      */
-    function paused()
-        public
-        view
-        override(IBridgeAdapter, Pausable)
-        returns (bool)
-    {
+    function paused() public view override(IBridgeAdapter, Pausable) returns (bool) {
         return super.paused();
     }
 
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function quoteBridgeFee(
-        bytes calldata bridgeSpecificParams
-    ) external view returns (uint256 nativeFee) {
-        (
-            address oftTokenAddress,
-            uint32 lzEid,
-            uint256 amount,
-            address dstVaultAddress
-        ) = abi.decode(
-                bridgeSpecificParams,
-                (address, uint32, uint256, address)
-            );
+    function quoteBridgeFee(bytes calldata bridgeSpecificParams) external view returns (uint256 nativeFee) {
+        (address oftTokenAddress, uint32 lzEid, uint256 amount, address dstVaultAddress) =
+            abi.decode(bridgeSpecificParams, (address, uint32, uint256, address));
         return _quoteFee(oftTokenAddress, lzEid, amount, dstVaultAddress);
     }
 
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function quoteReadFee(
-        address[] memory vaults,
-        uint32[] memory eids,
-        bytes calldata _extraOptions
-    ) external view returns (MessagingFee memory fee) {
+    function quoteReadFee(address[] memory vaults, uint32[] memory eids, bytes calldata _extraOptions)
+        external
+        view
+        returns (MessagingFee memory fee)
+    {
         return
-            _quote(
-                READ_CHANNEL,
-                _getCmd(vaults, eids),
-                combineOptions(READ_CHANNEL, READ_TYPE, _extraOptions),
-                false
-            );
+            _quote(READ_CHANNEL, _getCmd(vaults, eids), combineOptions(READ_CHANNEL, READ_TYPE, _extraOptions), false);
     }
 
     /**
@@ -205,14 +188,8 @@ contract LzAdapter is
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function setReadChannel(
-        uint32 _channelId,
-        bool _active
-    ) public override(IBridgeAdapter, OAppRead) onlyOwner {
-        _setPeer(
-            _channelId,
-            _active ? AddressCast.toBytes32(address(this)) : bytes32(0)
-        );
+    function setReadChannel(uint32 _channelId, bool _active) public override(IBridgeAdapter, OAppRead) onlyOwner {
+        _setPeer(_channelId, _active ? AddressCast.toBytes32(address(this)) : bytes32(0));
         READ_CHANNEL = _channelId;
     }
 
@@ -235,26 +212,10 @@ contract LzAdapter is
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function executeBridging(
-        bytes calldata bridgeSpecificParams
-    ) external payable whenNotPaused nonReentrant {
-        (
-            address oftTokenAddress,
-            uint32 lzEid,
-            uint256 amount,
-            address dstVaultAddress,
-            address refundAddress
-        ) = abi.decode(
-                bridgeSpecificParams,
-                (address, uint32, uint256, address, address)
-            );
-        _executeBridging(
-            oftTokenAddress,
-            lzEid,
-            amount,
-            dstVaultAddress,
-            refundAddress
-        );
+    function executeBridging(bytes calldata bridgeSpecificParams) external payable whenNotPaused nonReentrant {
+        (address oftTokenAddress, uint32 lzEid, uint256 amount, address dstVaultAddress, address refundAddress) =
+            abi.decode(bridgeSpecificParams, (address, uint32, uint256, address, address));
+        _executeBridging(oftTokenAddress, lzEid, amount, dstVaultAddress, refundAddress);
     }
 
     /**
@@ -279,27 +240,18 @@ contract LzAdapter is
             payable(_initiator)
         );
 
-        _guidToCallInfo[receipt.guid] = CallInfo({
-            vault: msg.sender,
-            initiator: _initiator
-        });
+        _guidToCallInfo[receipt.guid] = CallInfo({vault: msg.sender, initiator: _initiator});
     }
 
     /// @notice Reduces multiple mapped responses to a single sum value.
     /// @param _responses Array of encoded totalAssetsUsd responses from each chain and success flag.
     /// @return Encoded sum of all responses and success flag.
-    function lzReduce(
-        bytes calldata,
-        bytes[] calldata _responses
-    ) external pure returns (bytes memory) {
+    function lzReduce(bytes calldata, bytes[] calldata _responses) external pure returns (bytes memory) {
         if (_responses.length == 0) revert NoResponses();
         uint256 sum;
         bool readSuccess = true;
-        for (uint i = 0; i < _responses.length; ) {
-            (uint256 assets, bool success) = abi.decode(
-                _responses[i],
-                (uint256, bool)
-            );
+        for (uint256 i = 0; i < _responses.length;) {
+            (uint256 assets, bool success) = abi.decode(_responses[i], (uint256, bool));
             if (!success) readSuccess = false;
             sum += assets;
 
@@ -313,13 +265,9 @@ contract LzAdapter is
     /**
      * @inheritdoc IBridgeAdapter
      */
-    function rescueToken(
-        address token,
-        address payable to,
-        uint256 amount
-    ) external onlyOwner {
+    function rescueToken(address token, address payable to, uint256 amount) external onlyOwner {
         if (token == address(0)) {
-            (bool success, ) = to.call{value: amount}("");
+            (bool success,) = to.call{value: amount}("");
             if (!success) revert NativeTransferFailed();
         } else {
             IERC20(token).safeTransfer(to, amount);
@@ -332,13 +280,10 @@ contract LzAdapter is
      * @param trusted Array of trust statuses (must match ofts length)
      * @dev Protected against reentrancy attacks during batch operations
      */
-    function setTrustedOFTs(
-        address[] calldata ofts,
-        bool[] calldata trusted
-    ) external onlyOwner nonReentrant {
+    function setTrustedOFTs(address[] calldata ofts, bool[] calldata trusted) external onlyOwner nonReentrant {
         if (ofts.length != trusted.length) revert ArrayLengthMismatch();
 
-        for (uint256 i = 0; i < ofts.length; ) {
+        for (uint256 i = 0; i < ofts.length;) {
             _setTrustedOFT(ofts[i], trusted[i]);
             unchecked {
                 ++i;
@@ -363,22 +308,15 @@ contract LzAdapter is
         return _trustedOFTsList;
     }
 
-    function _getCmd(
-        address[] memory vaults,
-        uint32[] memory eids
-    ) internal view returns (bytes memory cmd) {
+    function _getCmd(address[] memory vaults, uint32[] memory eids) internal view returns (bytes memory cmd) {
         // 1. Define WHAT function to call on the target contract
         //    Using the interface selector ensures type safety and correctness
         //    You can replace this with any public/external function or state variable
-        bytes memory callData = abi.encodeWithSelector(
-            IVaultFacet.totalAssetsUsd.selector
-        );
-        EVMCallRequestV1[] memory readRequests = new EVMCallRequestV1[](
-            vaults.length
-        );
+        bytes memory callData = abi.encodeWithSelector(IVaultFacet.totalAssetsUsd.selector);
+        EVMCallRequestV1[] memory readRequests = new EVMCallRequestV1[](vaults.length);
 
         // 2. Build the read request specifying WHERE and HOW to fetch the data
-        for (uint256 i = 0; i < vaults.length; ) {
+        for (uint256 i = 0; i < vaults.length;) {
             readRequests[i] = EVMCallRequestV1({
                 appRequestLabel: uint16(i + 1), // Label for tracking this specific request
                 targetEid: eids[i], // WHICH chain to read from
@@ -413,10 +351,10 @@ contract LzAdapter is
     /// @dev _guid Unique message identifier (unused).
     /// @param _message Encoded sum of totalAssetsUsd bytes.
     function _lzReceive(
-        Origin calldata /*_origin*/,
+        Origin calldata, /*_origin*/
         bytes32 _guid,
         bytes calldata _message,
-        address /*_executor*/,
+        address, /*_executor*/
         bytes calldata /*_extraData*/
     ) internal override {
         (uint256 sum, bool readSuccess) = abi.decode(_message, (uint256, bool));
@@ -424,11 +362,7 @@ contract LzAdapter is
         CallInfo memory info = _guidToCallInfo[_guid];
         if (info.vault == address(0)) revert InvalidVault();
 
-        IBridgeFacet(info.vault).updateAccountingInfoForRequest(
-            _guid,
-            sum,
-            readSuccess
-        );
+        IBridgeFacet(info.vault).updateAccountingInfoForRequest(_guid, sum, readSuccess);
         if (info.initiator == composer) {
             _callbackToComposer(_guid, readSuccess);
         }
@@ -445,11 +379,7 @@ contract LzAdapter is
     }
 
     /// @dev Gas-optimized consolidated validation logic
-    function _validateBridgeParams(
-        address oftToken,
-        uint32 layerZeroEid,
-        uint256 amount
-    ) internal view {
+    function _validateBridgeParams(address oftToken, uint32 layerZeroEid, uint256 amount) internal view {
         // Single comprehensive check for basic parameters
         if (amount == 0 || oftToken == address(0) || layerZeroEid == 0) {
             revert InvalidBridgeParams();
@@ -479,23 +409,13 @@ contract LzAdapter is
         if (!_trustedOFTs[oftTokenAddress]) revert UntrustedOFT();
 
         if (!IConfigurationFacet(msg.sender).isHub()) {
-            (uint32 hubEid, address hubVault) = vaultsFactory.spokeToHub(
-                vaultsFactory.localEid(),
-                msg.sender
-            );
+            (uint32 hubEid, address hubVault) = vaultsFactory.spokeToHub(vaultsFactory.localEid(), msg.sender);
             if (lzEid != hubEid || dstVaultAddress != hubVault) {
                 revert InvalidReceiver(lzEid, dstVaultAddress);
             }
         } else {
             // O(1) membership check via factory
-            if (
-                !vaultsFactory.isSpokeOfHub(
-                    vaultsFactory.localEid(),
-                    msg.sender,
-                    lzEid,
-                    dstVaultAddress
-                )
-            ) {
+            if (!vaultsFactory.isSpokeOfHub(vaultsFactory.localEid(), msg.sender, lzEid, dstVaultAddress)) {
                 revert InvalidReceiver(lzEid, dstVaultAddress);
             }
         }
@@ -507,46 +427,23 @@ contract LzAdapter is
 
         address underlyingToken = IOFT(oftTokenAddress).token();
         if (underlyingToken == oftTokenAddress) {
-            IERC20(oftTokenAddress).safeTransferFrom(
-                msg.sender,
-                address(this),
-                amount
-            );
+            IERC20(oftTokenAddress).safeTransferFrom(msg.sender, address(this), amount);
         } else {
             // OFT-Proxy: transfer underlying tokens to the adapter
-            IERC20(underlyingToken).safeTransferFrom(
-                msg.sender,
-                address(this),
-                amount
-            );
+            IERC20(underlyingToken).safeTransferFrom(msg.sender, address(this), amount);
         }
 
-        uint256 actualFee = _executeOFTSend(
-            oftTokenAddress,
-            lzEid,
-            amount,
-            dstVaultAddress,
-            refundAddress
-        );
+        uint256 actualFee = _executeOFTSend(oftTokenAddress, lzEid, amount, dstVaultAddress, refundAddress);
 
-        emit BridgeExecuted(
-            msg.sender,
-            dstVaultAddress,
-            oftTokenAddress,
-            amount,
-            actualFee,
-            lzEid,
-            refundAddress
-        );
+        emit BridgeExecuted(msg.sender, dstVaultAddress, oftTokenAddress, amount, actualFee, lzEid, refundAddress);
     }
 
     /// @dev Internal quote logic
-    function _quoteFee(
-        address oftTokenAddress,
-        uint32 lzEid,
-        uint256 amount,
-        address dstVaultAddress
-    ) internal view returns (uint256 nativeFee) {
+    function _quoteFee(address oftTokenAddress, uint32 lzEid, uint256 amount, address dstVaultAddress)
+        internal
+        view
+        returns (uint256 nativeFee)
+    {
         _validateBridgeParams(oftTokenAddress, lzEid, amount);
 
         IOFT oft = IOFT(oftTokenAddress);
@@ -558,9 +455,7 @@ contract LzAdapter is
             to: bytes32(uint256(uint160(dstVaultAddress))),
             amountLD: amount,
             minAmountLD: minAmountOut,
-            extraOptions: OptionsBuilder
-                .newOptions()
-                .addExecutorLzReceiveOption(uint128(gasLimit), 0),
+            extraOptions: OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(gasLimit), 0),
             composeMsg: "",
             oftCmd: ""
         });
@@ -585,9 +480,7 @@ contract LzAdapter is
             to: bytes32(uint256(uint160(recipient))),
             amountLD: amount,
             minAmountLD: minAmountOut,
-            extraOptions: OptionsBuilder
-                .newOptions()
-                .addExecutorLzReceiveOption(uint128(gasLimit), 0),
+            extraOptions: OptionsBuilder.newOptions().addExecutorLzReceiveOption(uint128(gasLimit), 0),
             composeMsg: "",
             oftCmd: ""
         });
@@ -605,7 +498,7 @@ contract LzAdapter is
 
         if (msg.value > fee.nativeFee) {
             uint256 refund = msg.value - fee.nativeFee;
-            (bool success, ) = payable(refundAddress).call{value: refund}("");
+            (bool success,) = payable(refundAddress).call{value: refund}("");
             if (!success) revert NativeTransferFailed();
         }
 
@@ -631,11 +524,9 @@ contract LzAdapter is
             _trustedOFTsList.push(oft);
         } else {
             // Remove from list
-            for (uint256 i = 0; i < _trustedOFTsList.length; ) {
+            for (uint256 i = 0; i < _trustedOFTsList.length;) {
                 if (_trustedOFTsList[i] == oft) {
-                    _trustedOFTsList[i] = _trustedOFTsList[
-                        _trustedOFTsList.length - 1
-                    ];
+                    _trustedOFTsList[i] = _trustedOFTsList[_trustedOFTsList.length - 1];
                     _trustedOFTsList.pop();
                     break;
                 }

@@ -11,10 +11,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
  * @title BaseVaultsRegistry
  * @notice Base registry contract that stores information about allowed facets and their selectors
  */
-abstract contract BaseVaultsRegistry is
-    IMoreVaultsRegistry,
-    AccessControlUpgradeable
-{
+abstract contract BaseVaultsRegistry is IMoreVaultsRegistry, AccessControlUpgradeable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /// @dev Aave price oracle address
@@ -39,11 +36,7 @@ abstract contract BaseVaultsRegistry is
     mapping(address => bool) private _whitelisted;
 
     /// @dev Initialize function
-    function initialize(
-        address _owner,
-        address _oracle,
-        address _usdStableTokenAddress
-    ) external virtual initializer {
+    function initialize(address _owner, address _oracle, address _usdStableTokenAddress) external virtual initializer {
         if (_oracle == address(0)) revert ZeroAddress();
 
         __AccessControl_init();
@@ -63,9 +56,7 @@ abstract contract BaseVaultsRegistry is
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function updateOracleRegistry(
-        address newOracleRegistry
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function updateOracleRegistry(address newOracleRegistry) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newOracleRegistry == address(0)) revert ZeroAddress();
 
         address oldOracleRegistry = address(oracle);
@@ -77,11 +68,7 @@ abstract contract BaseVaultsRegistry is
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function setProtocolFeeInfo(
-        address vault,
-        address recipient,
-        uint96 fee
-    ) external virtual;
+    function setProtocolFeeInfo(address vault, address recipient, uint96 fee) external virtual;
 
     /**
      * @inheritdoc IMoreVaultsRegistry
@@ -93,9 +80,7 @@ abstract contract BaseVaultsRegistry is
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function getFacetSelectors(
-        address facet
-    ) external view returns (bytes4[] memory) {
+    function getFacetSelectors(address facet) external view returns (bytes4[] memory) {
         return facetSelectors[facet];
     }
 
@@ -109,9 +94,7 @@ abstract contract BaseVaultsRegistry is
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function protocolFeeInfo(
-        address vault
-    ) external view virtual returns (address, uint96);
+    function protocolFeeInfo(address vault) external view virtual returns (address, uint96);
 
     /**
      * @inheritdoc IMoreVaultsRegistry
@@ -126,9 +109,11 @@ abstract contract BaseVaultsRegistry is
      */
     function getDenominationAssetDecimals() external view returns (uint8) {
         address denominationAsset = oracle.BASE_CURRENCY();
-        if (denominationAsset == address(0))
+        if (denominationAsset == address(0)) {
             return IERC20Metadata(usdStableTokenAddress).decimals();
-        else return IERC20Metadata(denominationAsset).decimals();
+        } else {
+            return IERC20Metadata(denominationAsset).decimals();
+        }
     }
 
     /**
@@ -141,19 +126,12 @@ abstract contract BaseVaultsRegistry is
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function addFacet(
-        address facet,
-        bytes4[] calldata selectors
-    ) external virtual;
+    function addFacet(address facet, bytes4[] calldata selectors) external virtual;
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function editFacet(
-        address facet,
-        bytes4[] calldata selectors,
-        bool[] calldata addOrRemove
-    ) external virtual {}
+    function editFacet(address facet, bytes4[] calldata selectors, bool[] calldata addOrRemove) external virtual {}
 
     /**
      * @inheritdoc IMoreVaultsRegistry
@@ -173,19 +151,14 @@ abstract contract BaseVaultsRegistry is
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function isWhitelisted(
-        address protocol
-    ) external view virtual returns (bool);
+    function isWhitelisted(address protocol) external view virtual returns (bool);
 
     /**
      * @notice Set whitelisted status for protocol
      * @param protocol Address of the protocol
      * @param whitelisted True if protocol is whitelisted, false otherwise
      */
-    function _setWhitelisted(
-        address protocol,
-        bool whitelisted
-    ) internal onlyRole(DEFAULT_ADMIN_ROLE) {
+    function _setWhitelisted(address protocol, bool whitelisted) internal onlyRole(DEFAULT_ADMIN_ROLE) {
         _whitelisted[protocol] = whitelisted;
         emit AddressWhitelisted(protocol, whitelisted);
     }
@@ -204,7 +177,5 @@ abstract contract BaseVaultsRegistry is
      * @param facet Address to check
      * @return bool True if facet is allowed
      */
-    function _isFacetAllowed(
-        address facet
-    ) internal view virtual returns (bool);
+    function _isFacetAllowed(address facet) internal view virtual returns (bool);
 }

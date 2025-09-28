@@ -7,8 +7,13 @@ import {IDiamondCut} from "../interfaces/facets/IDiamondCut.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
-import {OAppUpgradeable, Origin, MessagingFee} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
-import {OAppOptionsType3Upgradeable} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
+import {
+    OAppUpgradeable,
+    Origin,
+    MessagingFee
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
+import {OAppOptionsType3Upgradeable} from
+    "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
@@ -17,11 +22,7 @@ import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol"
  * @title VaultsFactory
  * @notice Factory contract for deploying new vault instances
  */
-contract VaultsFactory is
-    IVaultsFactory,
-    OAppUpgradeable,
-    OAppOptionsType3Upgradeable
-{
+contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgradeable {
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
@@ -73,8 +74,7 @@ contract VaultsFactory is
     mapping(uint32 => mapping(address => bytes32)) private _spokeToHub;
 
     /// @dev Mapping hub eid => hub vault => set of spokes (encoded as bytes32)
-    mapping(uint32 => mapping(address => EnumerableSet.Bytes32Set))
-        private _hubToSpokesSet;
+    mapping(uint32 => mapping(address => EnumerableSet.Bytes32Set)) private _hubToSpokesSet;
 
     /// @dev Address set of restricted facets
     EnumerableSet.AddressSet private _restrictedFacets;
@@ -101,12 +101,8 @@ contract VaultsFactory is
         uint96 _maxFinalizationTime
     ) external initializer {
         if (
-            _owner == address(0) ||
-            _registry == address(0) ||
-            _diamondCutFacet == address(0) ||
-            _accessControlFacet == address(0) ||
-            _wrappedNative == address(0) ||
-            _localEid == 0
+            _owner == address(0) || _registry == address(0) || _diamondCutFacet == address(0)
+                || _accessControlFacet == address(0) || _wrappedNative == address(0) || _localEid == 0
         ) revert ZeroAddress();
         _setDiamondCutFacet(_diamondCutFacet);
         _setAccessControlFacet(_accessControlFacet);
@@ -131,9 +127,7 @@ contract VaultsFactory is
      * @notice Set the access control facet address, that manages ownership and roles of the vault
      * @param _accessControlFacet The address of the access control facet
      */
-    function setAccessControlFacet(
-        address _accessControlFacet
-    ) external onlyOwner {
+    function setAccessControlFacet(address _accessControlFacet) external onlyOwner {
         _setAccessControlFacet(_accessControlFacet);
     }
 
@@ -141,9 +135,7 @@ contract VaultsFactory is
      * @notice Set the maximum finalization time of block for a chain
      * @param _maxFinalizationTime The maximum finalization time of block for a chain
      */
-    function setMaxFinalizationTime(
-        uint96 _maxFinalizationTime
-    ) external onlyOwner {
+    function setMaxFinalizationTime(uint96 _maxFinalizationTime) external onlyOwner {
         _setMaxFinalizationTime(_maxFinalizationTime);
     }
 
@@ -159,7 +151,7 @@ contract VaultsFactory is
     function pauseFacet(address _facet) external onlyOwner {
         address[] memory vaults = _linkedVaults[_facet].values();
         _setFacetRestricted(_facet, true);
-        for (uint256 i = 0; i < vaults.length; ) {
+        for (uint256 i = 0; i < vaults.length;) {
             IVaultFacet(vaults[i]).pause();
             unchecked {
                 ++i;
@@ -172,10 +164,7 @@ contract VaultsFactory is
      * @param _facet address of facet
      * @param _isRestricted bool flag
      */
-    function setFacetRestricted(
-        address _facet,
-        bool _isRestricted
-    ) external onlyOwner {
+    function setFacetRestricted(address _facet, bool _isRestricted) external onlyOwner {
         _setFacetRestricted(_facet, _isRestricted);
     }
 
@@ -237,7 +226,7 @@ contract VaultsFactory is
         _linkedVaults[accessControlFacet].add(vault);
         _checkRestrictedFacet(diamondCutFacet);
         _checkRestrictedFacet(accessControlFacet);
-        for (uint256 i = 0; i < facets.length; ) {
+        for (uint256 i = 0; i < facets.length;) {
             _checkRestrictedFacet(facets[i].facetAddress);
             _linkedVaults[facets[i].facetAddress].add(vault);
             unchecked {
@@ -254,16 +243,11 @@ contract VaultsFactory is
         return CREATE3.predictDeterministicAddress(salt, address(this));
     }
 
-    function _encodeSpokeKey(
-        uint32 eid,
-        address vault
-    ) internal pure returns (bytes32) {
+    function _encodeSpokeKey(uint32 eid, address vault) internal pure returns (bytes32) {
         return bytes32((uint256(eid) << 160) | uint160(vault));
     }
 
-    function _decodeSpokeKey(
-        bytes32 key
-    ) internal pure returns (uint32 eid, address vault) {
+    function _decodeSpokeKey(bytes32 key) internal pure returns (uint32 eid, address vault) {
         vault = address(uint160(uint256(key)));
         eid = uint32(uint256(key) >> 160);
     }
@@ -273,104 +257,76 @@ contract VaultsFactory is
     /// @param _hubVault Address of hub vault on hub chain (local to hub)
     /// @param _spokeVault Address of spoke vault on current chain
     /// @param _options LZ options (type3). Can be empty; enforced options may apply
-    function requestRegisterSpoke(
-        uint32 _hubEid,
-        address _hubVault,
-        address _spokeVault,
-        bytes calldata _options
-    ) external payable {
+    function requestRegisterSpoke(uint32 _hubEid, address _hubVault, address _spokeVault, bytes calldata _options)
+        external
+        payable
+    {
         if (!isFactoryVault[_spokeVault]) revert NotAVault(_spokeVault);
-        if (IAccessControlFacet(_spokeVault).owner() != msg.sender)
+        if (IAccessControlFacet(_spokeVault).owner() != msg.sender) {
             revert NotAnOwnerOfVault(msg.sender);
-        if (block.timestamp - deployedAt[_spokeVault] < maxFinalizationTime)
+        }
+        if (block.timestamp - deployedAt[_spokeVault] < maxFinalizationTime) {
             revert MaxFinalizationTimeNotExceeded();
+        }
 
         address spokeOwner = IAccessControlFacet(_spokeVault).owner();
-        bytes memory payload = abi.encode(
-            MSG_TYPE_REGISTER_SPOKE,
-            _spokeVault,
-            _hubVault,
-            spokeOwner
-        );
+        bytes memory payload = abi.encode(MSG_TYPE_REGISTER_SPOKE, _spokeVault, _hubVault, spokeOwner);
 
-        bytes memory options = combineOptions(
-            _hubEid,
-            MSG_TYPE_REGISTER_SPOKE,
-            _options
-        );
+        bytes memory options = combineOptions(_hubEid, MSG_TYPE_REGISTER_SPOKE, _options);
         MessagingFee memory fee = _quote(_hubEid, payload, options, false);
         // exact native payment for single message
         require(msg.value == fee.nativeFee, "LZ: invalid fee");
         _lzSend(_hubEid, payload, options, fee, msg.sender);
-        emit CrossChainLinkRequested(
-            _hubEid,
-            msg.sender,
-            _spokeVault,
-            _hubVault
-        );
+        emit CrossChainLinkRequested(_hubEid, msg.sender, _spokeVault, _hubVault);
     }
 
     function _lzReceive(
         Origin calldata _origin,
-        bytes32 /* _guid */,
+        bytes32, /* _guid */
         bytes calldata _message,
-        address /* _executor */,
+        address, /* _executor */
         bytes calldata /* _extraData */
     ) internal override {
         // OAppReceiver already validated endpoint and peer
-        (uint16 msgType, bytes memory rest) = abi.decode(
-            _message,
-            (uint16, bytes)
-        );
+        (uint16 msgType, bytes memory rest) = abi.decode(_message, (uint16, bytes));
 
         if (msgType == MSG_TYPE_REGISTER_SPOKE) {
-            (address spokeVault, address hubVault, address spokeOwner) = abi
-                .decode(rest, (address, address, address));
+            (address spokeVault, address hubVault, address spokeOwner) = abi.decode(rest, (address, address, address));
 
             // Ensure dst hub vault is actually deployed by this factory and is hub
             if (!isFactoryVault[hubVault]) revert NotAVault(hubVault);
-            if (!IConfigurationFacet(hubVault).isHub())
+            if (!IConfigurationFacet(hubVault).isHub()) {
                 revert HubCannotInitiateLink();
+            }
 
             // owners must match: spoke owner (from trusted peer) and local hub owner
             address hubOwner = IAccessControlFacet(hubVault).owner();
-            if (hubOwner != spokeOwner)
+            if (hubOwner != spokeOwner) {
                 revert OwnersMismatch(hubOwner, spokeOwner);
+            }
 
             uint32 hubEid = localEid;
             uint32 spokeEid = _origin.srcEid;
 
             // Idempotent: write packed hub if absent
             if (_spokeToHub[spokeEid][spokeVault] == bytes32(0)) {
-                _spokeToHub[spokeEid][spokeVault] = _encodeSpokeKey(
-                    hubEid,
-                    hubVault
-                );
+                _spokeToHub[spokeEid][spokeVault] = _encodeSpokeKey(hubEid, hubVault);
             }
 
             // Append to hub->spokes set (idempotent)
-            _hubToSpokesSet[hubEid][hubVault].add(
-                _encodeSpokeKey(spokeEid, spokeVault)
-            );
+            _hubToSpokesSet[hubEid][hubVault].add(_encodeSpokeKey(spokeEid, spokeVault));
 
             emit CrossChainLinked(spokeEid, spokeVault, hubVault);
         } else if (msgType == MSG_TYPE_SPOKE_ADDED) {
             // optional: update local caches on spokes when hub broadcasts new peers
-            (
-                uint32 hubEid,
-                address hubVault,
-                uint32 newSpokeEid,
-                address newSpokeVault
-            ) = abi.decode(rest, (uint32, address, uint32, address));
+            (uint32 hubEid, address hubVault, uint32 newSpokeEid, address newSpokeVault) =
+                abi.decode(rest, (uint32, address, uint32, address));
             // track that this spoke knows about new peer under its hub
             // append if not present
-            _hubToSpokesSet[hubEid][hubVault].add(
-                _encodeSpokeKey(newSpokeEid, newSpokeVault)
-            );
+            _hubToSpokesSet[hubEid][hubVault].add(_encodeSpokeKey(newSpokeEid, newSpokeVault));
         } else if (msgType == MSG_TYPE_BOOTSTRAP) {
             // Merge-only bootstrap: add missing spokes; do not remove existing ones
-            (uint32 hubEid, address hubVault, bytes32[] memory others) = abi
-                .decode(rest, (uint32, address, bytes32[]));
+            (uint32 hubEid, address hubVault, bytes32[] memory others) = abi.decode(rest, (uint32, address, bytes32[]));
             for (uint256 i = 0; i < others.length; i++) {
                 _hubToSpokesSet[hubEid][hubVault].add(others[i]);
             }
@@ -380,28 +336,16 @@ contract VaultsFactory is
     }
 
     /// @notice Hub: send BOOTSTRAP snapshot to a single spoke (list of all known spokes)
-    function hubSendBootstrap(
-        uint32 _dstEid,
-        address _hubVault,
-        bytes calldata _options
-    ) external payable onlyOwner {
+    function hubSendBootstrap(uint32 _dstEid, address _hubVault, bytes calldata _options) external payable onlyOwner {
         if (!isFactoryVault[_hubVault]) revert NotAVault(_hubVault);
-        if (!IConfigurationFacet(_hubVault).isHub())
+        if (!IConfigurationFacet(_hubVault).isHub()) {
             revert HubCannotInitiateLink();
+        }
 
         // build snapshot as packed keys
         bytes32[] memory spokes = _hubToSpokesSet[localEid][_hubVault].values();
-        bytes memory payload = abi.encode(
-            MSG_TYPE_BOOTSTRAP,
-            localEid,
-            _hubVault,
-            spokes
-        );
-        bytes memory options = combineOptions(
-            _dstEid,
-            MSG_TYPE_BOOTSTRAP,
-            _options
-        );
+        bytes memory payload = abi.encode(MSG_TYPE_BOOTSTRAP, localEid, _hubVault, spokes);
+        bytes memory options = combineOptions(_dstEid, MSG_TYPE_BOOTSTRAP, _options);
         MessagingFee memory fee = _quote(_dstEid, payload, options, false);
         require(msg.value == fee.nativeFee, "LZ: invalid fee");
         _lzSend(_dstEid, payload, options, fee, msg.sender);
@@ -416,30 +360,16 @@ contract VaultsFactory is
         bytes calldata _options
     ) external payable onlyOwner {
         if (!isFactoryVault[_hubVault]) revert NotAVault(_hubVault);
-        if (!IConfigurationFacet(_hubVault).isHub())
+        if (!IConfigurationFacet(_hubVault).isHub()) {
             revert HubCannotInitiateLink();
+        }
 
-        bytes memory payload = abi.encode(
-            MSG_TYPE_SPOKE_ADDED,
-            localEid,
-            _hubVault,
-            _newSpokeEid,
-            _newSpokeVault
-        );
+        bytes memory payload = abi.encode(MSG_TYPE_SPOKE_ADDED, localEid, _hubVault, _newSpokeEid, _newSpokeVault);
 
         _multiSendFee = msg.value;
         for (uint256 i = 0; i < _dstEids.length; i++) {
-            bytes memory options = combineOptions(
-                _dstEids[i],
-                MSG_TYPE_SPOKE_ADDED,
-                _options
-            );
-            MessagingFee memory fee = _quote(
-                _dstEids[i],
-                payload,
-                options,
-                false
-            );
+            bytes memory options = combineOptions(_dstEids[i], MSG_TYPE_SPOKE_ADDED, _options);
+            MessagingFee memory fee = _quote(_dstEids[i], payload, options, false);
             // On last iteration flush remaining budget so Endpoint refunds remainder to msg.sender
             if (i + 1 == _dstEids.length) {
                 // Make _payNative send all remaining budget; it will be refunded by Endpoint
@@ -451,9 +381,7 @@ contract VaultsFactory is
     }
 
     // Support multiple _lzSend calls per tx by allocating from a shared native fee budget.
-    function _payNative(
-        uint256 _nativeFee
-    ) internal override returns (uint256) {
+    function _payNative(uint256 _nativeFee) internal override returns (uint256) {
         // Check if it is multi send or not.
         if (_multiSendFee == 0) {
             if (msg.value != _nativeFee) revert NotEnoughNative(msg.value);
@@ -470,12 +398,7 @@ contract VaultsFactory is
      * @notice Get all deployed vaults
      * @return Array of vault addresses
      */
-    function getDeployedVaults()
-        external
-        view
-        override
-        returns (address[] memory)
-    {
+    function getDeployedVaults() external view override returns (address[] memory) {
         return deployedVaults;
     }
 
@@ -501,9 +424,7 @@ contract VaultsFactory is
      * @param _facet address of the facet
      * @return vaults of the vaults that are linked to the facet
      */
-    function getLinkedVaults(
-        address _facet
-    ) external view returns (address[] memory vaults) {
+    function getLinkedVaults(address _facet) external view returns (address[] memory vaults) {
         vaults = _linkedVaults[_facet].values();
     }
 
@@ -511,11 +432,7 @@ contract VaultsFactory is
      * @notice Returns facet addresses that are restricted
      * @return facets addresses of the restricted facets
      */
-    function getRestrictedFacets()
-        external
-        view
-        returns (address[] memory facets)
-    {
+    function getRestrictedFacets() external view returns (address[] memory facets) {
         facets = _restrictedFacets.values();
     }
 
@@ -524,20 +441,18 @@ contract VaultsFactory is
      * @param _facet address of the facet
      * @param _vault address of the vault
      */
-    function isVaultLinked(
-        address _facet,
-        address _vault
-    ) external view returns (bool) {
+    function isVaultLinked(address _facet, address _vault) external view returns (bool) {
         return _linkedVaults[_facet].contains(_vault);
     }
 
     /**
      * @inheritdoc IVaultsFactory
      */
-    function hubToSpokes(
-        uint32 _chainId,
-        address _hubVault
-    ) external view returns (uint32[] memory eids, address[] memory vaults) {
+    function hubToSpokes(uint32 _chainId, address _hubVault)
+        external
+        view
+        returns (uint32[] memory eids, address[] memory vaults)
+    {
         bytes32[] memory values = _hubToSpokesSet[_chainId][_hubVault].values();
         eids = new uint32[](values.length);
         vaults = new address[](values.length);
@@ -551,35 +466,25 @@ contract VaultsFactory is
     /**
      * @inheritdoc IVaultsFactory
      */
-    function isSpokeOfHub(
-        uint32 _hubEid,
-        address _hubVault,
-        uint32 _spokeEid,
-        address _spokeVault
-    ) external view returns (bool) {
-        return
-            _hubToSpokesSet[_hubEid][_hubVault].contains(
-                _encodeSpokeKey(_spokeEid, _spokeVault)
-            );
+    function isSpokeOfHub(uint32 _hubEid, address _hubVault, uint32 _spokeEid, address _spokeVault)
+        external
+        view
+        returns (bool)
+    {
+        return _hubToSpokesSet[_hubEid][_hubVault].contains(_encodeSpokeKey(_spokeEid, _spokeVault));
     }
 
     /**
      * @inheritdoc IVaultsFactory
      */
-    function isCrossChainVault(
-        uint32 _chainId,
-        address _vault
-    ) external view returns (bool) {
+    function isCrossChainVault(uint32 _chainId, address _vault) external view returns (bool) {
         return _hubToSpokesSet[_chainId][_vault].length() > 0;
     }
 
     /**
      * @inheritdoc IVaultsFactory
      */
-    function spokeToHub(
-        uint32 _chainId,
-        address _spokeVault
-    ) external view returns (uint32 eid, address vault) {
+    function spokeToHub(uint32 _chainId, address _spokeVault) external view returns (uint32 eid, address vault) {
         bytes32 value = _spokeToHub[_chainId][_spokeVault];
         if (value == bytes32(0)) return (0, address(0));
         (eid, vault) = _decodeSpokeKey(value);

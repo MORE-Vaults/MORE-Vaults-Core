@@ -32,7 +32,6 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /// @dev Cross chain accounting manager
     address public defaultCrossChainAccountingManager;
 
-
     uint96 private constant MAX_PROTOCOL_FEE = 5000; // 50%
 
     /**
@@ -45,10 +44,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function addFacet(
-        address facet,
-        bytes4[] calldata selectors
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addFacet(address facet, bytes4[] calldata selectors) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         if (facet == address(0)) revert ZeroAddress();
 
         if (!_allowedFacets[facet]) {
@@ -56,13 +52,11 @@ contract VaultsRegistry is BaseVaultsRegistry {
             _facetsList.add(facet);
         }
 
-        for (uint i = 0; i < selectors.length; ) {
+        for (uint256 i = 0; i < selectors.length;) {
             bytes4 selector = selectors[i];
-            if (selectorToFacet[selector] != address(0))
-                revert SelectorAlreadyExists(
-                    selectorToFacet[selector],
-                    selector
-                );
+            if (selectorToFacet[selector] != address(0)) {
+                revert SelectorAlreadyExists(selectorToFacet[selector], selector);
+            }
 
             selectorToFacet[selector] = facet;
             facetSelectors[facet].push(selector);
@@ -78,38 +72,36 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function editFacet(
-        address facet,
-        bytes4[] calldata selectors,
-        bool[] calldata addOrRemove
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function editFacet(address facet, bytes4[] calldata selectors, bool[] calldata addOrRemove)
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (facet == address(0)) revert ZeroAddress();
         if (!_allowedFacets[facet]) revert FacetNotAllowed(facet);
-        if (selectors.length != addOrRemove.length)
+        if (selectors.length != addOrRemove.length) {
             revert ArrayLengthMismatch();
+        }
 
-        for (uint i = 0; i < selectors.length; ) {
+        for (uint256 i = 0; i < selectors.length;) {
             bytes4 selector = selectors[i];
             if (addOrRemove[i]) {
-                if (selectorToFacet[selector] != address(0))
-                    revert SelectorAlreadyExists(
-                        selectorToFacet[selector],
-                        selector
-                    );
+                if (selectorToFacet[selector] != address(0)) {
+                    revert SelectorAlreadyExists(selectorToFacet[selector], selector);
+                }
 
                 selectorToFacet[selector] = facet;
                 facetSelectors[facet].push(selector);
             } else {
-                if (selectorToFacet[selector] == address(0))
+                if (selectorToFacet[selector] == address(0)) {
                     revert SelectorDidntExist(selector);
+                }
                 selectorToFacet[selector] = address(0);
 
                 bytes4[] storage _facetSelectorsArray = facetSelectors[facet];
-                for (uint j = 0; j < _facetSelectorsArray.length; ) {
+                for (uint256 j = 0; j < _facetSelectorsArray.length;) {
                     if (_facetSelectorsArray[j] == selector) {
-                        _facetSelectorsArray[j] = _facetSelectorsArray[
-                            _facetSelectorsArray.length - 1
-                        ];
+                        _facetSelectorsArray[j] = _facetSelectorsArray[_facetSelectorsArray.length - 1];
                         _facetSelectorsArray.pop();
                         break;
                     }
@@ -134,9 +126,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function removeFacet(
-        address facet
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeFacet(address facet) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!_allowedFacets[facet]) revert FacetNotAllowed(facet);
 
         // Remove from allowed facets
@@ -147,7 +137,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
 
         // Remove all selectors
         bytes4[] memory selectors = facetSelectors[facet];
-        for (uint i = 0; i < selectors.length; ) {
+        for (uint256 i = 0; i < selectors.length;) {
             delete selectorToFacet[selectors[i]];
             unchecked {
                 ++i;
@@ -161,96 +151,67 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function setProtocolFeeInfo(
-        address vault,
-        address recipient,
-        uint96 fee
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setProtocolFeeInfo(address vault, address recipient, uint96 fee)
+        external
+        override
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (recipient == address(0)) revert ZeroAddress();
         if (fee > MAX_PROTOCOL_FEE) revert InvalidFee();
 
-        _protocolFeeInfo[vault] = ProtocolFeeInfo({
-            recipient: recipient,
-            fee: fee
-        });
+        _protocolFeeInfo[vault] = ProtocolFeeInfo({recipient: recipient, fee: fee});
 
         emit ProtocolFeeInfoUpdated(vault, recipient, fee);
     }
 
-    function setSelectorAndMask(
-        address vault,
-        bytes4 selector,
-        bool allowed,
-        bytes memory mask
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _selectorInfo[vault][selector] = SelectorInfo({
-            allowed: allowed,
-            mask: mask
-        });
+    function setSelectorAndMask(address vault, bytes4 selector, bool allowed, bytes memory mask)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        _selectorInfo[vault][selector] = SelectorInfo({allowed: allowed, mask: mask});
     }
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function protocolFeeInfo(
-        address vault
-    ) external view override returns (address, uint96) {
+    function protocolFeeInfo(address vault) external view override returns (address, uint96) {
         return (_protocolFeeInfo[vault].recipient, _protocolFeeInfo[vault].fee);
     }
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function addToWhitelist(
-        address protocol
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addToWhitelist(address protocol) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _setWhitelisted(protocol, true);
     }
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function removeFromWhitelist(
-        address protocol
-    ) external override onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeFromWhitelist(address protocol) external override onlyRole(DEFAULT_ADMIN_ROLE) {
         _setWhitelisted(protocol, false);
     }
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function isWhitelisted(
-        address protocol
-    ) external view override returns (bool) {
+    function isWhitelisted(address protocol) external view override returns (bool) {
         return _isWhitelisted(protocol);
     }
 
-    function selectorInfo(
-        address vault,
-        bytes4 selector
-    ) external view returns (bool, bytes memory) {
-        return (
-            _selectorInfo[vault][selector].allowed,
-            _selectorInfo[vault][selector].mask
-        );
+    function selectorInfo(address vault, bytes4 selector) external view returns (bool, bytes memory) {
+        return (_selectorInfo[vault][selector].allowed, _selectorInfo[vault][selector].mask);
     }
-
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function setBridge(
-        address bridge,
-        bool allowed
-    ) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setBridge(address bridge, bool allowed) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
         _bridgeAllowed[bridge] = allowed;
         emit BridgeUpdated(bridge, allowed);
     }
 
-    function setIsCrossChainAccountingManager(
-        address manager,
-        bool isManager
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setIsCrossChainAccountingManager(address manager, bool isManager) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _isCrossChainAccountingManager[manager] = isManager;
 
         emit CrossChainAccountingManagerSet(manager, isManager);
@@ -259,9 +220,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function setDefaultCrossChainAccountingManager(
-        address manager
-    ) external virtual {
+    function setDefaultCrossChainAccountingManager(address manager) external virtual {
         defaultCrossChainAccountingManager = manager;
 
         emit DefaultCrossChainAccountingManagerSet(manager);
@@ -270,32 +229,23 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function isBridgeAllowed(
-        address bridge
-    ) external view virtual returns (bool) {
+    function isBridgeAllowed(address bridge) external view virtual returns (bool) {
         return _bridgeAllowed[bridge];
     }
 
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function isCrossChainAccountingManager(
-        address manager
-    ) external view returns (bool) {
+    function isCrossChainAccountingManager(address manager) external view returns (bool) {
         return _isCrossChainAccountingManager[manager];
     }
-
-
-
 
     /**
      * @notice Internal function to check if facet is allowed
      * @param facet Address to check
      * @return bool True if facet is allowed
      */
-    function _isFacetAllowed(
-        address facet
-    ) internal view override returns (bool) {
+    function _isFacetAllowed(address facet) internal view override returns (bool) {
         return _allowedFacets[facet];
     }
 }

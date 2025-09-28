@@ -39,36 +39,23 @@ contract MoreVaultsLibTest is Test {
         availableAssets[0] = token1;
         availableAssets[1] = token2;
         // Set initial values in storage
-        MoreVaultsStorageHelper.setAvailableAssets(
-            address(this),
-            availableAssets
-        );
+        MoreVaultsStorageHelper.setAvailableAssets(address(this), availableAssets);
         MoreVaultsStorageHelper.setWrappedNative(address(this), wrappedNative);
         MoreVaultsStorageHelper.setMoreVaultsRegistry(address(this), registry);
         MoreVaultsStorageHelper.setVaultAsset(address(this), token1, 18);
     }
 
-    function test_validateAsset_ShouldNotRevertWhenAssetIsAvailable()
-        public
-        view
-    {
+    function test_validateAsset_ShouldNotRevertWhenAssetIsAvailable() public view {
         MoreVaultsLib.validateAssetAvailable(token1);
     }
 
     function test_validateAsset_ShouldRevertWhenAssetIsNotAvailable() public {
         address invalidAsset = address(9);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MoreVaultsLib.UnsupportedAsset.selector,
-                invalidAsset
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(MoreVaultsLib.UnsupportedAsset.selector, invalidAsset));
         MoreVaultsLib.validateAssetAvailable(invalidAsset);
     }
 
-    function test_removeTokenIfnecessary_ShouldRemoveTokenWhenBalanceIsLow()
-        public
-    {
+    function test_removeTokenIfnecessary_ShouldRemoveTokenWhenBalanceIsLow() public {
         // Mock IERC20.balanceOf to return low balance
         vm.mockCall(
             token1,
@@ -77,11 +64,8 @@ contract MoreVaultsLibTest is Test {
         );
 
         // Get storage pointer for tokensHeld
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[
-            keccak256("test")
-        ];
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
 
         // Add token to set
         tokensHeld.add(token1);
@@ -93,9 +77,7 @@ contract MoreVaultsLibTest is Test {
         assertFalse(tokensHeld.contains(token1), "Token should be removed");
     }
 
-    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsHigh()
-        public
-    {
+    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsHigh() public {
         // Mock IERC20.balanceOf to return high balance
         vm.mockCall(
             token1,
@@ -104,11 +86,8 @@ contract MoreVaultsLibTest is Test {
         );
 
         // Get storage pointer for tokensHeld
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[
-            keccak256("test")
-        ];
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
 
         // Add token to set
         tokensHeld.add(token1);
@@ -120,9 +99,7 @@ contract MoreVaultsLibTest is Test {
         assertTrue(tokensHeld.contains(token1), "Token should not be removed");
     }
 
-    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsLowButStakedIsHigh()
-        public
-    {
+    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsLowButStakedIsHigh() public {
         // Mock IERC20.balanceOf to return high balance
         vm.mockCall(
             token1,
@@ -131,11 +108,8 @@ contract MoreVaultsLibTest is Test {
         );
 
         // Get storage pointer for tokensHeld
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib
-            .moreVaultsStorage();
-        EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[
-            keccak256("test")
-        ];
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
         MoreVaultsStorageHelper.setStaked(address(this), token1, 10e4);
 
         // Add token to set
@@ -150,90 +124,44 @@ contract MoreVaultsLibTest is Test {
 
     function test_convertToUnderlying_ShouldConvertNativeToken() public {
         // Mock registry and oracle
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.getDenominationAsset.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.getDenominationAsset.selector),
             abi.encode(denominationAsset)
         );
 
         // Mock denomination asset decimals
-        vm.mockCall(
-            denominationAsset,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(18)
-        );
+        vm.mockCall(denominationAsset, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
 
         // Mock oracle source for both wrappedNative and underlying token
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                wrappedNative
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, wrappedNative),
             abi.encode(aggregator1, uint96(1000))
         );
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                token1
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, token1),
             abi.encode(aggregator2, uint96(1000))
         );
 
         // Mock aggregators with real ETH price
         vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                wrappedNative
-            ),
-            abi.encode(ETH_PRICE)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, wrappedNative), abi.encode(ETH_PRICE)
         );
+        vm.mockCall(aggregator1, abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector), abi.encode(8));
         vm.mockCall(
-            aggregator1,
-            abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector),
-            abi.encode(8)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token1), abi.encode(USD_PRICE)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                token1
-            ),
-            abi.encode(USD_PRICE)
-        );
-        vm.mockCall(
-            aggregator2,
-            abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector),
-            abi.encode(8)
-        );
+        vm.mockCall(aggregator2, abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector), abi.encode(8));
 
-        vm.mockCall(
-            token1,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(8)
-        );
+        vm.mockCall(token1, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(8));
 
-        vm.mockCall(
-            wrappedNative,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(18)
-        );
+        vm.mockCall(wrappedNative, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
 
         uint256 amount = 1e18; // 1 ETH
-        uint256 result = MoreVaultsLib.convertToUnderlying(
-            address(0),
-            amount,
-            Math.Rounding.Floor
-        );
+        uint256 result = MoreVaultsLib.convertToUnderlying(address(0), amount, Math.Rounding.Floor);
         uint256 expectedResult = (amount.mulDiv(ETH_PRICE, 1e18));
         assertEq(
             result,
@@ -244,89 +172,43 @@ contract MoreVaultsLibTest is Test {
 
     function test_convertToUnderlying_ShouldConvertNonNativeToken() public {
         // Mock registry and oracle
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.getDenominationAsset.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.getDenominationAsset.selector),
             abi.encode(denominationAsset)
         );
 
         // Mock denomination asset decimals
-        vm.mockCall(
-            denominationAsset,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(18)
-        );
+        vm.mockCall(denominationAsset, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
 
         // Mock oracle sources
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                token2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, token2),
             abi.encode(aggregator1, uint96(1000))
         );
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                token1
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, token1),
             abi.encode(aggregator2, uint96(1000))
         );
 
         // Mock aggregators with ~real SOL price
         vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                token1
-            ),
-            abi.encode(USD_PRICE)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token1), abi.encode(USD_PRICE)
         );
+        vm.mockCall(aggregator1, abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector), abi.encode(8));
         vm.mockCall(
-            aggregator1,
-            abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector),
-            abi.encode(8)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token2), abi.encode(SOL_PRICE)
         );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                token2
-            ),
-            abi.encode(SOL_PRICE)
-        );
-        vm.mockCall(
-            aggregator2,
-            abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            token1,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(8)
-        );
+        vm.mockCall(aggregator2, abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector), abi.encode(8));
+        vm.mockCall(token1, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(8));
 
-        vm.mockCall(
-            token2,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(18)
-        );
+        vm.mockCall(token2, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
 
         uint256 amount = 1e18; // 1 SOL
-        uint256 result = MoreVaultsLib.convertToUnderlying(
-            token2,
-            amount,
-            Math.Rounding.Floor
-        );
+        uint256 result = MoreVaultsLib.convertToUnderlying(token2, amount, Math.Rounding.Floor);
         uint256 expectedResult = (amount.mulDiv(SOL_PRICE, 1e18));
         assertEq(
             result,
@@ -335,80 +217,41 @@ contract MoreVaultsLibTest is Test {
         );
     }
 
-    function test_convertToUnderlying_ShouldConvertDirectlyWhenUnderlyingEqualsDenomination()
-        public
-    {
+    function test_convertToUnderlying_ShouldConvertDirectlyWhenUnderlyingEqualsDenomination() public {
         // Mock registry and oracle
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.getDenominationAsset.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.getDenominationAsset.selector),
             abi.encode(token1) // Set denomination asset to token1 (our underlying token)
         );
 
         // Mock denomination asset decimals
-        vm.mockCall(
-            token1,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(8)
-        );
+        vm.mockCall(token1, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(8));
 
         // Mock oracle sources
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                token2
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, token2),
             abi.encode(aggregator1, uint96(1000))
         );
         vm.mockCall(
             oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getOracleInfo.selector,
-                token1
-            ),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, token1),
             abi.encode(aggregator2, uint96(1000))
         );
 
+        vm.mockCall(aggregator1, abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector), abi.encode(8));
+        vm.mockCall(aggregator2, abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector), abi.encode(8));
         vm.mockCall(
-            aggregator1,
-            abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            aggregator2,
-            abi.encodeWithSelector(IAggregatorV2V3Interface.decimals.selector),
-            abi.encode(8)
-        );
-        vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(
-                IOracleRegistry.getAssetPrice.selector,
-                token2
-            ),
-            abi.encode(SOL_PRICE)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token2), abi.encode(SOL_PRICE)
         );
 
         // Mock token decimals
-        vm.mockCall(
-            token2,
-            abi.encodeWithSelector(IERC20Metadata.decimals.selector),
-            abi.encode(8)
-        );
+        vm.mockCall(token2, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(8));
 
         uint256 amount = 1e8; // 1 SOL with 8 decimals
-        uint256 result = MoreVaultsLib.convertToUnderlying(
-            token2,
-            amount,
-            Math.Rounding.Floor
-        );
+        uint256 result = MoreVaultsLib.convertToUnderlying(token2, amount, Math.Rounding.Floor);
 
         uint256 expectedResult = (amount.mulDiv(SOL_PRICE, 1e8));
         assertEq(
@@ -418,44 +261,23 @@ contract MoreVaultsLibTest is Test {
         );
     }
 
-    function test_convertToUnderlying_ShouldConvertUnderlyingToUnderlyingAs1To1()
-        public
-        view
-    {
+    function test_convertToUnderlying_ShouldConvertUnderlyingToUnderlyingAs1To1() public view {
         uint256 amount = 1e8; // 1 SOL with 8 decimals
-        uint256 result = MoreVaultsLib.convertToUnderlying(
-            token1,
-            amount,
-            Math.Rounding.Floor
-        );
+        uint256 result = MoreVaultsLib.convertToUnderlying(token1, amount, Math.Rounding.Floor);
 
-        assertEq(
-            result,
-            amount,
-            "Should convert underlying to underlying as 1 to 1"
-        );
+        assertEq(result, amount, "Should convert underlying to underlying as 1 to 1");
     }
 
     function test_convertToUnderlying_WithZeroAmount() public {
         // Mock registry and oracle
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector),
-            abi.encode(oracle)
-        );
-        vm.mockCall(
-            registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.getDenominationAsset.selector
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.getDenominationAsset.selector),
             abi.encode(denominationAsset)
         );
 
-        uint256 result = MoreVaultsLib.convertToUnderlying(
-            token1,
-            0,
-            Math.Rounding.Floor
-        );
+        uint256 result = MoreVaultsLib.convertToUnderlying(token1, 0, Math.Rounding.Floor);
         assertEq(result, 0, "Should return 0 for zero amount");
     }
 
@@ -469,15 +291,10 @@ contract MoreVaultsLibTest is Test {
         );
     }
 
-    function test_validateAddressWhitelisted_ShouldNotRevertWhenAddressIsWhitelisted()
-        public
-    {
+    function test_validateAddressWhitelisted_ShouldNotRevertWhenAddressIsWhitelisted() public {
         vm.mockCall(
             registry,
-            abi.encodeWithSelector(
-                IMoreVaultsRegistry.isWhitelisted.selector,
-                address(this)
-            ),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(this)),
             abi.encode(true)
         );
         MoreVaultsLib.validateAddressWhitelisted(address(this));
