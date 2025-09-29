@@ -40,6 +40,13 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function setOraclesCrossChainAccounting(bool isTrue) external;
 
     /**
+     * @dev Quotes the native fee required to initiate cross-chain accounting
+     * @param extraOptions Additional options for the cross-chain read (adapter-specific)
+     * @return nativeFee The estimated native token fee required
+     */
+    function quoteAccountingFee(bytes calldata extraOptions) external view returns (uint256 nativeFee);
+
+    /**
      * @dev Executes a cross-chain bridge operation
      * @param adapter Address of the adapter to use
      * @param token Address of the token to bridge

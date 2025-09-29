@@ -234,7 +234,9 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         address _refundAddress,
         uint32 _srcEid
     ) internal virtual {
-        bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest(
+        uint256 readFee = IBridgeFacet(address(VAULT)).quoteAccountingFee("");
+        if (msg.value < readFee) revert InsufficientMsgValue(readFee, msg.value);
+        bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{ value: readFee }(
             MoreVaultsLib.ActionType.DEPOSIT,
             abi.encode(uint256(_assetAmount), address(this)), ""
         );
@@ -242,7 +244,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
             _depositor,
             _assetAmount,
             _refundAddress,
-            msg.value,
+            msg.value - readFee,
             _srcEid,
             _sendParam
         );

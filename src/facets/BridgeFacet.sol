@@ -16,6 +16,7 @@ import {IBridgeFacet} from "../interfaces/facets/IBridgeFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 
 contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -116,6 +117,15 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         IERC20(token).forceApprove(adapter, amount);
         IBridgeAdapter(adapter).executeBridging{value: msg.value}(bridgeSpecificParams);
+    }
+
+    function quoteAccountingFee(bytes calldata extraOptions) external view returns (uint256 nativeFee) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        IVaultsFactory factory = IVaultsFactory(ds.factory);
+        (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(factory.localEid(), address(this));
+        IBridgeAdapter adapter = IBridgeAdapter(ds.crossChainAccountingManager);
+        MessagingFee memory fee = adapter.quoteReadFee(vaults, eids, extraOptions);
+        return fee.nativeFee;
     }
 
     function initVaultActionRequest(
