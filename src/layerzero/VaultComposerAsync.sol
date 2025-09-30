@@ -90,7 +90,9 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
 
         /// @dev ShareOFT must be an OFT adapter. We can infer this by checking 'approvalRequired()'.
         /// @dev burn() on tokens when a user sends changes totalSupply() which the asset:share ratio depends on.
-        if (!IOFT(SHARE_OFT).approvalRequired()) revert ShareOFTNotAdapter(SHARE_OFT);
+        if (!IOFT(SHARE_OFT).approvalRequired()) {
+            revert ShareOFTNotAdapter(SHARE_OFT);
+        }
 
         /// @dev Approve the vault to spend the asset tokens held by this contract
         IERC20(ASSET_ERC20).approve(_vault, type(uint256).max);
@@ -100,7 +102,9 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         /// @dev Approve the share adapter with the share tokens held by this contract
         IERC20(SHARE_ERC20).approve(_shareOFT, type(uint256).max);
         /// @dev If the asset OFT is an adapter, approve it as well
-        if (IOFT(_assetOFT).approvalRequired()) IERC20(ASSET_ERC20).approve(_assetOFT, type(uint256).max);
+        if (IOFT(_assetOFT).approvalRequired()) {
+            IERC20(ASSET_ERC20).approve(_assetOFT, type(uint256).max);
+        }
     }
 
     /**
@@ -115,11 +119,13 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         address _composeSender, // The OFT used on refund, also the vaultIn token.
         bytes32 _guid,
         bytes calldata _message, // expected to contain a composeMessage = abi.encode(SendParam hopSendParam,uint256 minMsgValue)
-        address /*_executor*/,
+        address, /*_executor*/
         bytes calldata /*_extraData*/
     ) external payable virtual override {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
-        if (_composeSender != ASSET_OFT && _composeSender != SHARE_OFT) revert OnlyValidComposeCaller(_composeSender);
+        if (_composeSender != ASSET_OFT && _composeSender != SHARE_OFT) {
+            revert OnlyValidComposeCaller(_composeSender);
+        }
 
         bytes32 composeFrom = _message.composeFrom();
         uint256 amount = _message.amountLD();
@@ -127,7 +133,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         uint32 srcEid = OFTComposeMsgCodec.srcEid(_message);
 
         /// @dev try...catch to handle the compose operation. if it fails we refund the user
-        try this.handleCompose{ value: msg.value }(_composeSender, composeFrom, composeMsg, amount, srcEid) {
+        try this.handleCompose{value: msg.value}(_composeSender, composeFrom, composeMsg, amount, srcEid) {
             emit Sent(_guid);
         } catch (bytes memory _err) {
             /// @dev A revert where the msg.value passed is lower than the min expected msg.value is handled separately
@@ -166,7 +172,9 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         /// @dev SendParam defines how the composer will handle the user's funds
         /// @dev The minMsgValue is the minimum amount of msg.value that must be sent, failing to do so will revert and the transaction will be retained in the endpoint for future retries
         (SendParam memory sendParam, uint256 minMsgValue) = abi.decode(_composeMsg, (SendParam, uint256));
-        if (msg.value < minMsgValue) revert InsufficientMsgValue(minMsgValue, msg.value);
+        if (msg.value < minMsgValue) {
+            revert InsufficientMsgValue(minMsgValue, msg.value);
+        }
 
         if (_oftIn == ASSET_OFT) {
             _initDeposit(_composeFrom, _amount, sendParam, tx.origin, _srcEid);
@@ -210,10 +218,8 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         refundSendParam.to = deposit.depositor;
         refundSendParam.amountLD = deposit.assetAmount;
 
-        IOFT(ASSET_OFT).send{ value: deposit.msgValue }(
-            refundSendParam,
-            MessagingFee(deposit.msgValue, 0),
-            deposit.refundAddress
+        IOFT(ASSET_OFT).send{value: deposit.msgValue}(
+            refundSendParam, MessagingFee(deposit.msgValue, 0), deposit.refundAddress
         );
     }
 
@@ -235,19 +241,14 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         uint32 _srcEid
     ) internal virtual {
         uint256 readFee = IBridgeFacet(address(VAULT)).quoteAccountingFee("");
-        if (msg.value < readFee) revert InsufficientMsgValue(readFee, msg.value);
-        bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{ value: readFee }(
-            MoreVaultsLib.ActionType.DEPOSIT,
-            abi.encode(uint256(_assetAmount), address(this)), ""
+        if (msg.value < readFee) {
+            revert InsufficientMsgValue(readFee, msg.value);
+        }
+        bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
+            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(_assetAmount), address(this)), ""
         );
-        pendingDeposits[guid] = PendingDeposit(
-            _depositor,
-            _assetAmount,
-            _refundAddress,
-            msg.value - readFee,
-            _srcEid,
-            _sendParam
-        );
+        pendingDeposits[guid] =
+            PendingDeposit(_depositor, _assetAmount, _refundAddress, msg.value - readFee, _srcEid, _sendParam);
     }
 
     /**
@@ -256,7 +257,11 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
      * @return shareAmount The number of shares received from the vault deposit
      * @notice This function is expected to be overridden by the inheriting contract to implement custom/nonERC4626 deposit logic
      */
-    function _deposit(bytes32 /*_depositor*/, uint256 _assetAmount) internal virtual returns (uint256 shareAmount) {
+    function _deposit(
+        bytes32,
+        /*_depositor*/
+        uint256 _assetAmount
+    ) internal virtual returns (uint256 shareAmount) {
         shareAmount = VAULT.deposit(_assetAmount, address(this));
     }
 
@@ -270,12 +275,12 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
      * @return MessagingFee The estimated fee for the send operation
      * @dev This function can be overridden to implement custom quoting logic
      */
-    function quoteSend(
-        address _from,
-        address _targetOFT,
-        uint256 _vaultInAmount,
-        SendParam memory _sendParam
-    ) external view virtual returns (MessagingFee memory) {
+    function quoteSend(address _from, address _targetOFT, uint256 _vaultInAmount, SendParam memory _sendParam)
+        external
+        view
+        virtual
+        returns (MessagingFee memory)
+    {
         /// @dev Only deposit flow is supported; quoting is only valid for SHARE_OFT (hub → destination hop)
         if (_targetOFT != SHARE_OFT) revert NotImplemented();
 
@@ -305,7 +310,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
             IERC20(erc20).safeTransfer(_sendParam.to.bytes32ToAddress(), _sendParam.amountLD);
         } else {
             // crosschain send
-            IOFT(_oft).send{ value: _msgValue }(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
+            IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
         }
     }
 
@@ -323,7 +328,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         refundSendParam.to = OFTComposeMsgCodec.composeFrom(_message);
         refundSendParam.amountLD = _amount;
 
-        IOFT(_oft).send{ value: msg.value }(refundSendParam, MessagingFee(msg.value, 0), _refundAddress);
+        IOFT(_oft).send{value: msg.value}(refundSendParam, MessagingFee(msg.value, 0), _refundAddress);
     }
 
     receive() external payable {}
