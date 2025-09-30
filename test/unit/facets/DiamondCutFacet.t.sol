@@ -90,7 +90,7 @@ contract DiamondCutFacetTest is Test {
         cuts[0].functionSelectors[0] = TEST_SELECTOR;
 
         // Set up as owner
-        vm.prank(owner);
+        vm.prank(address(facet));
 
         vm.mockCall(address(0), abi.encodeWithSelector(IVaultsFactory.link.selector, mockFacetAddress), "");
 
@@ -140,7 +140,7 @@ contract DiamondCutFacetTest is Test {
         });
         addCuts[0].functionSelectors[0] = TEST_SELECTOR;
 
-        vm.prank(owner);
+        vm.prank(address(facet));
         IDiamondCut(facet).diamondCut(addCuts);
 
         // Prepare replacement facet cut data
@@ -177,7 +177,7 @@ contract DiamondCutFacetTest is Test {
         );
 
         // Set up as owner
-        vm.prank(owner);
+        vm.prank(address(facet));
         // Execute diamond cut
         IDiamondCut(facet).diamondCut(replaceCuts);
 
@@ -223,7 +223,7 @@ contract DiamondCutFacetTest is Test {
             ""
         );
 
-        vm.prank(owner);
+        vm.prank(address(facet));
         IDiamondCut(facet).diamondCut(addCuts);
 
         // Prepare removal facet cut data
@@ -237,7 +237,7 @@ contract DiamondCutFacetTest is Test {
         removeCuts[0].functionSelectors[0] = TEST_SELECTOR;
 
         // Set up as owner
-        vm.prank(owner);
+        vm.prank(address(facet));
 
         vm.mockCall(
             address(0), // unassigned factory
@@ -301,7 +301,7 @@ contract DiamondCutFacetTest is Test {
         });
         cuts[0].functionSelectors[0] = TEST_SELECTOR;
 
-        vm.prank(owner);
+        vm.prank(address(facet));
 
         vm.expectRevert(abi.encodeWithSelector(MoreVaultsLib.FacetNotAllowed.selector, mockFacetAddress));
         IDiamondCut(facet).diamondCut(cuts);

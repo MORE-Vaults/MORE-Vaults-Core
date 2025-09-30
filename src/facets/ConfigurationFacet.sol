@@ -35,8 +35,11 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         ds.supportedInterfaces[type(IConfigurationFacet).interfaceId] = false;
     }
 
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
     function setMaxSlippagePercent(uint256 _newPercent) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (_newPercent > 2000) revert SlippageTooHigh();
         ds.maxSlippagePercent = _newPercent;
@@ -44,13 +47,16 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         emit MaxSlippagePercentSet(_newPercent);
     }
 
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
     function setGasLimitForAccounting(
         uint48 _availableTokenAccountingGas,
         uint48 _heldTokenAccountingGas,
         uint48 _facetAccountingGas,
         uint48 _newLimit
     ) external {
-        AccessControlLib.validateCurator(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.GasLimit storage gl = MoreVaultsLib.moreVaultsStorage().gasLimit;
         gl.availableTokenAccountingGas = _availableTokenAccountingGas;
         gl.heldTokenAccountingGas = _heldTokenAccountingGas;
@@ -81,7 +87,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         if (depositors.length != underlyingAssetCaps.length) {
             revert ArraysLengthsMismatch();
         }
-        AccessControlLib.validateCurator(msg.sender);
+        AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib._setDepositWhitelist(depositors, underlyingAssetCaps);
     }
 
@@ -89,7 +95,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function enableDepositWhitelist() external {
-        AccessControlLib.validateCurator(msg.sender);
+        AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib._setWhitelistFlag(true);
     }
 
@@ -97,7 +103,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function disableDepositWhitelist() external {
-        AccessControlLib.validateCurator(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib._setWhitelistFlag(false);
     }
 
@@ -105,7 +111,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function setTimeLockPeriod(uint256 period) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib._setTimeLockPeriod(period);
     }
 
@@ -137,7 +143,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function enableAssetToDeposit(address asset) external {
-        AccessControlLib.validateCurator(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib._enableAssetToDeposit(asset);
     }
 
@@ -153,30 +159,18 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function setWithdrawalTimelock(uint64 _duration) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         ds.witdrawTimelock = _duration;
         emit WithdrawalTimelockSet(_duration);
     }
 
-    function setCrossChainAccountingManager(address manager) external {
-        AccessControlLib.validateOwner(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
-        if (!IMoreVaultsRegistry(acs.moreVaultsRegistry).isCrossChainAccountingManager(manager)) {
-            revert InvalidManager();
-        }
-        ds.crossChainAccountingManager = manager;
-
-        emit CrossChainAccountingManagerSet(manager);
-    }
-
     /**
      * @inheritdoc IConfigurationFacet
      */
     function setWithdrawalFee(uint96 _fee) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.withdrawalFee = _fee;
         emit WithdrawalFeeSet(_fee);
@@ -186,10 +180,25 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function updateWithdrawalQueueStatus(bool _status) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.isWithdrawalQueueEnabled = _status;
         emit WithdrawalQueueStatusSet(_status);
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function setCrossChainAccountingManager(address manager) external {
+        AccessControlLib.validateDiamond(msg.sender);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (!IMoreVaultsRegistry(acs.moreVaultsRegistry).isCrossChainAccountingManager(manager)) {
+            revert InvalidManager();
+        }
+        ds.crossChainAccountingManager = manager;
+
+        emit CrossChainAccountingManagerSet(manager);
     }
 
     /**

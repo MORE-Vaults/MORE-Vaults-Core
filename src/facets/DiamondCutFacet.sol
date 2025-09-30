@@ -33,7 +33,7 @@ contract DiamondCutFacet is BaseFacetInitializer, IDiamondCut {
      * @inheritdoc IDiamondCut
      */
     function diamondCut(IDiamondCut.FacetCut[] calldata _diamondCut) external override {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.diamondCut(_diamondCut);
     }
 }

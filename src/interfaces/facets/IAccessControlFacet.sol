@@ -9,17 +9,6 @@ interface IAccessControlFacet is IGenericMoreVaultFacetInitializable {
     error UnaibleToChangeRegistryToPermissionless();
 
     /**
-     * @dev Emitted when more vault registry is changed
-     */
-    event MoreVaultRegistrySet(address indexed previousRegistry, address indexed newRegistry);
-
-    /**
-     * @notice Sets the more vault registry address, can't be changed from permissioned to permissionless
-     * @param newRegistry Address of the new more vault registry
-     */
-    function setMoreVaultsRegistry(address newRegistry) external;
-
-    /**
      * @notice Transfers owner role to a new address
      * @param _newOwner Address of the new owner
      */

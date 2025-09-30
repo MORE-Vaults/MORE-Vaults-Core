@@ -3,5 +3,13 @@
   "[solidity]": {
     "editor.defaultFormatter": "JuanBlanco.solidity"
   },
-  "solidity.formatter": "prettier"
+  "solidity.formatter": "prettier",
+  "search.exclude": {
+    "**/lib/**": true,
+    "**/node_modules/**": true
+  },
+  "files.watcherExclude": {
+    "**/lib/**": true
+  },
+  "coverage-gutters.coverageFileNames": ["lcov.info"]
 }

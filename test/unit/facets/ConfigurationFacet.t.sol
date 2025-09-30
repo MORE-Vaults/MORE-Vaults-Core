@@ -87,7 +87,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_setMaxSlippagePercent_ShouldUpdateMaxSlippagePercent() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
         facet.setMaxSlippagePercent(2000);
         vm.stopPrank();
         assertEq(
@@ -96,14 +96,14 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_setMaxSlippagePercent_ShouldRevertWhenSlippageTooHigh() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
         vm.expectRevert(IConfigurationFacet.SlippageTooHigh.selector);
         facet.setMaxSlippagePercent(2001);
         vm.stopPrank();
     }
 
     function test_setGasLimitForAccounting_ShouldUpdateGasLimitForAccounting() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
         facet.setGasLimitForAccounting(10000, 10000, 10000, 10000);
         vm.stopPrank();
         MoreVaultsLib.GasLimit memory gasLimit = MoreVaultsStorageHelper.getGasLimitForAccounting(address(facet));
@@ -170,7 +170,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_setTimeLockPeriod_ShouldUpdatePeriod() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Set new time lock period
         uint256 newPeriod = 2 days;
@@ -341,7 +341,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_enableAssetToDeposit_ShouldRevertWhenZeroAddress() public {
-        vm.startPrank(curator);
+        vm.startPrank(address(facet));
 
         // Attempt to add zero address as asset
         vm.expectRevert(IConfigurationFacet.InvalidAddress.selector);
@@ -356,6 +356,8 @@ contract ConfigurationFacetTest is Test {
         // Add asset
         facet.addAvailableAsset(asset1);
 
+        vm.stopPrank();
+        vm.startPrank(address(facet));
         // Enable asset first time
         facet.enableAssetToDeposit(asset1);
 
@@ -367,7 +369,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_enableAssetToDeposit_ShouldRevertIfAssetIsNotAvailableForManage() public {
-        vm.startPrank(curator);
+        vm.startPrank(address(facet));
 
         // Attempt to add same asset again
         vm.expectRevert(abi.encodeWithSelector(MoreVaultsLib.UnsupportedAsset.selector, asset1));
@@ -381,7 +383,8 @@ contract ConfigurationFacetTest is Test {
 
         // Add asset
         facet.addAvailableAsset(asset1);
-
+        vm.stopPrank();
+        vm.startPrank(address(facet));
         // Enable asset to deposit
         facet.enableAssetToDeposit(asset1);
 
@@ -438,6 +441,8 @@ contract ConfigurationFacetTest is Test {
         // Add asset
         facet.addAvailableAsset(asset1);
         // Enable asset first time
+        vm.stopPrank();
+        vm.startPrank(address(facet));
         facet.enableAssetToDeposit(asset1);
         assertTrue(
             MoreVaultsStorageHelper.isAssetDepositable(address(facet), asset1), "Asset1 should be enabled to deposit"
@@ -445,7 +450,8 @@ contract ConfigurationFacetTest is Test {
         address[] memory depositableAssets = facet.getDepositableAssets();
         assertEq(depositableAssets.length, 1, "Depositable assets array should have one element");
         assertEq(depositableAssets[0], asset1, "Depositable assets array should have asset1");
-
+        vm.stopPrank();
+        vm.startPrank(curator);
         facet.disableAssetToDeposit(asset1);
 
         // Verify assets are available
@@ -478,6 +484,8 @@ contract ConfigurationFacetTest is Test {
 
         // Add asset
         facet.addAvailableAsset(asset1);
+        vm.stopPrank();
+        vm.startPrank(address(facet));
         facet.enableAssetToDeposit(asset1);
 
         // Verify asset is available
@@ -508,7 +516,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_setDepositWhitelist_ShouldUpdateDepositWhitelist() public {
-        vm.startPrank(curator);
+        vm.startPrank(owner);
 
         address[] memory depositors = new address[](1);
         depositors[0] = address(1);
@@ -545,14 +553,14 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_enableDepositWhitelist_ShouldEnableDepositWhitelist() public {
-        vm.startPrank(curator);
+        vm.startPrank(owner);
         facet.enableDepositWhitelist();
         vm.stopPrank();
         assertTrue(facet.isDepositWhitelistEnabled(), "Deposit whitelist should be enabled");
     }
 
     function test_disableDepositWhitelist_ShouldDisableDepositWhitelist() public {
-        vm.startPrank(curator);
+        vm.startPrank(address(facet));
         facet.disableDepositWhitelist();
         vm.stopPrank();
         assertFalse(facet.isDepositWhitelistEnabled(), "Deposit whitelist should be disabled");
@@ -561,6 +569,8 @@ contract ConfigurationFacetTest is Test {
     function test_getDepositableAssets_ShouldReturnCorrectArray() public {
         vm.startPrank(curator);
         facet.addAvailableAsset(asset1);
+        vm.stopPrank();
+        vm.startPrank(address(facet));
         facet.enableAssetToDeposit(asset1);
         address[] memory depositableAssets = facet.getDepositableAssets();
         assertEq(depositableAssets.length, 1, "Depositable assets array should have one element");
@@ -568,14 +578,14 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_getWithdrawalFee_ShouldReturnCorrectFee() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
         facet.setWithdrawalFee(1000);
         vm.stopPrank();
         assertEq(facet.getWithdrawalFee(), 1000);
     }
 
     function test_getWithdrawalQueueStatus_ShouldReturnCorrectStatus() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
         facet.updateWithdrawalQueueStatus(true);
         vm.stopPrank();
         assertTrue(facet.getWithdrawalQueueStatus());

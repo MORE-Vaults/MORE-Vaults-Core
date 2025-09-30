@@ -82,7 +82,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferCuratorship_ShouldUpdateCurator() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Transfer curatorship
         facet.transferCuratorship(newCurator);
@@ -107,7 +107,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferCuratorship_ShouldRevertWhenZeroAddress() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Attempt to transfer curatorship to zero address
         vm.expectRevert(AccessControlLib.ZeroAddress.selector);
@@ -117,7 +117,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferCuratorship_ShouldRevertWhenSameAddress() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Attempt to transfer curatorship to same address
         vm.expectRevert(AccessControlLib.SameAddress.selector);
@@ -127,7 +127,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferOwnership_ShouldUpdatePendingOwner() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Transfer curatorship
         facet.transferOwnership(newOwner);
@@ -152,7 +152,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_acceptOwnership_ShouldSetOwner() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Set pending owner
         facet.transferOwnership(newOwner);
@@ -170,7 +170,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_acceptOwnership_ShouldSetPendingOwnerToZero() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Set pending owner
         facet.transferOwnership(newOwner);
@@ -198,7 +198,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferGuardian_ShouldUpdateGuardian() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Transfer guardian role
         facet.transferGuardian(newGuardian);
@@ -233,7 +233,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferGuardian_ShouldRevertWhenZeroAddress() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Attempt to transfer guardian role to zero address
         vm.expectRevert(AccessControlLib.ZeroAddress.selector);
@@ -243,7 +243,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_transferGuardian_ShouldRevertWhenSameAddress() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Attempt to transfer guardian role to same address
         vm.expectRevert(AccessControlLib.SameAddress.selector);
@@ -265,118 +265,6 @@ contract AccessControlFacetTest is Test {
 
         // Verify through getter
         assertEq(facet.guardian(), guardian, "Guardian should be correct");
-    }
-
-    function test_setMoreVaultsRegistry_ShouldUpdateRegistry() public {
-        vm.startPrank(owner);
-
-        vm.mockCall(
-            registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)), abi.encode(false)
-        );
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)),
-            abi.encode(false)
-        );
-
-        // Mock selectorToFacet to return different facets for different selectors
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, bytes4(0x12345678)),
-            abi.encode(facet1)
-        );
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.selectorToFacet.selector, bytes4(0x87654321)),
-            abi.encode(facet2)
-        );
-
-        // Set new registry
-        facet.setMoreVaultsRegistry(newRegistry);
-
-        // Verify new registry in storage
-        assertEq(
-            MoreVaultsStorageHelper.getMoreVaultsRegistry(address(facet)),
-            newRegistry,
-            "Registry should be updated in storage"
-        );
-
-        vm.stopPrank();
-    }
-
-    function test_setMoreVaultsRegistry_ShouldRevertIfChangingFromPermissionedToPermissionless() public {
-        vm.startPrank(owner);
-
-        vm.mockCall(
-            registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)), abi.encode(false)
-        );
-        vm.mockCall(
-            newRegistry,
-            abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector, address(0)),
-            abi.encode(true)
-        );
-
-        // Set new registry
-        vm.expectRevert(IAccessControlFacet.UnaibleToChangeRegistryToPermissionless.selector);
-        facet.setMoreVaultsRegistry(newRegistry);
-
-        vm.stopPrank();
-    }
-
-    function test_setMoreVaultsRegistry_ShouldRevertWhenUnauthorized() public {
-        vm.startPrank(unauthorized);
-
-        // Mock validateRegistryOwner to revert for unauthorized address
-        vm.mockCall(address(registry), abi.encodeWithSelector(IAccessControl.hasRole.selector), abi.encode(false));
-
-        // Attempt to set new registry
-        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
-        facet.setMoreVaultsRegistry(newRegistry);
-
-        // Verify registry remains unchanged in storage
-        assertEq(
-            MoreVaultsStorageHelper.getMoreVaultsRegistry(address(facet)),
-            registry,
-            "Registry should not be changed in storage"
-        );
-
-        vm.stopPrank();
-    }
-
-    function test_setMoreVaultsRegistry_ShouldRevertWhenZeroAddress() public {
-        vm.startPrank(owner);
-
-        // Attempt to set zero address as registry
-        vm.expectRevert(AccessControlLib.ZeroAddress.selector);
-        facet.setMoreVaultsRegistry(address(0));
-
-        vm.stopPrank();
-    }
-
-    function test_setMoreVaultsRegistry_ShouldRevertWhenSameAddress() public {
-        vm.startPrank(owner);
-
-        // Attempt to set same registry address
-        vm.expectRevert(AccessControlLib.SameAddress.selector);
-        facet.setMoreVaultsRegistry(registry);
-
-        vm.stopPrank();
-    }
-
-    function test_setMoreVaultsRegistry_ShouldRevertWhenFacetNotAllowed() public {
-        vm.startPrank(owner);
-
-        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(false));
-        vm.mockCall(newRegistry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(false));
-
-        // Mock registry to return false for isFacetAllowed
-        vm.mockCall(newRegistry, abi.encodeWithSelector(IMoreVaultsRegistry.isFacetAllowed.selector), abi.encode(false));
-
-        // Attempt to set new registry
-        vm.expectRevert(abi.encodeWithSelector(IAccessControlFacet.VaultHasNotAllowedFacet.selector, address(facet1)));
-        facet.setMoreVaultsRegistry(newRegistry);
-
-        vm.stopPrank();
     }
 
     function test_moreVaultRegistry_shouldReturnCorrectRegistry() public view {

@@ -202,7 +202,7 @@ contract VaultsFactoryTest is Test {
         vm.mockCall(
             registry,
             abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector, IAccessControlFacet.setMoreVaultsRegistry.selector
+                IMoreVaultsRegistry.selectorToFacet.selector, IAccessControlFacet.moreVaultsRegistry.selector
             ),
             abi.encode(accessControlFacet)
         );
@@ -377,7 +377,7 @@ contract VaultsFactoryTest is Test {
         vm.mockCall(
             registry,
             abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector, IAccessControlFacet.setMoreVaultsRegistry.selector
+                IMoreVaultsRegistry.selectorToFacet.selector, IAccessControlFacet.moreVaultsRegistry.selector
             ),
             abi.encode(accessControlFacet)
         );

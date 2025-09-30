@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
+import {IDiamondCut} from "../interfaces/facets/IDiamondCut.sol";
+import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
+import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
+import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
+
 /**
  * @title AccessControlLib
  * @notice Library for managing access control in diamond proxy
@@ -43,6 +48,11 @@ library AccessControlLib {
      * @dev Emitted when guardian address is changed
      */
     event GuardianChanged(address indexed previousGuardian, address indexed newGuardian);
+
+    /**
+     * @dev Emitted when more vault registry address is changed
+     */
+    event MoreVaultRegistrySet(address indexed previousRegistry, address indexed newRegistry);
 
     function accessControlStorage() internal pure returns (AccessControlStorage storage acs) {
         bytes32 position = ACCESS_CONTROL_STORAGE_POSITION;
@@ -91,6 +101,28 @@ library AccessControlLib {
     function validateDiamond(address caller) internal view {
         if (caller != address(this)) {
             revert UnauthorizedAccess();
+        }
+    }
+
+    function validatePermissionForSelector(address caller, bytes4 selector) internal view {
+        if (
+            selector == IDiamondCut.diamondCut.selector || selector == IAccessControlFacet.transferOwnership.selector
+                || selector == IAccessControlFacet.transferCuratorship.selector
+                || selector == IAccessControlFacet.transferGuardian.selector
+                || selector == IConfigurationFacet.disableDepositWhitelist.selector
+                || selector == IConfigurationFacet.enableAssetToDeposit.selector
+                || selector == IConfigurationFacet.setGasLimitForAccounting.selector
+                || selector == IConfigurationFacet.setMaxSlippagePercent.selector
+                || selector == IConfigurationFacet.setTimeLockPeriod.selector
+                || selector == IConfigurationFacet.setWithdrawalTimelock.selector
+                || selector == IConfigurationFacet.setWithdrawalFee.selector
+                || selector == IConfigurationFacet.updateWithdrawalQueueStatus.selector
+                || selector == IConfigurationFacet.setCrossChainAccountingManager.selector
+                || selector == IVaultFacet.setFee.selector
+        ) {
+            validateOwner(caller);
+        } else {
+            validateCurator(caller);
         }
     }
 
@@ -209,7 +241,22 @@ library AccessControlLib {
         return accessControlStorage().guardian;
     }
 
+    /**
+     * @notice Gets current more vault registry address
+     * @return Address of current more vault registry
+     */
     function vaultRegistry() internal view returns (address) {
         return accessControlStorage().moreVaultsRegistry;
+    }
+
+    function setVaultRegistry(address newRegistry) internal {
+        if (newRegistry == address(0)) {
+            revert ZeroAddress();
+        }
+        AccessControlStorage storage acs = accessControlStorage();
+        address previousRegistry = acs.moreVaultsRegistry;
+        acs.moreVaultsRegistry = newRegistry;
+
+        emit MoreVaultRegistrySet(previousRegistry, newRegistry);
     }
 }
