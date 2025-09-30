@@ -18,7 +18,7 @@ import {OptionsBuilder} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/libs/
 import {TokenMock} from "@layerzerolabs/lz-evm-protocol-v2/test/mocks/TokenMock.sol";
 
 // Contract Under Test
-import {IBridgeAdapter, LzAdapter} from "../../../src/adapters/cross-chain/LzAdapter.sol";
+import {IBridgeAdapter, LzAdapter} from "../../../src/cross-chain/layerZero/LzAdapter.sol";
 
 // Test helper to expose internal functions
 contract LzAdapterTestHelper is LzAdapter {

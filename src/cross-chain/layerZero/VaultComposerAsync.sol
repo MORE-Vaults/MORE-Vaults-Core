@@ -11,9 +11,9 @@ import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOApp
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
-import "./interfaces/IVaultComposerAsync.sol";
-import {IBridgeFacet} from "../interfaces/facets/IBridgeFacet.sol";
-import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
+import {IVaultComposerAsync} from "../../interfaces/LayerZero/IVaultComposerAsync.sol";
+import {IBridgeFacet} from "../../interfaces/facets/IBridgeFacet.sol";
+import {MoreVaultsLib} from "../../libraries/MoreVaultsLib.sol";
 
 /**
  * @title VaultComposerAsync - Asynchronous Vault Composer (deposit-only)
