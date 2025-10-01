@@ -16,6 +16,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error ArraysLengthsMismatch();
     error InvalidManager();
     error SlippageTooHigh();
+    error FeeIsTooHigh();
 
     /**
      * @dev Events

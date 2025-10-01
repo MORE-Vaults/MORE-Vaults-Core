@@ -172,6 +172,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function setWithdrawalFee(uint96 _fee) external {
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_fee > MoreVaultsLib.MAX_FEE) revert FeeIsTooHigh();
         ds.withdrawalFee = _fee;
         emit WithdrawalFeeSet(_fee);
     }
