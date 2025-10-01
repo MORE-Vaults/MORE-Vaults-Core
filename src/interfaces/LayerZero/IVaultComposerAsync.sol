@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC4626, IVaultFacet} from "../facets/IVaultFacet.sol";
 
 import {IOAppComposer} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
 import {SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
@@ -31,11 +31,7 @@ interface IVaultComposerAsync is IOAppComposer {
     error SlippageExceeded(uint256 amountLD, uint256 minAmountLD); // 0x71c4efed
 
     /// ========================== GLOBAL VARIABLE FUNCTIONS =====================================
-    function VAULT() external view returns (IERC4626);
-
-    function ASSET_OFT() external view returns (address);
-
-    function ASSET_ERC20() external view returns (address);
+    function VAULT() external view returns (IVaultFacet);
 
     function SHARE_OFT() external view returns (address);
 
