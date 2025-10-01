@@ -182,7 +182,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         emit AccountingInfoUpdated(guid, sumOfSpokesUsdValue, readSuccess);
     }
 
-    function finalizeRequest(bytes32 guid) external payable nonReentrant {
+    function finalizeRequest(bytes32 guid) external payable nonReentrant returns (bytes memory result) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = ds.guidToCrossChainRequestInfo[guid];
         if (!ds.guidToCrossChainRequestInfo[guid].fulfilled) {
@@ -200,22 +200,24 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (address[] memory tokens, uint256[] memory assets, address receiver, uint256 value) =
                 abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
-            (success,) = address(this).call{value: value}(
+            (success, result) = address(this).call{value: value}(
                 abi.encodeWithSelector(
                     bytes4(keccak256("deposit(address[],uint256[],address)")), tokens, assets, receiver
                 )
             );
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
             (uint256 shares, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
-            (success,) = address(this).call(abi.encodeWithSelector(IERC4626.mint.selector, shares, receiver));
+            (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.mint.selector, shares, receiver));
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
             (uint256 assets, address receiver, address owner) =
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
-            (success,) = address(this).call(abi.encodeWithSelector(IERC4626.withdraw.selector, assets, receiver, owner));
+            (success, result) =
+                address(this).call(abi.encodeWithSelector(IERC4626.withdraw.selector, assets, receiver, owner));
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
             (uint256 shares, address receiver, address owner) =
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
-            (success,) = address(this).call(abi.encodeWithSelector(IERC4626.redeem.selector, shares, receiver, owner));
+            (success, result) =
+                address(this).call(abi.encodeWithSelector(IERC4626.redeem.selector, shares, receiver, owner));
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.SET_FEE) {
             uint96 fee = abi.decode(requestInfo.actionCallData, (uint96));
             (success,) = address(this).call(abi.encodeWithSelector(IVaultFacet.setFee.selector, fee));

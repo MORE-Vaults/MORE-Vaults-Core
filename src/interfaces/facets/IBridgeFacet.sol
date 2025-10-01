@@ -89,7 +89,7 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @notice Supports various action types: deposit, withdraw, mint, set fee
      * @notice Can only be called after successful accounting information update
      */
-    function finalizeRequest(bytes32 guid) external payable;
+    function finalizeRequest(bytes32 guid) external payable returns (bytes memory result);
 
     /**
      * @dev Returns the request info for a given guid

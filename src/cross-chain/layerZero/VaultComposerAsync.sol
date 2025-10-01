@@ -40,7 +40,6 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
     /// @dev Structure to store pending async deposit information
     struct PendingDeposit {
         bytes32 depositor;
-        MoreVaultsLib.ActionType actionType;
         address tokenAddress;
         uint256 assetAmount;
         address refundAddress;
@@ -202,7 +201,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
 
-        uint256 shares = _deposit(deposit.depositor, deposit.tokenAddress, deposit.assetAmount, deposit.actionType);
+        uint256 shares = _deposit(_guid, deposit.tokenAddress);
         _assertSlippage(shares, deposit.sendParam.minAmountLD);
 
         deposit.sendParam.amountLD = shares;
@@ -249,6 +248,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
     /**
      * @dev Internal function that initiates a deposit operation
      * @param _depositor The depositor (bytes32 format to account for non-evm addresses)
+     * @param _tokenAddress The address of the token to deposit
      * @param _assetAmount The number of assets to deposit
      * @param _sendParam Parameter that defines how to send the shares
      * @param _refundAddress Address to receive excess payment of the LZ fees
@@ -285,40 +285,20 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         bytes32 guid =
             IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(actionType, actionCallData, "");
         pendingDeposits[guid] = PendingDeposit(
-            _depositor,
-            actionType,
-            _tokenAddress,
-            _assetAmount,
-            _refundAddress,
-            msg.value - readFee,
-            _srcEid,
-            _sendParam
+            _depositor, _tokenAddress, _assetAmount, _refundAddress, msg.value - readFee, _srcEid, _sendParam
         );
     }
 
     /**
      * @dev Internal function to deposit assets into the vault
-     * @param _assetAmount The number of assets to deposit into the vault
+     * @param _guid The unique identifier of the pending deposit
+     * @param _tokenAddress The address of the token to deposit
      * @return shareAmount The number of shares received from the vault deposit
      * @notice This function is expected to be overridden by the inheriting contract to implement custom/nonERC4626 deposit logic
      */
-    function _deposit(
-        bytes32,
-        /*_depositor*/
-        address _tokenAddress,
-        uint256 _assetAmount,
-        MoreVaultsLib.ActionType _actionType
-    ) internal virtual returns (uint256 shareAmount) {
+    function _deposit(bytes32 _guid, address _tokenAddress) internal virtual returns (uint256 shareAmount) {
         IERC20(_tokenAddress).forceApprove(address(VAULT), type(uint256).max);
-        if (_actionType == MoreVaultsLib.ActionType.DEPOSIT) {
-            shareAmount = VAULT.deposit(_assetAmount, address(this));
-        } else {
-            address[] memory tokens = new address[](1);
-            tokens[0] = _tokenAddress;
-            uint256[] memory assets = new uint256[](1);
-            assets[0] = _assetAmount;
-            shareAmount = VAULT.deposit(tokens, assets, address(this));
-        }
+        shareAmount = abi.decode(IBridgeFacet(address(VAULT)).finalizeRequest(_guid), (uint256));
         IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
     }
 
