@@ -1,9 +1,4 @@
 {
-  "editor.formatOnSave": true,
-  "[solidity]": {
-    "editor.defaultFormatter": "JuanBlanco.solidity"
-  },
-  "solidity.formatter": "prettier",
   "search.exclude": {
     "**/lib/**": true,
     "**/node_modules/**": true
