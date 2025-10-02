@@ -192,7 +192,7 @@ contract MockVaultsFactory {
         _vaults[vault] = isValidVault;
     }
 
-    function isVault(address vault) external view returns (bool) {
+    function isFactoryVault(address vault) external view returns (bool) {
         return _vaults[vault];
     }
 
@@ -469,8 +469,8 @@ contract LzAdapterTest is Test {
 
     function test_setUp_mockVaultConfiguration() public view {
         // Verify mock vault is configured correctly
-        assertTrue(mockVaultsFactory.isVault(address(mockVault)));
-        assertTrue(mockVaultsFactory.isVault(vault));
+        assertTrue(mockVaultsFactory.isFactoryVault(address(mockVault)));
+        assertTrue(mockVaultsFactory.isFactoryVault(vault));
     }
 
     // ============================

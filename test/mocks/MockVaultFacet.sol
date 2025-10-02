@@ -86,7 +86,7 @@ contract MockVaultFacet {
         returns (bytes32 guid)
     {
         if (revertOnInit) revert("init-revert");
-        guid = keccak256(abi.encodePacked(block.timestamp, msg.sender, msg.value));
+        guid = bytes32(uint256(0x1));
         lastGuid = guid;
     }
 
@@ -117,7 +117,7 @@ contract MockVaultFacet {
         return true;
     }
 
-    function transfer(address /*to*/, uint256 /*amount*/) external pure returns (bool) {
+    function transfer(address, /*to*/ uint256 /*amount*/ ) external pure returns (bool) {
         return true;
     }
 

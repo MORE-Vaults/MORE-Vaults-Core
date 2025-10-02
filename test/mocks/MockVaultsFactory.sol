@@ -5,6 +5,7 @@ import {IVaultsFactory} from "../../src/interfaces/IVaultsFactory.sol";
 
 contract MockVaultsFactory {
     uint32 private _localEid;
+    mapping(address => bool) private _vaults;
 
     struct HubToSpokes {
         uint32[] eids;

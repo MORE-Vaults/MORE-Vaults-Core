@@ -10,37 +10,39 @@ import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/in
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
-
-import {IVaultComposerAsync} from "../../interfaces/LayerZero/IVaultComposerAsync.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {IMoreVaultsComposer} from "../../interfaces/LayerZero/IMoreVaultsComposer.sol";
 import {IBridgeFacet} from "../../interfaces/facets/IBridgeFacet.sol";
 import {MoreVaultsLib} from "../../libraries/MoreVaultsLib.sol";
 import {LzAdapter} from "./LzAdapter.sol";
 import {IConfigurationFacet} from "../../interfaces/facets/IConfigurationFacet.sol";
 import {IVaultFacet} from "../../interfaces/facets/IVaultFacet.sol";
+import {IVaultsFactory} from "../../interfaces/IVaultsFactory.sol";
+import {console} from "forge-std/console.sol";
 
 /**
- * @title VaultComposerAsync - Asynchronous Vault Composer (deposit-only)
- * @notice Cross-chain composer that supports only deposits of assets from spoke chains to the hub vault.
- * @dev Refunds are enabled to EOA addresses only on the source chain. Custom refunds can
- *      be implemented by overriding _refund.
+ * @title MoreVaultsComposer - MoreVaults Composer (deposit-only)
+ * @notice Cross-chain composer that supports only cross chain deposits of assets from spoke chains to the hub vault.
+ * @dev Refunds are enabled to EOA addresses only on the source chain.
  */
-contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
+contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializable {
     using OFTComposeMsgCodec for bytes;
     using OFTComposeMsgCodec for bytes32;
     using SafeERC20 for IERC20;
 
-    IVaultFacet public immutable VAULT;
-    address public immutable SHARE_OFT;
-    address public immutable SHARE_ERC20;
-    address public immutable LZ_ADAPTER;
+    IVaultFacet public VAULT;
+    IVaultsFactory public VAULT_FACTORY;
+    address public SHARE_OFT;
+    address public SHARE_ERC20;
+    address public LZ_ADAPTER;
 
-    address public immutable ENDPOINT;
-    uint32 public immutable VAULT_EID;
+    address public ENDPOINT;
+    uint32 public VAULT_EID;
 
     /// @dev Structure to store pending async deposit information
     struct PendingDeposit {
         bytes32 depositor;
-        address tokenAddress;
+        address oftAddress;
         uint256 assetAmount;
         address refundAddress;
         uint256 msgValue;
@@ -52,28 +54,35 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
     mapping(bytes32 => PendingDeposit) public pendingDeposits;
 
     // Async deposit lifecycle is tracked via callbacks and the Deposited event in the interface
+    constructor() {
+        _disableInitializers();
+    }
 
     /**
-     * @notice Initializes the VaultComposerSync contract with vault and OFT token addresses
+     * @notice Initializes the proxy with vault and OFT token addresses
      * @param _vault The address of the MoreVaults vault contract
      * @param _shareOFT The address of the share OFT contract (must be an adapter)
      * @param _lzAdapter The address of the LayerZero adapter contract
+     * @param _vaultFactory The address of the vault factory contract
      *
      * Requirements:
      * - Share token must be the vault itself
      * - Share OFT must be an adapter (approvalRequired() returns true)
      * - LZ_ADAPTER must be an adapter by MoreVaults
      */
-    constructor(address _vault, address _shareOFT, address _lzAdapter) {
+    function initialize(address _vault, address _shareOFT, address _lzAdapter, address _vaultFactory)
+        external
+        initializer
+    {
         VAULT = IVaultFacet(_vault);
         SHARE_OFT = _shareOFT;
         SHARE_ERC20 = IOFT(SHARE_OFT).token();
-
+        VAULT_FACTORY = IVaultsFactory(_vaultFactory);
         LZ_ADAPTER = _lzAdapter;
-
         ENDPOINT = address(IOAppCore(SHARE_OFT).endpoint());
         VAULT_EID = ILayerZeroEndpointV2(ENDPOINT).eid();
 
+        // Validate initialization
         if (SHARE_ERC20 != address(VAULT)) {
             revert ShareTokenNotVault(SHARE_ERC20, address(VAULT));
         }
@@ -85,7 +94,7 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         }
 
         /// @dev Approve the share adapter with the share tokens held by this contract
-        IERC20(SHARE_ERC20).approve(_shareOFT, type(uint256).max);
+        IERC20(SHARE_ERC20).forceApprove(_shareOFT, type(uint256).max);
     }
 
     /**
@@ -187,7 +196,11 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
             revert InsufficientMsgValue(minMsgValue, msg.value);
         }
 
-        _initDeposit(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin, _srcEid);
+        if (VAULT_FACTORY.isCrossChainVault(uint32(block.chainid), address(VAULT))) {
+            _initDeposit(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin, _srcEid);
+        } else {
+            _depositAndSend(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin);
+        }
     }
 
     /**
@@ -201,13 +214,12 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
 
-        uint256 shares = _deposit(_guid, deposit.tokenAddress);
-        _assertSlippage(shares, deposit.sendParam.minAmountLD);
-
+        uint256 shares = _deposit(_guid, IOFT(deposit.oftAddress).token());
         deposit.sendParam.amountLD = shares;
         deposit.sendParam.minAmountLD = 0;
 
         delete pendingDeposits[_guid];
+
         _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
         emit Deposited(deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, shares);
     }
@@ -224,12 +236,29 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
         refundSendParam.dstEid = deposit.srcEid;
         refundSendParam.to = deposit.depositor;
         refundSendParam.amountLD = deposit.assetAmount;
+        address tokenAddress = IOFT(deposit.oftAddress).token();
 
-        IERC20(deposit.tokenAddress).forceApprove(address(VAULT), type(uint256).max);
-        IOFT(deposit.tokenAddress).send{value: deposit.msgValue}(
+        IERC20(tokenAddress).forceApprove(deposit.oftAddress, type(uint256).max);
+        IOFT(tokenAddress).send{value: deposit.msgValue}(
             refundSendParam, MessagingFee(deposit.msgValue, 0), deposit.refundAddress
         );
-        IERC20(deposit.tokenAddress).forceApprove(address(VAULT), 0);
+        IERC20(tokenAddress).forceApprove(deposit.oftAddress, 0);
+    }
+
+    function depositAndSend(
+        address _tokenAddress,
+        uint256 _assetAmount,
+        SendParam memory _sendParam,
+        address _refundAddress
+    ) external payable virtual nonReentrant {
+        console.log("depositAndSend");
+        console.log("_tokenAddress", _tokenAddress);
+        console.log("_assetAmount", _assetAmount);
+        console.log("_refundAddress", _refundAddress);
+        IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _assetAmount);
+        _depositAndSend(
+            OFTComposeMsgCodec.addressToBytes32(msg.sender), _tokenAddress, _assetAmount, _sendParam, _refundAddress
+        );
     }
 
     /**
@@ -246,7 +275,54 @@ contract VaultComposerAsync is IVaultComposerAsync, ReentrancyGuard {
     }
 
     /**
-     * @dev Internal function that initiates a deposit operation
+     * @dev Internal function to sync deposit assets into the vault and send shares to the destination
+     * @param _depositor The depositor (bytes32 format to account for non-evm addresses)
+     * @param _tokenAddress The address of the token to deposit
+     * @param _assetAmount The number of assets to deposit
+     * @param _sendParam Parameter that defines how to send the shares
+     */
+    function _depositAndSend(
+        bytes32 _depositor,
+        address _tokenAddress,
+        uint256 _assetAmount,
+        SendParam memory _sendParam,
+        address _refundAddress
+    ) internal virtual {
+        uint256 shareAmount;
+        IERC20(_tokenAddress).forceApprove(_tokenAddress, type(uint256).max);
+        if (_tokenAddress == IERC4626(VAULT).asset()) {
+            shareAmount = VAULT.deposit(_assetAmount, address(this));
+        } else {
+            address[] memory tokens = new address[](1);
+            tokens[0] = _tokenAddress;
+            uint256[] memory assets = new uint256[](1);
+            assets[0] = _assetAmount;
+            shareAmount = VAULT.deposit(tokens, assets, address(this));
+        }
+        IERC20(_tokenAddress).forceApprove(_tokenAddress, 0);
+        _assertSlippage(shareAmount, _sendParam.minAmountLD);
+
+        _sendParam.amountLD = shareAmount;
+        _sendParam.minAmountLD = 0;
+
+        _send(SHARE_OFT, _sendParam, _refundAddress, msg.value);
+        emit Deposited(_depositor, _sendParam.to, _sendParam.dstEid, _assetAmount, shareAmount);
+    }
+
+    function initDeposit(
+        bytes32 _depositor,
+        address _tokenAddress,
+        uint256 _assetAmount,
+        SendParam memory _sendParam,
+        address _refundAddress,
+        uint32 _srcEid
+    ) external payable virtual nonReentrant {
+        IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _assetAmount);
+        _initDeposit(_depositor, _tokenAddress, _assetAmount, _sendParam, _refundAddress, _srcEid);
+    }
+
+    /**
+     * @dev Internal function that initiates an async deposit operation
      * @param _depositor The depositor (bytes32 format to account for non-evm addresses)
      * @param _tokenAddress The address of the token to deposit
      * @param _assetAmount The number of assets to deposit

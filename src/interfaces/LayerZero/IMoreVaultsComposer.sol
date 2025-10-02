@@ -6,7 +6,7 @@ import {IERC4626, IVaultFacet} from "../facets/IVaultFacet.sol";
 import {IOAppComposer} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
 import {SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 
-interface IVaultComposerAsync is IOAppComposer {
+interface IMoreVaultsComposer is IOAppComposer {
     /// ========================== EVENTS =====================================
     event Sent(bytes32 indexed guid); // 0x27b5aea9
     event Refunded(bytes32 indexed guid); // 0xfe509803
@@ -29,6 +29,7 @@ interface IVaultComposerAsync is IOAppComposer {
     error NoMsgValueExpected(); // 0x7578d2bd
 
     error SlippageExceeded(uint256 amountLD, uint256 minAmountLD); // 0x71c4efed
+    error AlreadyInitialized(); // custom
 
     /// ========================== GLOBAL VARIABLE FUNCTIONS =====================================
     function VAULT() external view returns (IVaultFacet);
@@ -43,6 +44,8 @@ interface IVaultComposerAsync is IOAppComposer {
 
     /// ========================== Proxy OFT (deposit-only) =====================================
 
+    function initialize(address _vault, address _shareOFT, address _lzAdapter, address _vaultFactory) external;
+
     /**
      * @notice Quotes the send operation for the given OFT and SendParam
      * @param from The "sender address" used for the quote
@@ -56,6 +59,22 @@ interface IVaultComposerAsync is IOAppComposer {
         external
         view
         returns (MessagingFee memory);
+
+    function depositAndSend(
+        address tokenAddress,
+        uint256 assetAmount,
+        SendParam memory sendParam,
+        address refundAddress
+    ) external payable;
+
+    function initDeposit(
+        bytes32 depositor,
+        address tokenAddress,
+        uint256 assetAmount,
+        SendParam memory sendParam,
+        address refundAddress,
+        uint32 srcEid
+    ) external payable;
 
     function completeDeposit(bytes32 guid) external;
 
