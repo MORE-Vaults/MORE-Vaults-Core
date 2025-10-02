@@ -5,6 +5,9 @@
   "lib/aave-v3-core": {
     "rev": "782f51917056a53a2c228701058a6c3fb233684a"
   },
+  "lib/devtools": {
+    "rev": "d48633e465493f5672a6bf1a5f0f9a20fc9e43ab"
+  },
   "lib/forge-std": {
     "rev": "6bce1540c7a5d1c40eec032a1ae16f0e01f82b92"
   },
@@ -13,6 +16,12 @@
   },
   "lib/openzeppelin-contracts-upgradeable": {
     "rev": "e3ba7f6a236c55e3fb7e569ecd6043b11d567c3d"
+  },
+  "lib/solady": {
+    "rev": "208e4f31cfae26e4983eb95c3488a14fdc497ad7"
+  },
+  "lib/solidity-bytes-utils": {
+    "rev": "fc502455bb2a7e26a743378df042612dd50d1eb9"
   },
   "lib/v2-periphery": {
     "rev": "0335e8f7e1bd1e8d8329fd300aea2ef2f36dd19f"

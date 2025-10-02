@@ -10,6 +10,7 @@ interface IVaultsFactory {
     error EmptyFacets();
     error InvalidTimeLock();
     error InvalidFee();
+    error ComposerInitializationFailed();
 
     event VaultDeployed(address indexed vault, address registry, address wrappedNative, IDiamondCut.FacetCut[] facets);
 
@@ -22,6 +23,10 @@ interface IVaultsFactory {
     event CrossChainLinked(uint32 indexed linkedVaultChainId, address indexed linkedVault, address indexed localVault);
 
     event SetFacetRestricted(address indexed _facet, bool indexed _isRestricted);
+    event LzAdapterUpdated(address indexed newLzAdapter);
+    event VaultComposerUpdated(address indexed vault, address indexed composer);
+    event ComposerImplementationUpdated(address indexed newImplementation);
+    event OFTAdapterFactoryUpdated(address indexed newOFTAdapterFactory);
 
     /**
      * @notice Initialize the factory
@@ -32,6 +37,9 @@ interface IVaultsFactory {
      * @param _wrappedNative Wrapped native token address
      * @param _localEid LayerZero endpoint id for this chain
      * @param _maxFinalizationTime Maximum finalization time of block for a chain
+     * @param _lzAdapter LayerZero adapter address
+     * @param _composerImplementation MoreVaultsComposer implementation address
+     * @param _oftAdapterFactory OFT adapter factory address
      */
     function initialize(
         address _owner,
@@ -40,7 +48,10 @@ interface IVaultsFactory {
         address _accessControlFacet,
         address _wrappedNative,
         uint32 _localEid,
-        uint96 _maxFinalizationTime
+        uint96 _maxFinalizationTime,
+        address _lzAdapter,
+        address _composerImplementation,
+        address _oftAdapterFactory
     ) external;
 
     /**
@@ -102,6 +113,31 @@ interface IVaultsFactory {
     function pauseFacet(address facet) external;
 
     /**
+     * @notice sets the lz adapter for the factory
+     * @param lzAdapter address of the lz adapter
+     */
+    function setLzAdapter(address lzAdapter) external;
+
+    /**
+     * @notice sets the vault composer for a vault
+     * @param vault address of the vault
+     * @param composer address of the composer
+     */
+    function setVaultComposer(address vault, address composer) external;
+
+    /**
+     * @notice sets the composer implementation
+     * @param composerImplementation address of the composer implementation
+     */
+    function setComposerImplementation(address composerImplementation) external;
+
+    /**
+     * @notice sets the OFT adapter factory
+     * @param oftAdapterFactory address of the OFT adapter factory
+     */
+    function setOFTAdapterFactory(address oftAdapterFactory) external;
+
+    /**
      * @notice sets restricted flag for facet
      * @param _facet address of facet
      * @param _isRestricted bool flag
@@ -119,13 +155,6 @@ interface IVaultsFactory {
      * @return Number of vaults
      */
     function getVaultsCount() external view returns (uint256);
-
-    /**
-     * @notice Check if address is a vault deployed by this factory
-     * @param vault Address to check
-     * @return bool True if vault was deployed by this factory
-     */
-    function isVault(address vault) external view returns (bool);
 
     /**
      * @notice Returns vaults addresses using this facet

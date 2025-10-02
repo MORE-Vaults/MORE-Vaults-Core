@@ -15,7 +15,7 @@ import {IVaultFacet, IERC4626, IERC20, VaultFacet} from "../src/facets/VaultFace
 import {IERC4626Facet, ERC4626Facet} from "../src/facets/ERC4626Facet.sol";
 import {IERC7540Facet, ERC7540Facet} from "../src/facets/ERC7540Facet.sol";
 import {IBridgeFacet, BridgeFacet} from "../src/facets/BridgeFacet.sol";
-import {LzAdapter} from "../src/adapters/cross-chain/LzAdapter.sol";
+import {LzAdapter} from "../src/cross-chain/layerZero/LzAdapter.sol";
 import {DeployConfig} from "./config/DeployConfig.s.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";

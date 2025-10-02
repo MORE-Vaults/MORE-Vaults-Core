@@ -16,6 +16,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error ArraysLengthsMismatch();
     error InvalidManager();
     error SlippageTooHigh();
+    error FeeIsTooHigh();
 
     /**
      * @dev Events
@@ -38,37 +39,37 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event MaxSlippagePercentSet(uint256 percent);
 
     /**
-     * @notice Sets fee recipient address
+     * @notice Sets fee recipient address, callable by owner
      * @param recipient New fee recipient address
      */
     function setFeeRecipient(address recipient) external;
 
     /**
-     * @notice Sets time lock period
+     * @notice Sets time lock period, callable by owner through `submitActions` and timelocked
      * @param period New time lock period (in seconds)
      */
     function setTimeLockPeriod(uint256 period) external;
 
     /**
-     * @notice Sets deposit capacity
+     * @notice Sets deposit capacity, callable by curator or owner
      * @param capacity New deposit capacity
      */
     function setDepositCapacity(uint256 capacity) external;
 
     /**
-     * @notice Sets deposit whitelist
+     * @notice Sets deposit whitelist, callable by owner
      * @param depositors Array of depositors
      * @param undelyingAssetCaps Array of underlying asset caps
      */
     function setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) external;
 
     /**
-     * @notice Enables deposit whitelist
+     * @notice Enables deposit whitelist, callable by owner
      */
     function enableDepositWhitelist() external;
 
     /**
-     * @notice Disables deposit whitelist
+     * @notice Disables deposit whitelist, callable by owner through `submitActions` and timelocked
      */
     function disableDepositWhitelist() external;
 
@@ -83,49 +84,49 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function getDepositWhitelist(address depositor) external view returns (uint256);
 
     /**
-     * @notice Adds new available asset
+     * @notice Adds new available asset, callable by curator or owner
      * @param asset Asset address to add
      */
     function addAvailableAsset(address asset) external;
 
     /**
-     * @notice Batch adds new available assets
+     * @notice Batch adds new available assets, callable by curator or owner
      * @param assets Array of asset addresses to add
      */
     function addAvailableAssets(address[] calldata assets) external;
 
     /**
-     * @notice Enables asset to deposit
+     * @notice Enables asset to deposit, callable by curator or owner through `submitActions` and timelocked
      * @param asset Asset address to enable
      */
     function enableAssetToDeposit(address asset) external;
 
     /**
-     * @notice Disables asset to deposit
+     * @notice Disables asset to deposit, callable by curator
      * @param asset Asset address to disable
      */
     function disableAssetToDeposit(address asset) external;
 
     /**
-     * @notice Set the withdrawal fee
+     * @notice Set the withdrawal fee, callable by owner through `submitActions` and timelocked
      * @param _fee New withdrawal fee
      */
     function setWithdrawalFee(uint96 _fee) external;
 
     /**
-     * @notice Update the withdraw timelock duration
+     * @notice Update the withdraw timelock duration, callable by owner through `submitActions` and timelocked
      * @param duration New withdraw timelock duration
      */
     function setWithdrawalTimelock(uint64 duration) external;
 
     /**
-     * @notice Update the withdrawal queue status
+     * @notice Update the withdrawal queue status, callable by owner through `submitActions` and timelocked
      * @param _status New withdrawal queue status
      */
     function updateWithdrawalQueueStatus(bool _status) external;
 
     /**
-     * @notice Sets gas limit for accounting
+     * @notice Sets gas limit for accounting, callable by curator or owner through `submitActions` and timelocked
      * @param _availableTokenAccountingGas Gas limit for available token accounting
      * @param _heldTokenAccountingGas Gas limit for held token accounting
      * @param _facetAccountingGas Gas limit for facet accounting
@@ -139,13 +140,13 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     ) external;
 
     /**
-     * @notice Sets max slippage percent
+     * @notice Sets max slippage percent, callable by curator or owner through `submitActions` and timelocked
      * @param _newPercent New max slippage percent
      */
     function setMaxSlippagePercent(uint256 _newPercent) external;
 
     /**
-     * @notice Sets cross chain accounting manager
+     * @notice Sets cross chain accounting manager, callable by owner through `submitActions` and timelocked
      * @param manager New cross chain accounting manager
      */
     function setCrossChainAccountingManager(address manager) external;

@@ -18,7 +18,7 @@ import {OptionsBuilder} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/libs/
 import {TokenMock} from "@layerzerolabs/lz-evm-protocol-v2/test/mocks/TokenMock.sol";
 
 // Contract Under Test
-import {IBridgeAdapter, LzAdapter} from "../../../src/adapters/cross-chain/LzAdapter.sol";
+import {IBridgeAdapter, LzAdapter} from "../../../../src/cross-chain/layerZero/LzAdapter.sol";
 
 // Test helper to expose internal functions
 contract LzAdapterTestHelper is LzAdapter {
@@ -65,12 +65,12 @@ contract LzAdapterTestHelper is LzAdapter {
 }
 
 // Contract Dependencies
-import {IBridgeAdapter} from "../../../src/interfaces/IBridgeAdapter.sol";
-import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
-import {IVaultsFactory} from "../../../src/interfaces/IVaultsFactory.sol";
-import {ILzComposer} from "../../../src/interfaces/ILzComposer.sol";
-import {IBridgeFacet} from "../../../src/interfaces/facets/IBridgeFacet.sol";
-import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {IBridgeAdapter} from "../../../../src/interfaces/IBridgeAdapter.sol";
+import {IMoreVaultsRegistry} from "../../../../src/interfaces/IMoreVaultsRegistry.sol";
+import {IVaultsFactory} from "../../../../src/interfaces/IVaultsFactory.sol";
+import {ILzComposer} from "../../../../src/interfaces/ILzComposer.sol";
+import {IBridgeFacet} from "../../../../src/interfaces/facets/IBridgeFacet.sol";
+import {MoreVaultsLib} from "../../../../src/libraries/MoreVaultsLib.sol";
 
 // Mock LayerZero Endpoint
 contract MockLayerZeroEndpoint {
@@ -192,7 +192,7 @@ contract MockVaultsFactory {
         _vaults[vault] = isValidVault;
     }
 
-    function isVault(address vault) external view returns (bool) {
+    function isFactoryVault(address vault) external view returns (bool) {
         return _vaults[vault];
     }
 
@@ -469,8 +469,8 @@ contract LzAdapterTest is Test {
 
     function test_setUp_mockVaultConfiguration() public view {
         // Verify mock vault is configured correctly
-        assertTrue(mockVaultsFactory.isVault(address(mockVault)));
-        assertTrue(mockVaultsFactory.isVault(vault));
+        assertTrue(mockVaultsFactory.isFactoryVault(address(mockVault)));
+        assertTrue(mockVaultsFactory.isFactoryVault(vault));
     }
 
     // ============================

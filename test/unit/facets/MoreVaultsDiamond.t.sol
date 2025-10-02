@@ -53,7 +53,7 @@ contract MoreVaultsDiamondTest is Test {
         vm.mockCall(
             registry,
             abi.encodeWithSelector(
-                IMoreVaultsRegistry.selectorToFacet.selector, AccessControlFacet.setMoreVaultsRegistry.selector
+                IMoreVaultsRegistry.selectorToFacet.selector, AccessControlFacet.moreVaultsRegistry.selector
             ),
             abi.encode(address(accessControlFacet))
         );

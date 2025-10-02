@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {MoreVaultsDiamond} from "../MoreVaultsDiamond.sol";
+import {MoreVaultsComposer} from "../cross-chain/layerZero/MoreVaultsComposer.sol";
 import {IDiamondCut} from "../interfaces/facets/IDiamondCut.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
@@ -17,6 +18,8 @@ import {OAppOptionsType3Upgradeable} from
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
+import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
+import {IOFTAdapterFactory} from "../interfaces/IOFTAdapterFactory.sol";
 
 /**
  * @title VaultsFactory
@@ -82,6 +85,18 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     /// @dev Mapping facet address => vaults using this facet array
     mapping(address => EnumerableSet.AddressSet) private _linkedVaults;
 
+    /// @dev Mapping vault address => vault composer address
+    mapping(address => address) public vaultComposer;
+
+    /// @dev Address of the LayerZero adapter
+    address public lzAdapter;
+
+    /// @dev Address of the MoreVaultsComposer implementation
+    address public composerImplementation;
+
+    /// @dev Address of the OFT adapter factory
+    address public oftAdapterFactory;
+
     // ===== Cross-chain messaging (LayerZero v2, EIDs) =====
     uint16 private constant MSG_TYPE_REGISTER_SPOKE = 1;
     uint16 private constant MSG_TYPE_SPOKE_ADDED = 2;
@@ -98,19 +113,25 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         address _accessControlFacet,
         address _wrappedNative,
         uint32 _localEid,
-        uint96 _maxFinalizationTime
+        uint96 _maxFinalizationTime,
+        address _lzAdapter,
+        address _composerImplementation,
+        address _oftAdapterFactory
     ) external initializer {
         if (
             _owner == address(0) || _registry == address(0) || _diamondCutFacet == address(0)
                 || _accessControlFacet == address(0) || _wrappedNative == address(0) || _localEid == 0
+                || _oftAdapterFactory == address(0)
         ) revert ZeroAddress();
         _setDiamondCutFacet(_diamondCutFacet);
         _setAccessControlFacet(_accessControlFacet);
         _setMaxFinalizationTime(_maxFinalizationTime);
+        _setLzAdapter(_lzAdapter);
+        _setComposerImplementation(_composerImplementation);
+        _setOFTAdapterFactory(_oftAdapterFactory);
         wrappedNative = _wrappedNative;
         registry = IMoreVaultsRegistry(_registry);
         localEid = _localEid;
-
         __OApp_init(_owner);
         __Ownable_init(_owner);
     }
@@ -139,11 +160,6 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         _setMaxFinalizationTime(_maxFinalizationTime);
     }
 
-    /// @notice Set trusted factory peer for LayerZero by endpoint id (EID)
-    function setTrustedFactory(uint32 _eid, bytes32 _peer) external onlyOwner {
-        setPeer(_eid, _peer);
-    }
-
     /**
      * @notice pauses all vaults using this facet
      * @param _facet address of the facet
@@ -166,6 +182,37 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
      */
     function setFacetRestricted(address _facet, bool _isRestricted) external onlyOwner {
         _setFacetRestricted(_facet, _isRestricted);
+    }
+
+    /**
+     * @inheritdoc IVaultsFactory
+     */
+    function setLzAdapter(address _lzAdapter) external onlyOwner {
+        _setLzAdapter(_lzAdapter);
+    }
+
+    /**
+     * @inheritdoc IVaultsFactory
+     */
+    function setVaultComposer(address _vault, address _composer) external onlyOwner {
+        _setVaultComposer(_vault, _composer);
+    }
+
+    /**
+     * @notice Set the OFT adapter factory address
+     * @param _oftAdapterFactory The address of the OFT adapter factory
+     */
+    function setOFTAdapterFactory(address _oftAdapterFactory) external onlyOwner {
+        _setOFTAdapterFactory(_oftAdapterFactory);
+    }
+
+    /**
+     * @notice Set the MoreVaultsComposer implementation address
+     * @param _composerImplementation The address of the MoreVaultsComposer implementation
+     */
+    function setComposerImplementation(address _composerImplementation) external onlyOwner {
+        if (_composerImplementation == address(0)) revert ZeroAddress();
+        _setComposerImplementation(_composerImplementation);
     }
 
     /**
@@ -202,7 +249,6 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     ) external returns (address vault) {
         // Deploy new MoreVaultsDiamond (vault) with CREATE3
         vault = CREATE3.deployDeterministic(
-            0,
             abi.encodePacked(
                 type(MoreVaultsDiamond).creationCode,
                 abi.encode(
@@ -218,6 +264,10 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
             ),
             salt
         );
+        address shareOft = _deployOftAdapter(vault, salt);
+        // Deploy minimal proxy for composer
+        address composer = _deployComposerProxy(vault, shareOft, salt);
+        _setVaultComposer(vault, address(composer));
 
         isFactoryVault[vault] = true;
         deployedVaults.push(vault);
@@ -336,8 +386,11 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     }
 
     /// @notice Hub: send BOOTSTRAP snapshot to a single spoke (list of all known spokes)
-    function hubSendBootstrap(uint32 _dstEid, address _hubVault, bytes calldata _options) external payable onlyOwner {
+    function hubSendBootstrap(uint32 _dstEid, address _hubVault, bytes calldata _options) external payable {
         if (!isFactoryVault[_hubVault]) revert NotAVault(_hubVault);
+        if (IAccessControlFacet(_hubVault).owner() != msg.sender) {
+            revert NotAnOwnerOfVault(msg.sender);
+        }
         if (!IConfigurationFacet(_hubVault).isHub()) {
             revert HubCannotInitiateLink();
         }
@@ -358,8 +411,11 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         address _newSpokeVault,
         uint32[] calldata _dstEids,
         bytes calldata _options
-    ) external payable onlyOwner {
+    ) external payable {
         if (!isFactoryVault[_hubVault]) revert NotAVault(_hubVault);
+        if (IAccessControlFacet(_hubVault).owner() != msg.sender) {
+            revert NotAnOwnerOfVault(msg.sender);
+        }
         if (!IConfigurationFacet(_hubVault).isHub()) {
             revert HubCannotInitiateLink();
         }
@@ -408,15 +464,6 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
      */
     function getVaultsCount() external view override returns (uint256) {
         return deployedVaults.length;
-    }
-
-    /**
-     * @notice Check if address is a vault deployed by this factory
-     * @param vault Address to check
-     * @return bool True if vault was deployed by this factory
-     */
-    function isVault(address vault) external view override returns (bool) {
-        return isFactoryVault[vault];
     }
 
     /**
@@ -493,13 +540,13 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     function _setDiamondCutFacet(address _diamondCutFacet) internal {
         if (_diamondCutFacet == address(0)) revert ZeroAddress();
         diamondCutFacet = _diamondCutFacet;
-        emit DiamondCutFacetUpdated(diamondCutFacet);
+        emit DiamondCutFacetUpdated(_diamondCutFacet);
     }
 
     function _setAccessControlFacet(address _accessControlFacet) internal {
         if (_accessControlFacet == address(0)) revert ZeroAddress();
         accessControlFacet = _accessControlFacet;
-        emit AccessControlFacetUpdated(accessControlFacet);
+        emit AccessControlFacetUpdated(_accessControlFacet);
     }
 
     function _setMaxFinalizationTime(uint96 _maxFinalizationTime) internal {
@@ -514,7 +561,74 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         emit SetFacetRestricted(_facet, _isRestricted);
     }
 
+    function _setLzAdapter(address _lzAdapter) internal {
+        if (_lzAdapter == address(0)) revert ZeroAddress();
+        lzAdapter = _lzAdapter;
+        emit LzAdapterUpdated(_lzAdapter);
+    }
+
+    function _setVaultComposer(address _vault, address _composer) internal {
+        if (_vault == address(0)) revert ZeroAddress();
+        if (_composer == address(0)) revert ZeroAddress();
+        vaultComposer[_vault] = _composer;
+        emit VaultComposerUpdated(_vault, _composer);
+    }
+
+    function _setComposerImplementation(address _composerImplementation) internal {
+        composerImplementation = _composerImplementation;
+        emit ComposerImplementationUpdated(_composerImplementation);
+    }
+
+    function _setOFTAdapterFactory(address _oftAdapterFactory) internal {
+        if (_oftAdapterFactory == address(0)) revert ZeroAddress();
+        oftAdapterFactory = _oftAdapterFactory;
+        emit OFTAdapterFactoryUpdated(_oftAdapterFactory);
+    }
+
+    /**
+     * @notice Deploy OFT adapter for vault shares using the OFT adapter factory
+     * @param _vault The vault address (which will be the token for the adapter)
+     * @param _salt The salt for deterministic deployment
+     * @return The address of the deployed OFT adapter
+     */
+    function _deployOftAdapter(address _vault, bytes32 _salt) internal returns (address) {
+        if (oftAdapterFactory == address(0)) revert ZeroAddress();
+
+        // Use the OFT adapter factory to deploy the adapter
+        return IOFTAdapterFactory(oftAdapterFactory).deployOFTAdapter(_vault, _salt);
+    }
+
     function _checkRestrictedFacet(address _facet) internal view {
         if (_restrictedFacets.contains(_facet)) revert RestrictedFacet(_facet);
+    }
+
+    /**
+     * @notice Deploy a minimal proxy for MoreVaultsComposer
+     * @param _vault The vault address
+     * @param _salt The salt for deterministic deployment
+     * @return The address of the deployed proxy
+     */
+    function _deployComposerProxy(address _vault, address oft, bytes32 _salt) internal returns (address) {
+        if (composerImplementation == address(0)) revert ZeroAddress();
+
+        // Deploy minimal proxy using CREATE3
+        address proxy = CREATE3.deployDeterministic(
+            abi.encodePacked(
+                hex"3d602d80600a3d3981f3363d3d373d3d3d363d73",
+                composerImplementation,
+                hex"5af43d82803e903d91602b57fd5bf3"
+            ),
+            keccak256(abi.encode("composer", _salt))
+        );
+
+        // Initialize the proxy
+        (bool success,) = proxy.call(
+            abi.encodeWithSignature(
+                "initialize(address,address,address,address)", _vault, address(registry), lzAdapter, address(this)
+            )
+        );
+        if (!success) revert ComposerInitializationFailed();
+
+        return proxy;
     }
 }

@@ -1,7 +1,10 @@
 {
-  "editor.formatOnSave": true,
-  "[solidity]": {
-    "editor.defaultFormatter": "JuanBlanco.solidity"
+  "search.exclude": {
+    "**/lib/**": true,
+    "**/node_modules/**": true
   },
-  "solidity.formatter": "prettier"
+  "files.watcherExclude": {
+    "**/lib/**": true
+  },
+  "coverage-gutters.coverageFileNames": ["lcov.info"]
 }

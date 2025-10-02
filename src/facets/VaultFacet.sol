@@ -592,7 +592,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @inheritdoc IVaultFacet
      */
     function setFee(uint96 _fee) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         (uint256 newTotalAssets,, uint64 timestamp) = _getInfoForAction(ds);

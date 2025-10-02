@@ -40,50 +40,8 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
     /**
      * @inheritdoc IAccessControlFacet
      */
-    function setMoreVaultsRegistry(address newRegistry) external {
-        AccessControlLib.validateOwner(msg.sender);
-        if (newRegistry == address(0)) {
-            revert AccessControlLib.ZeroAddress();
-        }
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
-
-        if (acs.moreVaultsRegistry == newRegistry) {
-            revert AccessControlLib.SameAddress();
-        }
-
-        address previousRegistry = acs.moreVaultsRegistry;
-        acs.moreVaultsRegistry = newRegistry;
-
-        // Check if all existing facets and their selectors are allowed in the new registry
-        IMoreVaultsRegistry registry = IMoreVaultsRegistry(newRegistry);
-        // if address zero allowed as facet, then registry is permissionless
-        if (!IMoreVaultsRegistry(previousRegistry).isFacetAllowed(address(0)) && registry.isFacetAllowed(address(0))) {
-            revert UnaibleToChangeRegistryToPermissionless();
-        }
-
-        // Get all facet addresses
-        address[] memory facetAddresses = ds.facetAddresses;
-
-        // Check each facet and its selectors
-        for (uint256 i; i < facetAddresses.length;) {
-            address facet = facetAddresses[i];
-            if (!registry.isFacetAllowed(facet)) {
-                revert VaultHasNotAllowedFacet(facet);
-            }
-            unchecked {
-                ++i;
-            }
-        }
-
-        emit MoreVaultRegistrySet(previousRegistry, newRegistry);
-    }
-
-    /**
-     * @inheritdoc IAccessControlFacet
-     */
     function transferOwnership(address _newOwner) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         AccessControlLib.setPendingOwner(_newOwner);
     }
 
@@ -100,7 +58,7 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
      * @inheritdoc IAccessControlFacet
      */
     function transferCuratorship(address _newCurator) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         AccessControlLib.setVaultCurator(_newCurator);
     }
 
@@ -108,7 +66,7 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
      * @inheritdoc IAccessControlFacet
      */
     function transferGuardian(address _newGuardian) external {
-        AccessControlLib.validateOwner(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
         AccessControlLib.setVaultGuardian(_newGuardian);
     }
 

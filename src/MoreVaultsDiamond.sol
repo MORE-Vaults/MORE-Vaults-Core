@@ -36,14 +36,14 @@ contract MoreVaultsDiamond {
         });
 
         bytes4[] memory functionSelectorsAc = new bytes4[](1);
-        functionSelectorsAc[0] = IAccessControlFacet.setMoreVaultsRegistry.selector;
+        functionSelectorsAc[0] = IAccessControlFacet.moreVaultsRegistry.selector;
         cut[1] = IDiamondCut.FacetCut({
             facetAddress: _accessControlFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: functionSelectorsAc,
             initData: accessControlFacetInitData
         });
-        AccessControlLib.setMoreVaultsRegistry(_registry);
+        AccessControlLib.setVaultRegistry(_registry);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.wrappedNative = _wrappedNative;

@@ -227,7 +227,7 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         bytes calldata _extraOptions,
         address _initiator
     ) external payable returns (MessagingReceipt memory receipt) {
-        if (!IVaultsFactory(vaultsFactory).isVault(msg.sender)) {
+        if (!IVaultsFactory(vaultsFactory).isFactoryVault(msg.sender)) {
             revert UnauthorizedVault();
         }
         bytes memory cmd = _getCmd(vaults, eids);
@@ -403,7 +403,7 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         address refundAddress
     ) internal {
         // Validate caller is authorized vault (calculate initiatorIsHub internally)
-        if (!vaultsFactory.isVault(msg.sender)) revert UnauthorizedVault();
+        if (!vaultsFactory.isFactoryVault(msg.sender)) revert UnauthorizedVault();
 
         // Validate OFT token is trusted
         if (!_trustedOFTs[oftTokenAddress]) revert UntrustedOFT();

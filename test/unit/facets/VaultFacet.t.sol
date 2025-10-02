@@ -1103,7 +1103,7 @@ contract VaultFacetTest is Test {
     }
 
     function test_setFee_ShouldUpdateFee() public {
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         vm.mockCall(
             address(registry),
@@ -1154,7 +1154,7 @@ contract VaultFacetTest is Test {
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-        vm.startPrank(owner);
+        vm.startPrank(address(facet));
 
         // Attempt to set fee above 50%
         vm.expectRevert(MoreVaultsLib.InvalidFee.selector);
