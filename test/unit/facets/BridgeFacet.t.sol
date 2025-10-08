@@ -280,4 +280,136 @@ contract BridgeFacetTest is Test {
         vm.expectRevert(IBridgeFacet.RequestTimedOut.selector);
         facet.finalizeRequest(guid);
     }
+
+    function test_setOraclesCrossChainAccounting_disable_removes_facet() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+
+        IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(0x1111)),
+            stalenessThreshold: uint96(1)
+        });
+        oracle.setSpokeOracleInfo(address(facet), eids[0], info);
+
+        vm.startPrank(owner);
+        facet.setOraclesCrossChainAccounting(true);
+        facet.setOraclesCrossChainAccounting(false);
+        vm.stopPrank();
+
+        assertFalse(MoreVaultsStorageHelper.getOraclesCrossChainAccounting(address(facet)));
+    }
+
+    function test_quoteAccountingFee_returns_native_fee() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory vaults = new address[](1);
+        vaults[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, vaults);
+
+        adapter.setFee(0.05 ether, 0);
+        uint256 fee = facet.quoteAccountingFee(bytes(""));
+        assertEq(fee, 0.05 ether);
+    }
+
+    function test_finalizeRequest_MINT() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-mint"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(100), address(this));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, bytes(""));
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        vm.stopPrank();
+
+        facet.finalizeRequest(guid);
+    }
+
+    function test_finalizeRequest_WITHDRAW() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-withdraw"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(50), address(this), address(this));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, bytes(""));
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        vm.stopPrank();
+
+        facet.finalizeRequest(guid);
+    }
+
+    function test_finalizeRequest_REDEEM() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-redeem"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(75), address(this), address(this));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, bytes(""));
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        vm.stopPrank();
+
+        facet.finalizeRequest(guid);
+    }
+
+    function test_finalizeRequest_SET_FEE() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-setfee"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint96(100));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, bytes(""));
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        vm.stopPrank();
+
+        facet.finalizeRequest(guid);
+    }
+
+    function test_finalizeRequest_MULTI_ASSETS_DEPOSIT() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-multiasset"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(underlying);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 100;
+        bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, bytes(""));
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        vm.stopPrank();
+
+        facet.finalizeRequest(guid);
+    }
 }
