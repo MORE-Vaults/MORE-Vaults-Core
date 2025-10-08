@@ -182,4 +182,172 @@ contract OracleRegistryTest is Test {
         int256 latestAnswer = mockAgg.latestAnswer();
         assertEq(latestAnswer, 42e8);
     }
+
+    function test_setSpokeOracleInfos_success() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
+
+        address hub = address(0x123);
+        uint32[] memory chainIds = new uint32[](1);
+        chainIds[0] = 101;
+        IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
+        spokeInfos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(500, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+
+        vm.prank(admin);
+        registry.setSpokeOracleInfos(hub, chainIds, spokeInfos);
+
+        IOracleRegistry.OracleInfo memory retrieved = registry.getSpokeOracleInfo(hub, chainIds[0]);
+        assertEq(address(retrieved.aggregator), address(spokeInfos[0].aggregator));
+        assertEq(retrieved.stalenessThreshold, staleness);
+    }
+
+    function test_setSpokeOracleInfos_revertsOnLengthMismatch() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
+
+        address hub = address(0x123);
+        uint32[] memory chainIds = new uint32[](2);
+        chainIds[0] = 101;
+        chainIds[1] = 102;
+        IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
+
+        vm.prank(admin);
+        vm.expectRevert(IOracleRegistry.InconsistentParamsLength.selector);
+        registry.setSpokeOracleInfos(hub, chainIds, spokeInfos);
+    }
+
+    function test_getSpokeValue_returnsCorrectValue() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
+
+        address hub = address(0x123);
+        uint32 chainId = 101;
+        uint32[] memory chainIds = new uint32[](1);
+        chainIds[0] = chainId;
+        IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
+        spokeInfos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(777, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+
+        vm.prank(admin);
+        registry.setSpokeOracleInfos(hub, chainIds, spokeInfos);
+
+        uint256 value = registry.getSpokeValue(hub, chainId);
+        assertEq(value, 777);
+    }
+
+    function test_getSpokeValue_withStorkOracle() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
+
+        address hub = address(0x123);
+        uint32 chainId = 101;
+        uint32[] memory chainIds = new uint32[](1);
+        chainIds[0] = chainId;
+
+        uint256 storkTimestamp = block.timestamp * 1e9;
+        IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
+        spokeInfos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(888, storkTimestamp))),
+            stalenessThreshold: staleness
+        });
+
+        vm.prank(admin);
+        registry.setSpokeOracleInfos(hub, chainIds, spokeInfos);
+
+        uint256 value = registry.getSpokeValue(hub, chainId);
+        assertEq(value, 888);
+    }
+
+    function test_getSpokeValue_revertsIfStale() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
+
+        address hub = address(0x123);
+        uint32 chainId = 101;
+        uint32[] memory chainIds = new uint32[](1);
+        chainIds[0] = chainId;
+
+        uint256 staleTimestamp = block.timestamp - staleness - 1;
+        IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
+        spokeInfos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(999, staleTimestamp))),
+            stalenessThreshold: staleness
+        });
+
+        vm.prank(admin);
+        registry.setSpokeOracleInfos(hub, chainIds, spokeInfos);
+
+        vm.expectRevert(IOracleRegistry.OraclePriceIsOld.selector);
+        registry.getSpokeValue(hub, chainId);
+    }
+
+    function test_getSpokeOracleInfo_returnsCorrectInfo() public {
+        address[] memory assets = new address[](1);
+        IOracleRegistry.OracleInfo[] memory infos = new IOracleRegistry.OracleInfo[](1);
+        assets[0] = asset;
+        infos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(new MockAggregator(100, block.timestamp))),
+            stalenessThreshold: staleness
+        });
+        vm.prank(admin);
+        registry.initialize(assets, infos, admin, baseCurrency, baseCurrencyUnit);
+
+        address hub = address(0x456);
+        uint32 chainId = 202;
+        uint32[] memory chainIds = new uint32[](1);
+        chainIds[0] = chainId;
+        MockAggregator mockAgg = new MockAggregator(1234, block.timestamp);
+        IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
+        spokeInfos[0] = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(mockAgg)),
+            stalenessThreshold: 2 hours
+        });
+
+        vm.prank(admin);
+        registry.setSpokeOracleInfos(hub, chainIds, spokeInfos);
+
+        IOracleRegistry.OracleInfo memory retrieved = registry.getSpokeOracleInfo(hub, chainId);
+        assertEq(address(retrieved.aggregator), address(mockAgg));
+        assertEq(retrieved.stalenessThreshold, 2 hours);
+    }
 }
