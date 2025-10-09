@@ -7,9 +7,12 @@ import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol"
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     using EnumerableSet for EnumerableSet.Bytes32Set;
+    using SafeERC20 for IERC20;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.ConfigurationFacet");
@@ -325,5 +328,37 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function getWithdrawalTimelock() external view returns (uint64) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.witdrawTimelock;
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function recoverAssets(address asset, address receiver, uint256 amount) external {
+        // Prevent calls during multicall
+        MoreVaultsLib.validateNotMulticall();
+
+        // Only curator or owner can recover assets
+        AccessControlLib.validateCurator(msg.sender);
+
+        // Validate inputs
+        if (amount == 0) revert InvalidAmount();
+        if (receiver == address(0)) revert InvalidReceiver();
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        // Cannot recover assets that are marked as available (vault is managing them)
+        if (ds.isAssetAvailable[asset]) revert AssetIsAvailable();
+
+        // Cannot recover the vault's own shares (receipt tokens)
+        if (asset == address(this)) revert CannotRecoverVaultShares();
+
+        // Check if vault has sufficient balance
+        uint256 balance = IERC20(asset).balanceOf(address(this));
+        if (balance < amount) revert InsufficientAssetBalance();
+
+        // Transfer the assets to receiver
+        IERC20(asset).safeTransfer(receiver, amount);
+
+        emit AssetsRecovered(asset, receiver, amount);
     }
 }
