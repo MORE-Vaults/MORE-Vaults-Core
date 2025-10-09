@@ -17,6 +17,11 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error InvalidManager();
     error SlippageTooHigh();
     error FeeIsTooHigh();
+    error AssetIsAvailable();
+    error CannotRecoverVaultShares();
+    error InsufficientAssetBalance();
+    error InvalidAmount();
+    error InvalidReceiver();
 
     /**
      * @dev Events
@@ -37,6 +42,8 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event CrossChainAccountingManagerSet(address indexed manager);
     /// @notice Emitted when the max slippage percent is set
     event MaxSlippagePercentSet(uint256 percent);
+    /// @notice Emitted when assets are recovered from the vault
+    event AssetsRecovered(address indexed asset, address indexed receiver, uint256 amount);
 
     /**
      * @notice Sets fee recipient address, callable by owner
@@ -243,4 +250,15 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     /// @param tokenId token type ID
     /// @return array of token addresses
     function tokensHeld(bytes32 tokenId) external view returns (address[] memory);
+
+    /**
+     * @notice Recovers assets that were accidentally sent to the vault
+     * @dev Only callable by curator or owner. Can only recover assets that are NOT in the available assets list.
+     *      This prevents recovery of assets that the vault is supposed to manage.
+     *      Cannot recover the vault's own shares (receipt tokens).
+     * @param asset The address of the asset to recover
+     * @param receiver The address that will receive the recovered assets
+     * @param amount The amount of assets to recover
+     */
+    function recoverAssets(address asset, address receiver, uint256 amount) external;
 }
