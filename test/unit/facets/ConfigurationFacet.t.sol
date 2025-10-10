@@ -608,7 +608,7 @@ contract ConfigurationFacetTest is Test {
 
     // ===== Tests for recoverAssets =====
 
-    function test_recoverAssets_ShouldRecoverWhenCuratorCalls() public {
+    function test_recoverAssets_ShouldRecoverWhenGuardianCalls() public {
         // Create a mock ERC20 token
         MockERC20 token = new MockERC20("Test Token", "TST");
 
@@ -617,7 +617,7 @@ contract ConfigurationFacetTest is Test {
 
         address receiver = address(0x999);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
 
         // Expect event emission
         vm.expectEmit(true, true, false, true);
@@ -644,7 +644,7 @@ contract ConfigurationFacetTest is Test {
 
         vm.startPrank(owner);
 
-        // Recover assets (owner has curator permissions)
+        // Recover assets (owner has guardian permissions)
         facet.recoverAssets(address(token), receiver, 1000 ether);
 
         vm.stopPrank();
@@ -681,21 +681,34 @@ contract ConfigurationFacetTest is Test {
         // Add token as available asset
         vm.startPrank(curator);
         facet.addAvailableAsset(address(availableToken));
+        vm.stopPrank();
 
         // Should revert when trying to recover available asset
+        vm.startPrank(guardian);
         vm.expectRevert(IConfigurationFacet.AssetIsAvailable.selector);
         facet.recoverAssets(address(availableToken), address(0x999), 100 ether);
 
         vm.stopPrank();
     }
 
-    function test_recoverAssets_ShouldRevertWhenRecoveringVaultShares() public {
-        vm.startPrank(curator);
+    function test_recoverAssets_ShouldRecoverVaultShares() public {
+        // In a real scenario, vault shares would be ERC20 tokens (the vault itself is an ERC20)
+        // We create a mock token to simulate vault shares sent to the vault by mistake
+        MockERC20 vaultSharesToken = new MockERC20("Vault Shares", "vSHARE");
 
-        vm.expectRevert(IConfigurationFacet.CannotRecoverVaultShares.selector);
-        facet.recoverAssets(address(facet), address(0x999), 100 ether);
+        // Mint some tokens to the facet (simulating vault shares accidentally sent)
+        vaultSharesToken.mint(address(facet), 100 ether);
+
+        vm.startPrank(guardian);
+
+        // Guardian should be able to recover any token, including ones that represent vault shares
+        facet.recoverAssets(address(vaultSharesToken), address(0x999), 50 ether);
 
         vm.stopPrank();
+
+        // Verify balances
+        assertEq(vaultSharesToken.balanceOf(address(0x999)), 50 ether, "Receiver should have received tokens");
+        assertEq(vaultSharesToken.balanceOf(address(facet)), 50 ether, "Facet should have remaining tokens");
     }
 
     function test_recoverAssets_ShouldRevertWhenInsufficientBalance() public {
@@ -703,7 +716,7 @@ contract ConfigurationFacetTest is Test {
         // Mint only 100 tokens
         token.mint(address(facet), 100 ether);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
 
         // Try to recover 200 tokens
         vm.expectRevert(IConfigurationFacet.InsufficientAssetBalance.selector);
@@ -716,7 +729,7 @@ contract ConfigurationFacetTest is Test {
         MockERC20 token = new MockERC20("Test Token", "TST");
         token.mint(address(facet), 1000 ether);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
 
         vm.expectRevert(IConfigurationFacet.InvalidAmount.selector);
         facet.recoverAssets(address(token), address(0x999), 0);
@@ -728,7 +741,7 @@ contract ConfigurationFacetTest is Test {
         MockERC20 token = new MockERC20("Test Token", "TST");
         token.mint(address(facet), 1000 ether);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
 
         vm.expectRevert(IConfigurationFacet.InvalidReceiver.selector);
         facet.recoverAssets(address(token), address(0), 500 ether);
@@ -743,7 +756,7 @@ contract ConfigurationFacetTest is Test {
         // Set isMulticall to true
         MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
 
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
         facet.recoverAssets(address(token), address(0x999), 500 ether);
@@ -760,7 +773,7 @@ contract ConfigurationFacetTest is Test {
 
         address receiver = address(0x999);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
         facet.recoverAssets(address(token), receiver, amount);
         vm.stopPrank();
 
@@ -778,7 +791,7 @@ contract ConfigurationFacetTest is Test {
         MockERC20 token = new MockERC20("Test Token", "TST");
         token.mint(address(facet), 1000 ether);
 
-        vm.startPrank(curator);
+        vm.startPrank(guardian);
 
         // Should be able to recover non-available asset
         facet.recoverAssets(address(token), address(0x999), 500 ether);
