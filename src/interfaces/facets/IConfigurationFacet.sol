@@ -18,7 +18,6 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error SlippageTooHigh();
     error FeeIsTooHigh();
     error AssetIsAvailable();
-    error CannotRecoverVaultShares();
     error InsufficientAssetBalance();
     error InvalidAmount();
     error InvalidReceiver();
@@ -253,9 +252,9 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
 
     /**
      * @notice Recovers assets that were accidentally sent to the vault
-     * @dev Only callable by curator or owner. Can only recover assets that are NOT in the available assets list.
+     * @dev Only callable by guardian. Can only recover assets that are NOT in the available assets list.
      *      This prevents recovery of assets that the vault is supposed to manage.
-     *      Cannot recover the vault's own shares (receipt tokens).
+     *      Guardian can recover vault shares for emergency situations.
      * @param asset The address of the asset to recover
      * @param receiver The address that will receive the recovered assets
      * @param amount The amount of assets to recover

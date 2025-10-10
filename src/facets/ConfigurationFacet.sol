@@ -337,8 +337,8 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         // Prevent calls during multicall
         MoreVaultsLib.validateNotMulticall();
 
-        // Only curator or owner can recover assets
-        AccessControlLib.validateCurator(msg.sender);
+        // Only guardian can recover assets
+        AccessControlLib.validateGuardian(msg.sender);
 
         // Validate inputs
         if (amount == 0) revert InvalidAmount();
@@ -348,9 +348,6 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
 
         // Cannot recover assets that are marked as available (vault is managing them)
         if (ds.isAssetAvailable[asset]) revert AssetIsAvailable();
-
-        // Cannot recover the vault's own shares (receipt tokens)
-        if (asset == address(this)) revert CannotRecoverVaultShares();
 
         // Check if vault has sufficient balance
         uint256 balance = IERC20(asset).balanceOf(address(this));
