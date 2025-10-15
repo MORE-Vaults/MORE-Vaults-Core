@@ -11,9 +11,24 @@ import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 
 contract MockMerklDistributor {
     bool public shouldRevert;
+    string public revertMessage;
+    bool public shouldPanic;
 
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
+        revertMessage = "Claim failed";
+        shouldPanic = false;
+    }
+
+    function setShouldRevertWithMessage(string memory message) external {
+        shouldRevert = true;
+        revertMessage = message;
+        shouldPanic = false;
+    }
+
+    function setShouldPanic() external {
+        shouldPanic = true;
+        shouldRevert = false;
     }
 
     function claim(
@@ -22,7 +37,12 @@ contract MockMerklDistributor {
         uint256[] calldata,
         bytes32[][] calldata
     ) external view {
-        if (shouldRevert) revert("Claim failed");
+        if (shouldPanic) {
+            assembly {
+                invalid()
+            }
+        }
+        if (shouldRevert) revert(revertMessage);
     }
 
     function claimWithRecipient(
@@ -33,7 +53,12 @@ contract MockMerklDistributor {
         address[] calldata,
         bytes[] memory
     ) external view {
-        if (shouldRevert) revert("Claim failed");
+        if (shouldPanic) {
+            assembly {
+                invalid()
+            }
+        }
+        if (shouldRevert) revert(revertMessage);
     }
 }
 
@@ -178,6 +203,32 @@ contract MerklRewardsFacetTest is Test {
         facet.claimMerklRewards(users, tokens, amounts, proofs);
     }
 
+    function test_claimMerklRewards_shouldRevertWhenAmountsLengthMismatch() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](2); // Mismatched length
+        bytes32[][] memory proofs = new bytes32[][](1);
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.InvalidArrayLength.selector);
+        facet.claimMerklRewards(users, tokens, amounts, proofs);
+    }
+
+    function test_claimMerklRewards_shouldRevertWhenProofsLengthMismatch() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](2); // Mismatched length
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.InvalidArrayLength.selector);
+        facet.claimMerklRewards(users, tokens, amounts, proofs);
+    }
+
     function test_claimMerklRewards_shouldRevertWhenClaimFails() public {
         facet.initialize(abi.encode(address(mockDistributor)));
         mockDistributor.setShouldRevert(true);
@@ -189,7 +240,26 @@ contract MerklRewardsFacetTest is Test {
         proofs[0] = new bytes32[](1);
 
         vm.prank(curator);
-        vm.expectRevert(IMerklRewardsFacet.ClaimFailed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerklRewardsFacet.ClaimFailedWithReason.selector, "Claim failed")
+        );
+        facet.claimMerklRewards(users, tokens, amounts, proofs);
+    }
+
+    function test_claimMerklRewards_shouldRevertWithReasonWhenDistributorFails() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+        mockDistributor.setShouldRevertWithMessage("Invalid merkle proof");
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](1);
+        proofs[0] = new bytes32[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(
+            abi.encodeWithSelector(IMerklRewardsFacet.ClaimFailedWithReason.selector, "Invalid merkle proof")
+        );
         facet.claimMerklRewards(users, tokens, amounts, proofs);
     }
 
@@ -249,6 +319,48 @@ contract MerklRewardsFacetTest is Test {
         facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
     }
 
+    function test_claimMerklRewardsWithRecipient_shouldRevertWhenUsersLengthMismatch() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](2); // Mismatched length
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](1);
+        address[] memory recipients = new address[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.InvalidArrayLength.selector);
+        facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
+    }
+
+    function test_claimMerklRewardsWithRecipient_shouldRevertWhenAmountsLengthMismatch() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](2); // Mismatched length
+        bytes32[][] memory proofs = new bytes32[][](1);
+        address[] memory recipients = new address[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.InvalidArrayLength.selector);
+        facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
+    }
+
+    function test_claimMerklRewardsWithRecipient_shouldRevertWhenProofsLengthMismatch() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](2); // Mismatched length
+        address[] memory recipients = new address[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.InvalidArrayLength.selector);
+        facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
+    }
+
     function test_claimMerklRewards_shouldRevertDuringMulticall() public {
         facet.initialize(abi.encode(address(mockDistributor)));
 
@@ -279,6 +391,62 @@ contract MerklRewardsFacetTest is Test {
 
         vm.prank(curator);
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
+        facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
+    }
+
+    function test_claimMerklRewards_shouldRevertWithLowLevelError() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+        mockDistributor.setShouldPanic();
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](1);
+        proofs[0] = new bytes32[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.ClaimFailed.selector);
+        facet.claimMerklRewards(users, tokens, amounts, proofs);
+    }
+
+    function test_claimMerklRewardsWithRecipient_shouldRevertWithLowLevelError() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+        mockDistributor.setShouldPanic();
+
+        address[] memory users = new address[](1);
+        address[] memory tokens = new address[](1);
+        uint256[] memory amounts = new uint256[](1);
+        bytes32[][] memory proofs = new bytes32[][](1);
+        proofs[0] = new bytes32[](1);
+        address[] memory recipients = new address[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(IMerklRewardsFacet.ClaimFailed.selector);
+        facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
+    }
+
+    function test_claimMerklRewards_shouldSucceedWithEmptyArrays() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](0);
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes32[][] memory proofs = new bytes32[][](0);
+
+        vm.prank(curator);
+        facet.claimMerklRewards(users, tokens, amounts, proofs);
+    }
+
+    function test_claimMerklRewardsWithRecipient_shouldSucceedWithEmptyArrays() public {
+        facet.initialize(abi.encode(address(mockDistributor)));
+
+        address[] memory users = new address[](0);
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes32[][] memory proofs = new bytes32[][](0);
+        address[] memory recipients = new address[](0);
+
+        vm.prank(curator);
         facet.claimMerklRewardsWithRecipient(users, tokens, amounts, proofs, recipients);
     }
 }

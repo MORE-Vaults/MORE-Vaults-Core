@@ -10,6 +10,7 @@ interface IMerklRewardsFacet is IGenericMoreVaultFacetInitializable {
     error InvalidProofLength();
     error InvalidArrayLength();
     error ClaimFailed();
+    error ClaimFailedWithReason(string reason);
     error InvalidDistributorAddress();
 
     /**

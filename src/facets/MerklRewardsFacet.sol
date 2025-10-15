@@ -93,7 +93,9 @@ contract MerklRewardsFacet is BaseFacetInitializer, IMerklRewardsFacet {
                     ++i;
                 }
             }
-        } catch {
+        } catch Error(string memory reason) {
+            revert ClaimFailedWithReason(reason);
+        } catch (bytes memory) {
             revert ClaimFailed();
         }
     }
@@ -139,7 +141,9 @@ contract MerklRewardsFacet is BaseFacetInitializer, IMerklRewardsFacet {
                     ++i;
                 }
             }
-        } catch {
+        } catch Error(string memory reason) {
+            revert ClaimFailedWithReason(reason);
+        } catch (bytes memory) {
             revert ClaimFailed();
         }
     }
