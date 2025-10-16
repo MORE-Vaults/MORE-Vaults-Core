@@ -320,7 +320,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         }
 
         address spokeOwner = IAccessControlFacet(_spokeVault).owner();
-        bytes memory payload = abi.encode(MSG_TYPE_REGISTER_SPOKE, _spokeVault, _hubVault, spokeOwner);
+        bytes memory payload = abi.encode(uint16(MSG_TYPE_REGISTER_SPOKE), abi.encode(_spokeVault, _hubVault, spokeOwner));
 
         bytes memory options = combineOptions(_hubEid, MSG_TYPE_REGISTER_SPOKE, _options);
         MessagingFee memory fee = _quote(_hubEid, payload, options, false);
@@ -339,10 +339,8 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     ) internal override {
         // OAppReceiver already validated endpoint and peer
         (uint16 msgType, bytes memory rest) = abi.decode(_message, (uint16, bytes));
-
         if (msgType == MSG_TYPE_REGISTER_SPOKE) {
             (address spokeVault, address hubVault, address spokeOwner) = abi.decode(rest, (address, address, address));
-
             // Ensure dst hub vault is actually deployed by this factory and is hub
             if (!isFactoryVault[hubVault]) revert NotAVault(hubVault);
             if (!IConfigurationFacet(hubVault).isHub()) {
@@ -358,27 +356,20 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
             uint32 hubEid = localEid;
             uint32 spokeEid = _origin.srcEid;
 
-            // Idempotent: write packed hub if absent
-            if (_spokeToHub[spokeEid][spokeVault] == bytes32(0)) {
-                _spokeToHub[spokeEid][spokeVault] = _encodeSpokeKey(hubEid, hubVault);
-            }
-
-            // Append to hub->spokes set (idempotent)
-            _hubToSpokesSet[hubEid][hubVault].add(_encodeSpokeKey(spokeEid, spokeVault));
-
+           _updateConnections(hubEid, hubVault, spokeEid, spokeVault);
             emit CrossChainLinked(spokeEid, spokeVault, hubVault);
         } else if (msgType == MSG_TYPE_SPOKE_ADDED) {
             // optional: update local caches on spokes when hub broadcasts new peers
             (uint32 hubEid, address hubVault, uint32 newSpokeEid, address newSpokeVault) =
                 abi.decode(rest, (uint32, address, uint32, address));
             // track that this spoke knows about new peer under its hub
-            // append if not present
-            _hubToSpokesSet[hubEid][hubVault].add(_encodeSpokeKey(newSpokeEid, newSpokeVault));
+            _updateConnections(hubEid, hubVault, newSpokeEid, newSpokeVault);
         } else if (msgType == MSG_TYPE_BOOTSTRAP) {
             // Merge-only bootstrap: add missing spokes; do not remove existing ones
             (uint32 hubEid, address hubVault, bytes32[] memory others) = abi.decode(rest, (uint32, address, bytes32[]));
             for (uint256 i = 0; i < others.length; i++) {
-                _hubToSpokesSet[hubEid][hubVault].add(others[i]);
+                (uint32 newSpokeEid, address newSpokeVault) = _decodeSpokeKey(others[i]);
+                _updateConnections(hubEid, hubVault, newSpokeEid, newSpokeVault);
             }
         } else {
             revert UnknownMsgType();
@@ -397,7 +388,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
 
         // build snapshot as packed keys
         bytes32[] memory spokes = _hubToSpokesSet[localEid][_hubVault].values();
-        bytes memory payload = abi.encode(MSG_TYPE_BOOTSTRAP, localEid, _hubVault, spokes);
+        bytes memory payload = abi.encode(MSG_TYPE_BOOTSTRAP, abi.encode(localEid, _hubVault, spokes));
         bytes memory options = combineOptions(_dstEid, MSG_TYPE_BOOTSTRAP, _options);
         MessagingFee memory fee = _quote(_dstEid, payload, options, false);
         require(msg.value == fee.nativeFee, "LZ: invalid fee");
@@ -420,7 +411,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
             revert HubCannotInitiateLink();
         }
 
-        bytes memory payload = abi.encode(MSG_TYPE_SPOKE_ADDED, localEid, _hubVault, _newSpokeEid, _newSpokeVault);
+        bytes memory payload = abi.encode(MSG_TYPE_SPOKE_ADDED, abi.encode(localEid, _hubVault, _newSpokeEid, _newSpokeVault));
 
         _multiSendFee = msg.value;
         for (uint256 i = 0; i < _dstEids.length; i++) {
@@ -562,7 +553,6 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     }
 
     function _setLzAdapter(address _lzAdapter) internal {
-        if (_lzAdapter == address(0)) revert ZeroAddress();
         lzAdapter = _lzAdapter;
         emit LzAdapterUpdated(_lzAdapter);
     }
@@ -624,11 +614,18 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         // Initialize the proxy
         (bool success,) = proxy.call(
             abi.encodeWithSignature(
-                "initialize(address,address,address,address)", _vault, address(registry), lzAdapter, address(this)
+                "initialize(address,address,address)", _vault, oft, address(this)
             )
         );
         if (!success) revert ComposerInitializationFailed();
 
         return proxy;
+    }
+
+    function _updateConnections(uint32 _hubEid, address _hubVault, uint32 _spokeEid, address _spokeVault) internal {
+        if (_spokeToHub[_spokeEid][_spokeVault] == bytes32(0)) {
+            _spokeToHub[_spokeEid][_spokeVault] = _encodeSpokeKey(_hubEid, _hubVault);
+        }
+        _hubToSpokesSet[_hubEid][_hubVault].add(_encodeSpokeKey(_spokeEid, _spokeVault));
     }
 }

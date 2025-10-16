@@ -107,7 +107,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         external
         payable
         whenNotPaused
-        nonReentrant
     {
         AccessControlLib.validateCurator(msg.sender);
         _pause();
@@ -156,14 +155,17 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             vaults, eids, extraOptions, msg.sender
         ).guid;
 
-        MoreVaultsLib._beforeAccounting(ds.beforeAccountingFacets);
+        (uint256 totalAssets, bool success) = IVaultFacet(address(this)).totalAssetsUsd();
+        if (!success) {
+            revert LocalAccountingFailed();
+        }
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
             timestamp: uint64(block.timestamp),
             actionType: actionType,
             actionCallData: actionCallData,
             fulfilled: false,
-            totalAssets: IVaultFacet(address(this)).totalAssets()
+            totalAssets: totalAssets
         });
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }

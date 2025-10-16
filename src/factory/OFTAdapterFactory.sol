@@ -48,11 +48,10 @@ contract OFTAdapterFactory is IOFTAdapterFactory, Ownable {
 
     /**
      * @notice Predict the address of an OFT adapter deployed with given salt
-     * @param token The token address
      * @param salt The salt for deterministic deployment
      * @return The predicted address of the adapter
      */
-    function predictAdapterAddress(address token, bytes32 salt) external view returns (address) {
+    function predictAdapterAddress(address, bytes32 salt) external view returns (address) {
         return CREATE3.predictDeterministicAddress(salt, address(this));
     }
 

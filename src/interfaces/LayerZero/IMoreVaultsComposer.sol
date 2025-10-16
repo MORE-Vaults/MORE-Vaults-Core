@@ -21,7 +21,7 @@ interface IMoreVaultsComposer is IOAppComposer {
     error OnlyEndpoint(address caller);
     // 0x91ac5e4f
     error OnlySelf(address caller); // 0xa19dbf00
-    error OnlyValidComposeCaller(address caller); // 0x84fb3f0d
+    error InvalidComposeCaller(address caller); // 0x84fb3f0d
     error OnlyVault(address caller); // custom
     error DepositNotFound(bytes32 guid); // custom
 
@@ -44,7 +44,7 @@ interface IMoreVaultsComposer is IOAppComposer {
 
     /// ========================== Proxy OFT (deposit-only) =====================================
 
-    function initialize(address _vault, address _shareOFT, address _lzAdapter, address _vaultFactory) external;
+    function initialize(address _vault, address _shareOFT, address _vaultFactory) external;
 
     /**
      * @notice Quotes the send operation for the given OFT and SendParam

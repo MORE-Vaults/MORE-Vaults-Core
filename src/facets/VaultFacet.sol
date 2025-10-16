@@ -199,6 +199,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         view
         returns (uint256 newTotalAssets, bool success)
     {
+        success = true;
         assembly {
             // put a debt variable on the stack
             let debt := 0
@@ -261,9 +262,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         (_totalAssets,) = _accountFacets(ds.facetsForAccounting, _totalAssets, freePtr, true);
     }
 
-    function totalAssetsUsd() public view returns (uint256 _totalAssets, bool success) {
+    function totalAssetsUsd() public returns (uint256 _totalAssets, bool success) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        _beforeAccounting(ds.beforeAccountingFacets);
         // get free mem ptr for efficient calls
         uint256 freePtr;
         assembly {

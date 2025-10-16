@@ -26,10 +26,9 @@ contract LzAdapterTestHelper is LzAdapter {
         address _endpoint,
         address _delegate,
         uint32 _readChannel,
-        address _composer,
         address _vaultsFactory,
         address _vaultsRegistry
-    ) LzAdapter(_endpoint, _delegate, _readChannel, _composer, _vaultsFactory, _vaultsRegistry) {}
+    ) LzAdapter(_endpoint, _delegate, _readChannel, _vaultsFactory, _vaultsRegistry) {}
 
     // Expose _lzReceive for testing with test data
     function exposed_lzReceive(
@@ -43,8 +42,8 @@ contract LzAdapterTestHelper is LzAdapter {
     }
 
     // Expose _callbackToComposer for testing
-    function exposed_callbackToComposer(bytes32 guid, bool readSuccess) external {
-        _callbackToComposer(guid, readSuccess);
+    function exposed_callbackToComposer(address composer, bytes32 guid, bool readSuccess) external {
+        _callbackToComposer(composer, guid, readSuccess);
     }
 
     // Expose _validateBridgeParams for testing
@@ -184,6 +183,7 @@ contract MockOFT {
 // Mock contracts for dependencies
 contract MockVaultsFactory {
     mapping(address => bool) private _vaults;
+    mapping(address => address) public vaultComposer;
     uint32 public localEid;
     bool internal _isSpokeOfHub = true;
     bool internal _isCrossChainVault = true;
@@ -214,6 +214,10 @@ contract MockVaultsFactory {
 
     function setIsCrossChainVault(bool isCrossChainVault_) external {
         _isCrossChainVault = isCrossChainVault_;
+    }
+
+    function setVaultComposer(address vault, address composer) external {
+        vaultComposer[vault] = composer;
     }
 }
 
@@ -316,6 +320,7 @@ contract LzAdapterTest is Test {
         mockVaultsRegistry = new MockVaultsRegistry();
         mockComposer = new MockLzComposer();
         mockVault = new MockVault();
+        mockVaultsFactory.setVaultComposer(address(mockVault), address(mockComposer));
 
         // Deploy mock LayerZero endpoint
         mockEndpoint = new MockLayerZeroEndpoint(A_EID);
@@ -330,7 +335,6 @@ contract LzAdapterTest is Test {
             address(mockEndpoint), // endpoint
             owner, // delegate
             READ_CHANNEL, // readChannel
-            address(mockComposer), // composer
             address(mockVaultsFactory), // vaultsFactory
             address(mockVaultsRegistry) // vaultsRegistry
         );
@@ -339,7 +343,6 @@ contract LzAdapterTest is Test {
             address(mockEndpoint), // endpoint
             owner, // delegate
             READ_CHANNEL, // readChannel
-            address(mockComposer), // composer
             address(mockVaultsFactory), // vaultsFactory
             address(mockVaultsRegistry) // vaultsRegistry
         );
@@ -443,7 +446,6 @@ contract LzAdapterTest is Test {
         assertEq(lzAdapter.owner(), owner);
         assertEq(address(lzAdapter.vaultsFactory()), address(mockVaultsFactory));
         assertEq(address(lzAdapter.vaultsRegistry()), address(mockVaultsRegistry));
-        assertEq(lzAdapter.composer(), address(mockComposer));
     }
 
     function test_setUp_layerZeroConfiguration() public view {
@@ -730,15 +732,6 @@ contract LzAdapterTest is Test {
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IBridgeAdapter.SlippageTooHigh.selector));
         lzAdapter.setSlippage(invalidSlippage);
-    }
-
-    function test_setComposer_success() public {
-        address newComposer = address(0x123);
-
-        vm.prank(owner);
-        lzAdapter.setComposer(newComposer);
-
-        assertEq(lzAdapter.composer(), newComposer);
     }
 
     function test_setReadChannel_success() public {
@@ -1031,6 +1024,7 @@ contract LzAdapterTest is Test {
 
         // Setup mock vault for other action
         MockVault mockVaultLz = new MockVault();
+        mockVaultsFactory.setVaultComposer(address(mockVaultLz), address(mockComposer));
         // MockVault returns actionType 0 (OTHER) for nonce % 3 == 2
 
         bytes32 testGuid = bytes32(uint256(791));
@@ -1187,7 +1181,7 @@ contract LzAdapterTest is Test {
 
         bytes32 testGuid = bytes32(uint256(999));
 
-        lzAdapterHelper.exposed_callbackToComposer(testGuid, true);
+        lzAdapterHelper.exposed_callbackToComposer(address(mockComposer), testGuid, true);
 
         assertTrue(mockComposer.completedDeposits(testGuid));
     }
@@ -1206,7 +1200,7 @@ contract LzAdapterTest is Test {
 
         bytes32 testGuid = bytes32(uint256(999));
 
-        lzAdapterHelper.exposed_callbackToComposer(testGuid, false);
+        lzAdapterHelper.exposed_callbackToComposer(address(mockComposer), testGuid, false);
 
         assertFalse(mockComposer.completedDeposits(testGuid));
     }
@@ -1764,6 +1758,7 @@ contract LzAdapterTest is Test {
 
     function test_lzReceive_otherAction_initiatorEqualsComposer() public {
         MockVault mockVaultLz = new MockVault();
+        mockVaultsFactory.setVaultComposer(address(mockVaultLz), address(mockComposer));
 
         // Use nonce that triggers OTHER action AND initiator == composer
         bytes32 testGuid = bytes32(uint256(1001));
