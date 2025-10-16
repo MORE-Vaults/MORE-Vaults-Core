@@ -46,8 +46,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
     /// @param data The value of the public state variable.
     event DataReceived(uint256 data);
 
-    event ComposerUpdated(address indexed composer);
-
     event GasLimitUpdated(uint256 gasLimit);
 
     event TrustedOFTUpdated(address indexed oft, bool trusted);
@@ -73,8 +71,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
 
     mapping(bytes32 => CallInfo) internal _guidToCallInfo; // primary correlation
 
-    address public composer;
-
     // Security configurations
     uint256 public slippageBps = 100; // 1% default slippage
 
@@ -92,7 +88,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
      * @param _endpoint The LayerZero endpoint contract address
      * @param _delegate The address that will have ownership privileges
      * @param _readChannel The LayerZero read channel ID for cross-chain accounting
-     * @param _composer The composer contract address for coordinated operations
      * @param _vaultsFactory Factory contract for vault validation
      * @param _vaultsRegistry Registry contract for protocol configuration
      * @dev This adapter uses an EID-only approach for chain management:
@@ -104,13 +99,11 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         address _endpoint,
         address _delegate,
         uint32 _readChannel,
-        address _composer,
         address _vaultsFactory,
         address _vaultsRegistry
     ) OAppRead(_endpoint, _delegate) Ownable(_delegate) {
         READ_CHANNEL = _readChannel;
         _setPeer(_readChannel, AddressCast.toBytes32(address(this)));
-        composer = _composer;
         vaultsFactory = IVaultsFactory(_vaultsFactory);
         vaultsRegistry = IMoreVaultsRegistry(_vaultsRegistry);
     }
@@ -191,16 +184,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
     function setReadChannel(uint32 _channelId, bool _active) public override(IBridgeAdapter, OAppRead) onlyOwner {
         _setPeer(_channelId, _active ? AddressCast.toBytes32(address(this)) : bytes32(0));
         READ_CHANNEL = _channelId;
-    }
-
-    /**
-     * @inheritdoc IBridgeAdapter
-     */
-    function setComposer(address _composer) external onlyOwner {
-        if (_composer == address(0)) revert InvalidAddress();
-        composer = _composer;
-
-        emit ComposerUpdated(composer);
     }
 
     function setGasLimit(uint256 _gasLimit) external onlyOwner {
@@ -363,14 +346,14 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         if (info.vault == address(0)) revert InvalidVault();
 
         IBridgeFacet(info.vault).updateAccountingInfoForRequest(_guid, sum, readSuccess);
-        if (info.initiator == composer) {
-            _callbackToComposer(_guid, readSuccess);
+        if (info.initiator == vaultsFactory.vaultComposer(info.vault)) {
+            _callbackToComposer(info.initiator, _guid, readSuccess);
         }
 
         delete _guidToCallInfo[_guid];
     }
 
-    function _callbackToComposer(bytes32 guid, bool readSuccess) internal {
+    function _callbackToComposer(address composer, bytes32 guid, bool readSuccess) internal {
         if (!readSuccess) {
             ILzComposer(composer).refundDeposit(guid);
         } else {
@@ -486,7 +469,7 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         });
 
         MessagingFee memory fee = oft.quoteSend(sendParam, false);
-        if (msg.value < fee.nativeFee) revert BridgeFailed();
+        if (msg.value < fee.nativeFee) revert NotEnoughFee();
 
         address underlyingToken = IOFT(oftToken).token();
         if (underlyingToken != oftToken) {

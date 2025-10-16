@@ -18,7 +18,6 @@ import {LzAdapter} from "./LzAdapter.sol";
 import {IConfigurationFacet} from "../../interfaces/facets/IConfigurationFacet.sol";
 import {IVaultFacet} from "../../interfaces/facets/IVaultFacet.sol";
 import {IVaultsFactory} from "../../interfaces/IVaultsFactory.sol";
-import {console} from "forge-std/console.sol";
 
 /**
  * @title MoreVaultsComposer - MoreVaults Composer (deposit-only)
@@ -34,7 +33,6 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     IVaultsFactory public VAULT_FACTORY;
     address public SHARE_OFT;
     address public SHARE_ERC20;
-    address public LZ_ADAPTER;
 
     address public ENDPOINT;
     uint32 public VAULT_EID;
@@ -62,15 +60,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
      * @notice Initializes the proxy with vault and OFT token addresses
      * @param _vault The address of the MoreVaults vault contract
      * @param _shareOFT The address of the share OFT contract (must be an adapter)
-     * @param _lzAdapter The address of the LayerZero adapter contract
      * @param _vaultFactory The address of the vault factory contract
      *
      * Requirements:
      * - Share token must be the vault itself
      * - Share OFT must be an adapter (approvalRequired() returns true)
-     * - LZ_ADAPTER must be an adapter by MoreVaults
      */
-    function initialize(address _vault, address _shareOFT, address _lzAdapter, address _vaultFactory)
+    function initialize(address _vault, address _shareOFT, address _vaultFactory)
         external
         initializer
     {
@@ -78,7 +74,6 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         SHARE_OFT = _shareOFT;
         SHARE_ERC20 = IOFT(SHARE_OFT).token();
         VAULT_FACTORY = IVaultsFactory(_vaultFactory);
-        LZ_ADAPTER = _lzAdapter;
         ENDPOINT = address(IOAppCore(SHARE_OFT).endpoint());
         VAULT_EID = ILayerZeroEndpointV2(ENDPOINT).eid();
 
@@ -141,9 +136,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         bytes calldata /*_extraData*/
     ) external payable virtual override {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
-        if (LzAdapter(LZ_ADAPTER).isTrustedOFT(_composeSender)) {
+        if (!LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)) {
             if (IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())) {
-                revert OnlyValidComposeCaller(_composeSender);
+                revert InvalidComposeCaller(_composeSender);
             }
         }
 
@@ -196,7 +191,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             revert InsufficientMsgValue(minMsgValue, msg.value);
         }
 
-        if (VAULT_FACTORY.isCrossChainVault(uint32(block.chainid), address(VAULT))) {
+        if (VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT))) {
             _initDeposit(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin, _srcEid);
         } else {
             _depositAndSend(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin);
@@ -251,10 +246,6 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         SendParam memory _sendParam,
         address _refundAddress
     ) external payable virtual nonReentrant {
-        console.log("depositAndSend");
-        console.log("_tokenAddress", _tokenAddress);
-        console.log("_assetAmount", _assetAmount);
-        console.log("_refundAddress", _refundAddress);
         IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _assetAmount);
         _depositAndSend(
             OFTComposeMsgCodec.addressToBytes32(msg.sender), _tokenAddress, _assetAmount, _sendParam, _refundAddress
@@ -289,7 +280,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         address _refundAddress
     ) internal virtual {
         uint256 shareAmount;
-        IERC20(_tokenAddress).forceApprove(_tokenAddress, type(uint256).max);
+        IERC20(_tokenAddress).forceApprove(address(VAULT), type(uint256).max);
         if (_tokenAddress == IERC4626(VAULT).asset()) {
             shareAmount = VAULT.deposit(_assetAmount, address(this));
         } else {
@@ -299,7 +290,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             assets[0] = _assetAmount;
             shareAmount = VAULT.deposit(tokens, assets, address(this));
         }
-        IERC20(_tokenAddress).forceApprove(_tokenAddress, 0);
+        IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
         _assertSlippage(shareAmount, _sendParam.minAmountLD);
 
         _sendParam.amountLD = shareAmount;
@@ -410,7 +401,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         refundSendParam.to = OFTComposeMsgCodec.composeFrom(_message);
         refundSendParam.amountLD = _amount;
 
+        IERC20(IOFT(_oft).token()).forceApprove(_oft, type(uint256).max);
         IOFT(_oft).send{value: msg.value}(refundSendParam, MessagingFee(msg.value, 0), _refundAddress);
+        IERC20(IOFT(_oft).token()).forceApprove(_oft, 0);
     }
 
     receive() external payable {}
