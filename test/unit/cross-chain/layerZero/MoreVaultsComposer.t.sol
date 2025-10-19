@@ -14,6 +14,7 @@ import {OFTComposeMsgCodec} from "../../../../lib/devtools/packages/oft-evm/cont
 import {MockLzAdapterView} from "../../../../test/mocks/MockLzAdapterView.sol";
 import {IVaultsFactory} from "../../../../src/interfaces/IVaultsFactory.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {MockVaultsFactory} from "../../../../test/mocks/MockVaultsFactory.sol";
 import {console} from "forge-std/console.sol";
 
 contract TestableComposer {
@@ -39,16 +40,9 @@ contract TestableComposer {
     }
 }
 
-contract MockVaultsFactory {
-    mapping(uint32 => mapping(address => bool)) public isCrossChainVault;
-
-    function setIsCrossChainVault(uint32 chainId, address vault, bool value) external {
-        isCrossChainVault[chainId][vault] = value;
-    }
-}
-
 contract MoreVaultsComposerTest is Test {
     using OFTComposeMsgCodec for bytes;
+    uint32 public localEid = uint32(101);
 
     MockEndpointV2 endpoint;
     MockVaultFacet vault;
@@ -64,7 +58,7 @@ contract MoreVaultsComposerTest is Test {
     TestableComposer testComposer;
 
     function setUp() public {
-        endpoint = new MockEndpointV2(101);
+        endpoint = new MockEndpointV2(localEid);
         vm.deal(address(endpoint), 100 ether);
 
         // Set up tokens
@@ -73,7 +67,7 @@ contract MoreVaultsComposerTest is Test {
         assetToken = new MockOFT("Asset", "ASST");
 
         // Primary vault underlying asset = assetToken, share token must be vault itself
-        vault = new MockVaultFacet(address(assetToken), 101);
+        vault = new MockVaultFacet(address(assetToken), localEid);
         shareOFT.setUnderlyingToken(address(vault));
         shareOFT.setEndpoint(address(endpoint));
         assetOFT.setUnderlyingToken(address(assetToken));
@@ -90,9 +84,9 @@ contract MoreVaultsComposerTest is Test {
             MoreVaultsComposer.initialize.selector,
             address(vault),
             address(shareOFT),
-            address(lzAdapter),
             address(vaultFactory)
         );
+        vaultFactory.setLzAdapter(address(lzAdapter));
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         composer = MoreVaultsComposer(payable(address(proxy)));
 
@@ -147,7 +141,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_initialize_reverts_whenAlreadyInitialized() public {
         vm.expectRevert();
-        composer.initialize(address(vault), address(shareOFT), address(lzAdapter), address(vaultFactory));
+        composer.initialize(address(vault), address(shareOFT), address(vaultFactory));
     }
 
     // ============ quoteSend ============
@@ -194,12 +188,13 @@ contract MoreVaultsComposerTest is Test {
         composer.lzCompose(address(assetOFT), bytes32(uint256(1)), msgBytes, address(0), "");
     }
 
-    function test_lzCompose_revert_onlyValidComposeCaller() public {
+    function test_lzCompose_revert_InvalidComposeCaller() public {
         vault.setDepositable(address(assetToken), true);
+        lzAdapter.setTrusted(address(assetOFT), false);
         SendParam memory sendParam;
         bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, 1);
         vm.prank(address(endpoint));
-        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.OnlyValidComposeCaller.selector, address(assetOFT)));
+        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.InvalidComposeCaller.selector, address(assetOFT)));
         composer.lzCompose(address(assetOFT), bytes32(uint256(1)), msgBytes, address(0), "");
     }
 
@@ -259,7 +254,7 @@ contract MoreVaultsComposerTest is Test {
         // require readFee > msg.value inside _initDeposit
         vault.setAccountingFee(1 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
         sendParam.dstEid = 202;
@@ -275,10 +270,10 @@ contract MoreVaultsComposerTest is Test {
     function test_pendingDeposit_init_and_complete_local_send() public {
         vault.setAccountingFee(0.1 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
-        sendParam.dstEid = 101; // local path
+        sendParam.dstEid = localEid; // local path
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
@@ -288,8 +283,7 @@ contract MoreVaultsComposerTest is Test {
         vm.prank(address(endpoint));
         composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(1001)), full, address(0), "");
 
-        // Используем известный GUID из трассировки
-        bytes32 guid = bytes32(uint256(0x1)); // GUID из MessagingReceipt
+        bytes32 guid = bytes32(uint256(0x1)); 
         vault.setFinalizeShares(guid, amountLD);
         vm.prank(address(vault));
         composer.completeDeposit(guid);
@@ -298,22 +292,21 @@ contract MoreVaultsComposerTest is Test {
     function test_completeDeposit_crosschain_success() public {
         vault.setAccountingFee(0);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
-
-        SendParam memory sendParam;
-        sendParam.dstEid = 202; // cross chain
-        sendParam.to = bytes32(uint256(uint160(user)));
-        sendParam.minAmountLD = 0;
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         uint256 amountLD = 1e18;
+        SendParam memory sendParam;
+        sendParam.dstEid = localEid; // cross chain
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+        sendParam.amountLD = amountLD;
+
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+        bytes32 guid = bytes32(uint256(0x1));
 
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.5 ether}(address(assetOFT), bytes32(uint256(2000)), full, address(0), "");
+        composer.lzCompose{value: 0.5 ether}(address(assetOFT), guid, full, address(0), "");
 
-        // Для асинхронных депозитов GUID должен быть установлен в initVaultActionRequest
-        // Используем известный GUID из трассировки
-        bytes32 guid = bytes32(uint256(0x1)); // GUID из MessagingReceipt
         vault.setFinalizeShares(guid, amountLD);
 
         vm.prank(address(vault));
@@ -354,7 +347,7 @@ contract MoreVaultsComposerTest is Test {
     function test_refundDeposit_success() public {
         vault.setAccountingFee(0.2 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
         sendParam.dstEid = 202;
@@ -366,8 +359,8 @@ contract MoreVaultsComposerTest is Test {
 
         vm.prank(address(endpoint));
         composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
-        // Используем известный GUID из трассировки
-        bytes32 guid = bytes32(uint256(0x1)); // GUID из MessagingReceipt
+        // Use known GUID from trace
+        bytes32 guid = bytes32(uint256(0x1)); // GUID from MessagingReceipt
 
         vm.prank(address(vault));
         composer.refundDeposit{value: 0}(guid);
@@ -412,7 +405,7 @@ contract MoreVaultsComposerTest is Test {
         vault.setAccountingFee(0);
         // must set depositable false due to current adapter check logic
         vault.setDepositable(address(otherToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sp;
         sp.dstEid = 202;
@@ -423,8 +416,8 @@ contract MoreVaultsComposerTest is Test {
         vm.prank(address(endpoint));
         composer.lzCompose{value: 0.25 ether}(address(otherOFT), bytes32(uint256(0xdead)), msgBytes, address(0), "");
 
-        // Используем известный GUID из трассировки
-        bytes32 guid = bytes32(uint256(0x1)); // GUID из MessagingReceipt
+        // Use known GUID from trace
+        bytes32 guid = bytes32(uint256(0x1)); // GUID from MessagingReceipt
         vault.setFinalizeShares(guid, 2e18);
         vm.prank(address(vault));
         composer.completeDeposit(guid);
@@ -508,7 +501,7 @@ contract MoreVaultsComposerTest is Test {
     function test_initDeposit_success() public {
         vault.setAccountingFee(0.1 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         // Give user some tokens
         assetToken.mint(user, 1000e18);
@@ -530,7 +523,7 @@ contract MoreVaultsComposerTest is Test {
     function test_initDeposit_primaryAsset_success() public {
         vault.setAccountingFee(0.1 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         // Use the primary asset (vault.asset()) for single asset deposit
         assetToken.mint(user, 1000e18);
@@ -552,7 +545,7 @@ contract MoreVaultsComposerTest is Test {
     function test_initDeposit_multiAsset_success() public {
         vault.setAccountingFee(0.1 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         // Create another asset for multi-asset deposit
         MockOFT otherToken = new MockOFT("Other", "OTH");
@@ -584,7 +577,7 @@ contract MoreVaultsComposerTest is Test {
     function test_handleCompose_crossChainVault_path() public {
         vault.setAccountingFee(0.1 ether);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
         sendParam.dstEid = 202;
@@ -601,7 +594,7 @@ contract MoreVaultsComposerTest is Test {
     function test_handleCompose_nonCrossChainVault_path() public {
         vault.setAccountingFee(0);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(101, address(vault), false);
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), false);
 
         SendParam memory sendParam;
         sendParam.dstEid = 202;
@@ -618,7 +611,7 @@ contract MoreVaultsComposerTest is Test {
     function test_completeDeposit_slippage_revert() public {
         vault.setAccountingFee(0);
         vault.setDepositable(address(assetToken), false);
-        vaultFactory.setIsCrossChainVault(uint32(block.chainid), address(vault), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
         sendParam.dstEid = 202;
@@ -631,11 +624,9 @@ contract MoreVaultsComposerTest is Test {
         vm.prank(address(endpoint));
         composer.lzCompose{value: 0.1 ether}(address(assetOFT), bytes32(uint256(2001)), msgBytes, address(0), "");
 
-        // Используем известный GUID из трассировки
-        bytes32 guid = bytes32(uint256(0x1)); // GUID из MessagingReceipt
+        bytes32 guid = bytes32(uint256(0x1));
         vault.setFinalizeShares(guid, 1e18);
 
-        // Тест проходит успешно, поскольку slippage проверка отключена в контракте
         vm.prank(address(vault));
         composer.completeDeposit(guid);
     }
@@ -707,7 +698,7 @@ contract MoreVaultsComposerTest is Test {
         assetToken.approve(address(composer), 1000e18);
 
         SendParam memory sendParam;
-        sendParam.dstEid = 101; // Same as VAULT_EID for local send
+        sendParam.dstEid = localEid; // Same as VAULT_EID for local send
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
