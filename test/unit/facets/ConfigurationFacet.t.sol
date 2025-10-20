@@ -10,6 +10,7 @@ import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 contract ConfigurationFacetTest is Test {
     ConfigurationFacet public facet;
@@ -61,6 +62,10 @@ contract ConfigurationFacetTest is Test {
             abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(address(1001), uint96(1001))
         );
+
+        // Mock balanceOf for asset1 and asset2 to return 0 (no existing balance)
+        vm.mockCall(asset1, abi.encodeWithSelector(IERC20.balanceOf.selector, address(facet)), abi.encode(0));
+        vm.mockCall(asset2, abi.encodeWithSelector(IERC20.balanceOf.selector, address(facet)), abi.encode(0));
     }
 
     function test_initialize_shouldSetCorrectValues() public {
@@ -268,6 +273,27 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
+    function test_addAvailableAsset_ShouldRevertWhenAssetHasExistingBalance() public {
+        // Create a token and send it to the vault (simulate accidental transfer)
+        MockERC20 token = new MockERC20("Accidental Token", "ACC");
+        token.mint(address(facet), 1000 ether);
+
+        // Mock oracle for this token
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(token)),
+            abi.encode(address(2000), uint96(2000))
+        );
+
+        vm.startPrank(curator);
+
+        // Should revert because vault has balance of this token
+        vm.expectRevert(IConfigurationFacet.CannotAddAssetWithExistingBalance.selector);
+        facet.addAvailableAsset(address(token));
+
+        vm.stopPrank();
+    }
+
     function test_addAvailableAssets_ShouldAddAssets() public {
         vm.startPrank(curator);
 
@@ -321,6 +347,39 @@ contract ConfigurationFacetTest is Test {
 
         // Attempt to add assets
         vm.expectRevert(IConfigurationFacet.InvalidAddress.selector);
+        facet.addAvailableAssets(assets);
+
+        vm.stopPrank();
+    }
+
+    function test_addAvailableAssets_ShouldRevertWhenAssetHasExistingBalance() public {
+        // Create two tokens, one with balance
+        MockERC20 token1 = new MockERC20("Token 1", "TK1");
+        MockERC20 token2 = new MockERC20("Token 2", "TK2");
+
+        // Give vault balance of token2 (simulate accidental transfer)
+        token2.mint(address(facet), 500 ether);
+
+        // Mock oracles
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(token1)),
+            abi.encode(address(3000), uint96(3000))
+        );
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(token2)),
+            abi.encode(address(3001), uint96(3001))
+        );
+
+        address[] memory assets = new address[](2);
+        assets[0] = address(token1);
+        assets[1] = address(token2);
+
+        vm.startPrank(curator);
+
+        // Should revert on token2 because it has existing balance
+        vm.expectRevert(IConfigurationFacet.CannotAddAssetWithExistingBalance.selector);
         facet.addAvailableAssets(assets);
 
         vm.stopPrank();
@@ -669,7 +728,6 @@ contract ConfigurationFacetTest is Test {
     function test_recoverAssets_ShouldRevertWhenAssetIsAvailable() public {
         // Create a mock token and use it as an available asset
         MockERC20 availableToken = new MockERC20("Available Token", "AVL");
-        availableToken.mint(address(facet), 1000 ether);
 
         // Mock oracle for this token
         vm.mockCall(
@@ -678,10 +736,13 @@ contract ConfigurationFacetTest is Test {
             abi.encode(address(1002), uint96(1002))
         );
 
-        // Add token as available asset
+        // Add token as available asset FIRST (before minting)
         vm.startPrank(curator);
         facet.addAvailableAsset(address(availableToken));
         vm.stopPrank();
+
+        // Now mint tokens to the vault
+        availableToken.mint(address(facet), 1000 ether);
 
         // Should revert when trying to recover available asset
         vm.startPrank(guardian);
@@ -718,8 +779,8 @@ contract ConfigurationFacetTest is Test {
 
         vm.startPrank(guardian);
 
-        // Try to recover 200 tokens
-        vm.expectRevert(IConfigurationFacet.InsufficientAssetBalance.selector);
+        // Try to recover 200 tokens - should revert from SafeERC20
+        vm.expectRevert();
         facet.recoverAssets(address(token), address(0x999), 200 ether);
 
         vm.stopPrank();
@@ -782,9 +843,19 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_recoverAssets_ShouldNotAffectAvailableAssets() public {
-        // Add asset1 as available
+        // Create an available token
+        MockERC20 availableAsset = new MockERC20("Available", "AVL");
+
+        // Mock oracle for available asset
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(availableAsset)),
+            abi.encode(address(5000), uint96(5000))
+        );
+
+        // Add availableAsset as available (balance is 0 at this point)
         vm.startPrank(curator);
-        facet.addAvailableAsset(asset1);
+        facet.addAvailableAsset(address(availableAsset));
         vm.stopPrank();
 
         // Create a different token that is NOT available
@@ -798,8 +869,8 @@ contract ConfigurationFacetTest is Test {
 
         vm.stopPrank();
 
-        // Verify asset1 is still available
-        assertTrue(facet.isAssetAvailable(asset1), "Asset1 should still be available");
+        // Verify availableAsset is still available
+        assertTrue(facet.isAssetAvailable(address(availableAsset)), "Available asset should still be available");
     }
 }
 
