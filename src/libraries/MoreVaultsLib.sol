@@ -44,6 +44,7 @@ library MoreVaultsLib {
     error AssetAlreadyAvailable();
     error InvalidAddress();
     error NoOracleForAsset();
+    error CannotAddAssetWithExistingBalance();
     error FacetHasBalance(uint256 amount);
     error AccountingFailed(bytes32 selector);
     error UnsupportedProtocol(address protocol);
@@ -366,6 +367,13 @@ library MoreVaultsLib {
         IOracleRegistry oracle = registry.oracle();
         if (address(oracle.getOracleInfo(asset).aggregator) == address(0)) {
             revert NoOracleForAsset();
+        }
+
+        // Prevent adding asset if vault has existing balance
+        // This ensures accidentally sent tokens are recovered before being managed
+        uint256 balance = IERC20(asset).balanceOf(address(this));
+        if (balance > 0) {
+            revert CannotAddAssetWithExistingBalance();
         }
 
         ds.isAssetAvailable[asset] = true;

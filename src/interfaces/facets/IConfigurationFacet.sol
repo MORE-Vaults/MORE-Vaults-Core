@@ -21,6 +21,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error InsufficientAssetBalance();
     error InvalidAmount();
     error InvalidReceiver();
+    error CannotAddAssetWithExistingBalance();
 
     /**
      * @dev Events
