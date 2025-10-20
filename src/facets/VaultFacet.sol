@@ -931,7 +931,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         uint256 netAssets = assets - withdrawalFeeAmount;
 
-        ds.lastTotalAssets = newTotalAssets > assets ? newTotalAssets - assets : 0;
+        ds.lastTotalAssets = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
 
         _withdraw(msgSender, receiver, owner, netAssets, shares);
 
