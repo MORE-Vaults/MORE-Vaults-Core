@@ -759,7 +759,7 @@ library MoreVaultsLib {
 
     function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
         uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
-        return block.timestamp >= _timelockEndsAt || block.timestamp - requestTimestamp > MAX_WITHDRAWAL_DELAY;
+        return block.timestamp >= _timelockEndsAt && block.timestamp - requestTimestamp <= MAX_WITHDRAWAL_DELAY;
     }
 
     function factoryAddress() internal view returns (address) {
