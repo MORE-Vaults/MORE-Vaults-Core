@@ -170,9 +170,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 toConvert := mload(retOffset)
 
                 // compute lockedTokens value slot for asset
-                mstore(0, _lockedTokens.slot)
-                mstore(0x20, asset)
-                slot := keccak256(0, 0x40)
+                mstore(0x00, asset)
+                mstore(0x20, _lockedTokens.slot)
+                slot := keccak256(0x00, 0x40)
                 toConvert := add(toConvert, sload(slot))
                 // if the asset is the wrapped native, add the native balance
                 if eq(_wrappedNative, asset) {
