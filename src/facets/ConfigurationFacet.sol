@@ -349,10 +349,6 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         // Cannot recover assets that are marked as available (vault is managing them)
         if (ds.isAssetAvailable[asset]) revert AssetIsAvailable();
 
-        // Check if vault has sufficient balance
-        uint256 balance = IERC20(asset).balanceOf(address(this));
-        if (balance < amount) revert InsufficientAssetBalance();
-
         // Transfer the assets to receiver
         IERC20(asset).safeTransfer(receiver, amount);
 
