@@ -274,7 +274,8 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         if (balances.sharesBefore < balances.sharesAfter && balances.assetsAfter == balances.assetsBefore) {
             // If total supply increased, it means that deposit request was executed, otherwise withdrawal request was cancelled
             if (balances.totalSupplyAfter > balances.totalSupplyBefore) {
-                ds.lockedTokens[balances.asset] -= balances.sharesAfter - balances.sharesBefore;
+                uint256 assetsUnlocked = IERC4626(vault).convertToAssets(balances.sharesAfter - balances.sharesBefore);
+                ds.lockedTokens[balances.asset] -= assetsUnlocked;
             } else {
                 delete ds.lockedTokens[vault];
             }
@@ -284,7 +285,8 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         if (balances.sharesAfter == balances.sharesBefore && balances.assetsBefore < balances.assetsAfter) {
             // If total supply decreased, it means that withdrawal request was executed, otherwise deposit request was cancelled
             if (balances.totalSupplyBefore > balances.totalSupplyAfter) {
-                ds.lockedTokens[vault] -= balances.assetsAfter - balances.assetsBefore;
+                uint256 sharesUnlocked = IERC4626(vault).convertToShares(balances.assetsAfter - balances.assetsBefore);
+                ds.lockedTokens[vault] -= sharesUnlocked;
                 MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
             } else {
                 delete ds.lockedTokens[balances.asset];
