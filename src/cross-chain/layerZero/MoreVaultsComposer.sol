@@ -40,6 +40,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     /// @dev Structure to store pending async deposit information
     struct PendingDeposit {
         bytes32 depositor;
+        address tokenAddress;
         address oftAddress;
         uint256 assetAmount;
         address refundAddress;
@@ -53,7 +54,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
     // Async deposit lifecycle is tracked via callbacks and the Deposited event in the interface
     constructor() {
-        _disableInitializers();
+        // _disableInitializers();
     }
 
     /**
@@ -66,10 +67,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
      * - Share token must be the vault itself
      * - Share OFT must be an adapter (approvalRequired() returns true)
      */
-    function initialize(address _vault, address _shareOFT, address _vaultFactory)
-        external
-        initializer
-    {
+    function initialize(address _vault, address _shareOFT, address _vaultFactory) external initializer {
         VAULT = IVaultFacet(_vault);
         SHARE_OFT = _shareOFT;
         SHARE_ERC20 = IOFT(SHARE_OFT).token();
@@ -190,9 +188,11 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (msg.value < minMsgValue) {
             revert InsufficientMsgValue(minMsgValue, msg.value);
         }
-
+        if (IVaultFacet(address(VAULT)).paused()) {
+            revert VaultIsPaused();
+        }
         if (VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT))) {
-            _initDeposit(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin, _srcEid);
+            _initDeposit(_composeFrom, IOFT(_oftIn).token(), _oftIn, _amount, sendParam, tx.origin, _srcEid);
         } else {
             _depositAndSend(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin);
         }
@@ -204,12 +204,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
      * @dev This function should be called when the async deposit operation is completed
      */
     function completeDeposit(bytes32 _guid) external virtual nonReentrant {
-        if (msg.sender != address(VAULT)) revert OnlyVault(msg.sender);
+        if (msg.sender != address(VAULT) && msg.sender != address(VAULT_FACTORY.lzAdapter())) {
+            revert OnlyVaultOrLzAdapter(msg.sender);
+        }
 
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
-
-        uint256 shares = _deposit(_guid, IOFT(deposit.oftAddress).token());
+        uint256 shares = _deposit(_guid, deposit.tokenAddress);
         deposit.sendParam.amountLD = shares;
         deposit.sendParam.minAmountLD = 0;
 
@@ -220,7 +221,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     }
 
     function refundDeposit(bytes32 _guid) external payable virtual nonReentrant {
-        if (msg.sender != address(VAULT)) revert OnlyVault(msg.sender);
+        if (msg.sender != address(VAULT) && msg.sender != address(VAULT_FACTORY.lzAdapter())) {
+            revert OnlyVaultOrLzAdapter(msg.sender);
+        }
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
 
@@ -231,13 +234,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         refundSendParam.dstEid = deposit.srcEid;
         refundSendParam.to = deposit.depositor;
         refundSendParam.amountLD = deposit.assetAmount;
-        address tokenAddress = IOFT(deposit.oftAddress).token();
 
-        IERC20(tokenAddress).forceApprove(deposit.oftAddress, type(uint256).max);
-        IOFT(tokenAddress).send{value: deposit.msgValue}(
+        IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, deposit.assetAmount);
+        IOFT(deposit.tokenAddress).send{value: deposit.msgValue}(
             refundSendParam, MessagingFee(deposit.msgValue, 0), deposit.refundAddress
         );
-        IERC20(tokenAddress).forceApprove(deposit.oftAddress, 0);
+        IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, 0);
+        emit Refunded(_guid);
     }
 
     function depositAndSend(
@@ -280,7 +283,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         address _refundAddress
     ) internal virtual {
         uint256 shareAmount;
-        IERC20(_tokenAddress).forceApprove(address(VAULT), type(uint256).max);
+        IERC20(_tokenAddress).forceApprove(address(VAULT), _assetAmount);
         if (_tokenAddress == IERC4626(VAULT).asset()) {
             shareAmount = VAULT.deposit(_assetAmount, address(this));
         } else {
@@ -303,19 +306,21 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     function initDeposit(
         bytes32 _depositor,
         address _tokenAddress,
+        address _oftAddress,
         uint256 _assetAmount,
         SendParam memory _sendParam,
         address _refundAddress,
         uint32 _srcEid
     ) external payable virtual nonReentrant {
         IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _assetAmount);
-        _initDeposit(_depositor, _tokenAddress, _assetAmount, _sendParam, _refundAddress, _srcEid);
+        _initDeposit(_depositor, _tokenAddress, _oftAddress, _assetAmount, _sendParam, _refundAddress, _srcEid);
     }
 
     /**
      * @dev Internal function that initiates an async deposit operation
      * @param _depositor The depositor (bytes32 format to account for non-evm addresses)
      * @param _tokenAddress The address of the token to deposit
+     * @param _oftAddress The address of the OFT contract to use for sending
      * @param _assetAmount The number of assets to deposit
      * @param _sendParam Parameter that defines how to send the shares
      * @param _refundAddress Address to receive excess payment of the LZ fees
@@ -327,6 +332,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     function _initDeposit(
         bytes32 _depositor,
         address _tokenAddress,
+        address _oftAddress,
         uint256 _assetAmount,
         SendParam memory _sendParam,
         address _refundAddress,
@@ -335,6 +341,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         uint256 readFee = IBridgeFacet(address(VAULT)).quoteAccountingFee("");
         if (msg.value < readFee) {
             revert InsufficientMsgValue(readFee, msg.value);
+        }
+        if (IOFT(_oftAddress).token() != _tokenAddress) {
+            revert NotATokenOfOFT();
         }
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
@@ -352,7 +361,14 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         bytes32 guid =
             IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(actionType, actionCallData, "");
         pendingDeposits[guid] = PendingDeposit(
-            _depositor, _tokenAddress, _assetAmount, _refundAddress, msg.value - readFee, _srcEid, _sendParam
+            _depositor,
+            _tokenAddress,
+            _oftAddress,
+            _assetAmount,
+            _refundAddress,
+            msg.value - readFee,
+            _srcEid,
+            _sendParam
         );
     }
 
@@ -364,7 +380,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
      * @notice This function is expected to be overridden by the inheriting contract to implement custom/nonERC4626 deposit logic
      */
     function _deposit(bytes32 _guid, address _tokenAddress) internal virtual returns (uint256 shareAmount) {
-        IERC20(_tokenAddress).forceApprove(address(VAULT), type(uint256).max);
+        IERC20(_tokenAddress).forceApprove(address(VAULT), pendingDeposits[_guid].assetAmount);
         shareAmount = abi.decode(IBridgeFacet(address(VAULT)).finalizeRequest(_guid), (uint256));
         IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
     }
@@ -401,7 +417,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         refundSendParam.to = OFTComposeMsgCodec.composeFrom(_message);
         refundSendParam.amountLD = _amount;
 
-        IERC20(IOFT(_oft).token()).forceApprove(_oft, type(uint256).max);
+        IERC20(IOFT(_oft).token()).forceApprove(_oft, _amount);
         IOFT(_oft).send{value: msg.value}(refundSendParam, MessagingFee(msg.value, 0), _refundAddress);
         IERC20(IOFT(_oft).token()).forceApprove(_oft, 0);
     }

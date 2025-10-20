@@ -22,7 +22,6 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error AccountingViaOracles();
     error AdapterNotAllowed(address);
     error RequestTimedOut();
-    error LocalAccountingFailed();
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD

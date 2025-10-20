@@ -32,6 +32,7 @@ interface IBridgeAdapter {
     error InvalidAddress();
     error SlippageTooHigh();
     error InvalidVault();
+    error InsufficientMsgValue(uint256 expectedMsgValue, uint256 actualMsgValue);
 
     /**
      * @notice Shared events (each adapter has its own specific BridgeExecuted event)

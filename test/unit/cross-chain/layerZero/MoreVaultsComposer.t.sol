@@ -42,6 +42,7 @@ contract TestableComposer {
 
 contract MoreVaultsComposerTest is Test {
     using OFTComposeMsgCodec for bytes;
+
     uint32 public localEid = uint32(101);
 
     MockEndpointV2 endpoint;
@@ -81,10 +82,7 @@ contract MoreVaultsComposerTest is Test {
         // Create implementation and proxy
         MoreVaultsComposer implementation = new MoreVaultsComposer();
         bytes memory initData = abi.encodeWithSelector(
-            MoreVaultsComposer.initialize.selector,
-            address(vault),
-            address(shareOFT),
-            address(vaultFactory)
+            MoreVaultsComposer.initialize.selector, address(vault), address(shareOFT), address(vaultFactory)
         );
         vaultFactory.setLzAdapter(address(lzAdapter));
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
@@ -283,7 +281,7 @@ contract MoreVaultsComposerTest is Test {
         vm.prank(address(endpoint));
         composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(1001)), full, address(0), "");
 
-        bytes32 guid = bytes32(uint256(0x1)); 
+        bytes32 guid = bytes32(uint256(0x1));
         vault.setFinalizeShares(guid, amountLD);
         vm.prank(address(vault));
         composer.completeDeposit(guid);
@@ -313,8 +311,8 @@ contract MoreVaultsComposerTest is Test {
         composer.completeDeposit(guid);
     }
 
-    function test_completeDeposit_reverts_onlyVault_and_missing() public {
-        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.OnlyVault.selector, address(this)));
+    function test_completeDeposit_reverts_OnlyVaultOrLzAdapter_and_missing() public {
+        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.OnlyVaultOrLzAdapter.selector, address(this)));
         composer.completeDeposit(bytes32(uint256(1)));
 
         vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.DepositNotFound.selector, bytes32(uint256(1))));
@@ -372,7 +370,7 @@ contract MoreVaultsComposerTest is Test {
     }
 
     function test_refundDeposit_reverts_when_notVault_or_missing() public {
-        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.OnlyVault.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.OnlyVaultOrLzAdapter.selector, address(this)));
         composer.refundDeposit(bytes32(uint256(999)));
 
         vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.DepositNotFound.selector, bytes32(uint256(999))));
@@ -515,7 +513,13 @@ contract MoreVaultsComposerTest is Test {
         sendParam.minAmountLD = 0;
 
         composer.initDeposit{value: 0.1 ether}(
-            OFTComposeMsgCodec.addressToBytes32(user), address(assetToken), 100e18, sendParam, user, 201
+            OFTComposeMsgCodec.addressToBytes32(user),
+            address(assetToken),
+            address(assetOFT),
+            100e18,
+            sendParam,
+            user,
+            201
         );
         vm.stopPrank();
     }
@@ -537,7 +541,13 @@ contract MoreVaultsComposerTest is Test {
         sendParam.minAmountLD = 0;
 
         composer.initDeposit{value: 0.1 ether}(
-            OFTComposeMsgCodec.addressToBytes32(user), address(assetToken), 100e18, sendParam, user, 201
+            OFTComposeMsgCodec.addressToBytes32(user),
+            address(assetToken),
+            address(assetOFT),
+            100e18,
+            sendParam,
+            user,
+            201
         );
         vm.stopPrank();
     }
@@ -550,6 +560,10 @@ contract MoreVaultsComposerTest is Test {
         // Create another asset for multi-asset deposit
         MockOFT otherToken = new MockOFT("Other", "OTH");
         otherToken.mint(user, 1000e18);
+        MockOFTAdapter otherTokenOFT = new MockOFTAdapter();
+        otherTokenOFT.setUnderlyingToken(address(otherToken));
+        otherTokenOFT.setEndpoint(address(endpoint));
+        lzAdapter.setTrusted(address(otherTokenOFT), true);
 
         deal(user, 10 ether);
         vm.startPrank(user);
@@ -561,7 +575,13 @@ contract MoreVaultsComposerTest is Test {
         sendParam.minAmountLD = 0;
 
         composer.initDeposit{value: 0.1 ether}(
-            OFTComposeMsgCodec.addressToBytes32(user), address(otherToken), 100e18, sendParam, user, 201
+            OFTComposeMsgCodec.addressToBytes32(user),
+            address(otherToken),
+            address(otherTokenOFT),
+            100e18,
+            sendParam,
+            user,
+            201
         );
         vm.stopPrank();
     }
