@@ -93,7 +93,7 @@ library AccessControlLib {
      * @param caller Address to validate
      */
     function validateGuardian(address caller) internal view {
-        if (accessControlStorage().guardian != caller && accessControlStorage().owner != caller) {
+        if (accessControlStorage().guardian != caller) {
             revert UnauthorizedAccess();
         }
     }

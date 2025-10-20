@@ -116,7 +116,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @inheritdoc IVaultFacet
      */
     function unpause() external {
-        AccessControlLib.validateGuardian(msg.sender);
+         if (
+            AccessControlLib.vaultOwner() != msg.sender && AccessControlLib.vaultGuardian() != msg.sender
+        ) {
+            revert AccessControlLib.UnauthorizedAccess();
+        }
         IVaultsFactory factory = IVaultsFactory(MoreVaultsLib.factoryAddress());
         address[] memory restrictedFacets = factory.getRestrictedFacets();
         for (uint256 i = 0; i < restrictedFacets.length;) {

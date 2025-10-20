@@ -92,4 +92,6 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     function defaultCrossChainAccountingManager() external pure returns (address) {
         return address(0);
     }
+
+    function setIsCrossChainAccountingManager(address manager, bool isManager) external {}
 }

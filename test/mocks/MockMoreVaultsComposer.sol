@@ -87,6 +87,7 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
     function initDeposit(
         bytes32 depositor,
         address tokenAddress,
+        address targetOft,
         uint256 assetAmount,
         SendParam memory sendParam,
         address refundAddress,

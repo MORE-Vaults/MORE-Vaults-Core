@@ -243,4 +243,8 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     /// @param tokenId token type ID
     /// @return array of token addresses
     function tokensHeld(bytes32 tokenId) external view returns (address[] memory);
+
+    /// @notice Get the cross chain accounting manager
+    /// @return The cross chain accounting manager
+    function getCrossChainAccountingManager() external view returns (address);
 }

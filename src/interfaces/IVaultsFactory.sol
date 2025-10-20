@@ -253,5 +253,4 @@ interface IVaultsFactory {
      * @return max finalization time
      */
     function maxFinalizationTime() external view returns (uint96);
-
 }

@@ -443,9 +443,7 @@ contract MoreVaultsLibTest is Test {
         // Mock oracle
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
         vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token1),
-            abi.encode(USD_PRICE)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token1), abi.encode(USD_PRICE)
         );
         vm.mockCall(token1, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
 
@@ -460,9 +458,7 @@ contract MoreVaultsLibTest is Test {
         // Mock oracle
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracle));
         vm.mockCall(
-            oracle,
-            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token1),
-            abi.encode(USD_PRICE)
+            oracle, abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, token1), abi.encode(USD_PRICE)
         );
         vm.mockCall(token1, abi.encodeWithSelector(IERC20Metadata.decimals.selector), abi.encode(18));
 

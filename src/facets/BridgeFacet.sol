@@ -155,17 +155,13 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             vaults, eids, extraOptions, msg.sender
         ).guid;
 
-        (uint256 totalAssets, bool success) = IVaultFacet(address(this)).totalAssetsUsd();
-        if (!success) {
-            revert LocalAccountingFailed();
-        }
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
             timestamp: uint64(block.timestamp),
             actionType: actionType,
             actionCallData: actionCallData,
             fulfilled: false,
-            totalAssets: totalAssets
+            totalAssets: IVaultFacet(address(this)).totalAssets()
         });
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }
@@ -198,7 +194,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         bool success;
         if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
             (uint256 assets, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
-            (success,) = address(this).call(abi.encodeWithSelector(IERC4626.deposit.selector, assets, receiver));
+            (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.deposit.selector, assets, receiver));
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (address[] memory tokens, uint256[] memory assets, address receiver, uint256 value) =
                 abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));

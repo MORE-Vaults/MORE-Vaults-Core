@@ -354,10 +354,20 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
     }
 
     function _callbackToComposer(address composer, bytes32 guid, bool readSuccess) internal {
-        if (!readSuccess) {
-            ILzComposer(composer).refundDeposit(guid);
+        if (readSuccess) {
+            try ILzComposer(composer).completeDeposit(guid) {}
+            catch (bytes memory _err) {
+                /// @dev A revert where the msg.value passed is lower than the min expected msg.value is handled separately
+                /// This is because it is possible to re-trigger from the endpoint the compose operation with the right msg.value
+                if (bytes4(_err) == InsufficientMsgValue.selector) {
+                    assembly {
+                        revert(add(32, _err), mload(_err))
+                    }
+                }
+                ILzComposer(composer).refundDeposit(guid);
+            }
         } else {
-            ILzComposer(composer).completeDeposit(guid);
+            ILzComposer(composer).refundDeposit(guid);
         }
     }
 
@@ -386,7 +396,9 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         address refundAddress
     ) internal {
         // Validate caller is authorized vault (calculate initiatorIsHub internally)
-        if (!vaultsFactory.isFactoryVault(msg.sender)) revert UnauthorizedVault();
+        if (!vaultsFactory.isFactoryVault(msg.sender)) {
+            revert UnauthorizedVault();
+        }
 
         // Validate OFT token is trusted
         if (!_trustedOFTs[oftTokenAddress]) revert UntrustedOFT();
