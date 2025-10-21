@@ -220,12 +220,11 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
     }
 
     /**
-     * @notice Executes generic asynchronous actions on vaults
-     * @param vault The address of the vault to execute the action on
-     * @param data The encoded data for the async action execution
+     * @inheritdoc IERC4626Facet
      */
     function genericAsyncActionExecution(
         address vault,
+        uint256 amount,
         bytes calldata data // data for async action execution
     ) external {
         AccessControlLib.validateDiamond(msg.sender);
@@ -247,10 +246,10 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         balances.totalSupplyBefore = IERC4626(vault).totalSupply();
 
         ExecutionContext memory execution;
-        IERC20(balances.asset).forceApprove(vault, type(uint256).max);
         execution.diamondAddress = bytes32(uint256(uint160(address(this))));
         execution.fixedData = _replaceBytesInData(data, validation.maskForData, execution.diamondAddress);
 
+        IERC20(balances.asset).forceApprove(vault, amount);
         (execution.success, execution.result) = vault.call(execution.fixedData);
         if (!execution.success) revert AsyncActionExecutionFailed(execution.result);
         IERC20(balances.asset).forceApprove(vault, 0);
