@@ -658,6 +658,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.lastTotalAssets = ds.lastTotalAssets + assets;
+        _changeDepositCap(ds, caller, assets, true);
     }
 
     /**
@@ -683,6 +684,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             }
         }
         _mint(receiver, shares);
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        _changeDepositCap(ds, caller, convertToAssets(shares), true);
 
         emit Deposit(caller, receiver, tokens, assets, shares);
     }
@@ -751,15 +755,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (ds.isWhitelistEnabled) {
-            uint256 userDepositedAssets =
-                _convertToAssetsWithTotals(balanceOf(receiver), totalSupply(), newTotalAssets, Math.Rounding.Ceil);
-            if (ds.depositWhitelist[receiver] < userDepositedAssets + newAssets) {
+            if (ds.depositWhitelist[receiver] < newAssets) {
                 revert ERC4626ExceededMaxDeposit(
                     receiver,
                     newAssets,
-                    ds.depositWhitelist[receiver] > userDepositedAssets
-                        ? ds.depositWhitelist[receiver] - userDepositedAssets
-                        : 0
+                    ds.depositWhitelist[receiver]
                 );
             }
         }
@@ -774,6 +774,12 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 maxToDeposit = depositCapacity - newTotalAssets;
             }
             revert ERC4626ExceededMaxDeposit(receiver, newAssets, maxToDeposit);
+        }
+    }
+
+    function _changeDepositCap(MoreVaultsLib.MoreVaultsStorage storage ds, address receiver, uint256 assets, bool isDecrease) internal {
+        if (ds.isWhitelistEnabled) {
+            ds.depositWhitelist[receiver] = isDecrease ? ds.depositWhitelist[receiver] - assets : ds.depositWhitelist[receiver] + assets;
         }
     }
 
@@ -927,6 +933,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 netAssets = assets - withdrawalFeeAmount;
 
         ds.lastTotalAssets = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
+
+        _changeDepositCap(ds, msgSender, assets, false);
 
         _withdraw(msgSender, receiver, owner, netAssets, shares);
 
