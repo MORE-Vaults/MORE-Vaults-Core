@@ -173,7 +173,6 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
-        uint64 lastAccruedInterestTimestamp;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);

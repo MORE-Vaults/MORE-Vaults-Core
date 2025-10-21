@@ -56,7 +56,6 @@ library MoreVaultsStorageHelper {
     uint256 constant FINALIZATION_GUID = 36;
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
     uint256 constant WITHDRAWAL_FEE = 37;
-    uint256 constant LAST_ACCRUED_INTEREST_TIMESTAMP = 37;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -688,21 +687,6 @@ library MoreVaultsStorageHelper {
         bytes32 storedValue = getStorageValue(contractAddress, WITHDRAWAL_FEE);
         bytes32 mask = bytes32(uint256(type(uint96).max) << 8);
         return uint96(uint256((storedValue & mask) >> 8));
-    }
-
-    function setLastAccruedInterestTimestamp(address contractAddress, uint64 value) internal {
-        // uint64 starts at 104-bit offset (1 + 96 + 8)
-        bytes32 storedValue = getStorageValue(contractAddress, LAST_ACCRUED_INTEREST_TIMESTAMP);
-        bytes32 mask = bytes32(uint256(type(uint64).max) << 104);
-        setStorageValue(
-            contractAddress, LAST_ACCRUED_INTEREST_TIMESTAMP, (storedValue & ~mask) | bytes32(uint256(value) << 104)
-        );
-    }
-
-    function getLastAccruedInterestTimestamp(address contractAddress) internal view returns (uint64) {
-        bytes32 storedValue = getStorageValue(contractAddress, LAST_ACCRUED_INTEREST_TIMESTAMP);
-        bytes32 mask = bytes32(uint256(type(uint64).max) << 104);
-        return uint64(uint256((storedValue & mask) >> 104));
     }
 
     // Functions for WITHDRAW_TIMELOCK (slot 25)

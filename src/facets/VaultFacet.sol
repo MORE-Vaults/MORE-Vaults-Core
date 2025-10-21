@@ -412,7 +412,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
         _beforeAccounting(ds.beforeAccountingFacets);
         uint256 newTotalAssets = totalAssets();
-        _accrueInterest(newTotalAssets, uint64(block.timestamp));
+        _accrueInterest(newTotalAssets);
 
         uint256 shares = _convertToSharesWithTotals(_assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
@@ -448,9 +448,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
-        _accrueInterest(newTotalAssets, timestamp);
+        _accrueInterest(newTotalAssets);
         _validateCapacity(receiver, newTotalAssets, assets);
 
         ds.lastTotalAssets = newTotalAssets;
@@ -472,9 +472,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
-        _accrueInterest(newTotalAssets, timestamp);
+        _accrueInterest(newTotalAssets);
         ds.lastTotalAssets = newTotalAssets;
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
@@ -495,9 +495,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
+        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
-        _accrueInterest(newTotalAssets, timestamp);
+        _accrueInterest(newTotalAssets);
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
@@ -539,8 +539,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
-        _accrueInterest(newTotalAssets, timestamp);
+        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets);
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
 
@@ -561,8 +561,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (msg.value > 0) {
             ds.isNativeDeposit = true;
         }
-        (uint256 newTotalAssets, address msgSender, uint64 timestamp) = _getInfoForAction(ds);
-        _accrueInterest(newTotalAssets, timestamp);
+        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets);
 
         ds.lastTotalAssets = newTotalAssets;
 
@@ -601,8 +601,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         AccessControlLib.validateDiamond(msg.sender);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        (uint256 newTotalAssets,, uint64 timestamp) = _getInfoForAction(ds);
-        _accrueInterest(newTotalAssets, timestamp);
+        (uint256 newTotalAssets,) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets);
 
         ds.lastTotalAssets = newTotalAssets;
 
@@ -692,7 +692,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @dev Calculate the interest of the vault and mint the fee shares
      * @param _totalAssets The total assets of the vault
      */
-    function _accrueInterest(uint256 _totalAssets, uint64 _timestamp) internal {
+    function _accrueInterest(uint256 _totalAssets) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         uint256 feeShares;
@@ -700,13 +700,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _checkVaultHealth(_totalAssets, totalSupply());
 
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
-
-        // if the timestamp is less than the last accrued interest timestamp, that means the interest has already been accrued
-        // it needs to prevent multiple fee accruals if cross chain accounting is used
-        if (_timestamp <= ds.lastAccruedInterestTimestamp) {
-            return;
-        }
-        ds.lastAccruedInterestTimestamp = _timestamp;
         ds.lastTotalAssets = _totalAssets;
 
         (address protocolFeeRecipient, uint96 protocolFee) =
@@ -895,7 +888,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
     function _getInfoForAction(MoreVaultsLib.MoreVaultsStorage storage ds)
         internal
-        returns (uint256 totalAssets_, address msgSender_, uint64 timestamp_)
+        returns (uint256 totalAssets_, address msgSender_)
     {
         if (!ds.isHub) {
             revert NotAHub();
@@ -908,13 +901,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             } else {
                 totalAssets_ = ds.guidToCrossChainRequestInfo[guid].totalAssets;
                 msgSender_ = ds.guidToCrossChainRequestInfo[guid].initiator;
-                timestamp_ = ds.guidToCrossChainRequestInfo[guid].timestamp;
             }
         } else {
             _beforeAccounting(ds.beforeAccountingFacets);
             totalAssets_ = totalAssets();
             msgSender_ = _msgSender();
-            timestamp_ = uint64(block.timestamp);
         }
     }
 
