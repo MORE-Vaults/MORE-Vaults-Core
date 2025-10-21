@@ -116,9 +116,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @inheritdoc IVaultFacet
      */
     function unpause() external {
-         if (
-            AccessControlLib.vaultOwner() != msg.sender && AccessControlLib.vaultGuardian() != msg.sender
-        ) {
+        if (AccessControlLib.vaultOwner() != msg.sender && AccessControlLib.vaultGuardian() != msg.sender) {
             revert AccessControlLib.UnauthorizedAccess();
         }
         IVaultsFactory factory = IVaultsFactory(MoreVaultsLib.factoryAddress());
@@ -756,11 +754,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         if (ds.isWhitelistEnabled) {
             if (ds.depositWhitelist[receiver] < newAssets) {
-                revert ERC4626ExceededMaxDeposit(
-                    receiver,
-                    newAssets,
-                    ds.depositWhitelist[receiver]
-                );
+                revert ERC4626ExceededMaxDeposit(receiver, newAssets, ds.depositWhitelist[receiver]);
             }
         }
 
@@ -777,9 +771,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
     }
 
-    function _changeDepositCap(MoreVaultsLib.MoreVaultsStorage storage ds, address receiver, uint256 assets, bool isDecrease) internal {
+    function _changeDepositCap(
+        MoreVaultsLib.MoreVaultsStorage storage ds,
+        address receiver,
+        uint256 assets,
+        bool isDecrease
+    ) internal {
         if (ds.isWhitelistEnabled) {
-            ds.depositWhitelist[receiver] = isDecrease ? ds.depositWhitelist[receiver] - assets : ds.depositWhitelist[receiver] + assets;
+            ds.depositWhitelist[receiver] =
+                isDecrease ? ds.depositWhitelist[receiver] - assets : ds.depositWhitelist[receiver] + assets;
         }
     }
 

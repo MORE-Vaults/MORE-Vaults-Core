@@ -52,16 +52,21 @@ contract MockEndpointForBootstrap {
         return MessagingFee({nativeFee: quoteFee, lzTokenFee: 0});
     }
 
-    function send(
-        MessagingParams calldata _params,
-        address _refundAddress
-    ) external payable returns (MessagingReceipt memory) {
+    function send(MessagingParams calldata _params, address _refundAddress)
+        external
+        payable
+        returns (MessagingReceipt memory)
+    {
         lastDstEid = _params.dstEid;
         lastReceiver = _params.receiver;
         lastMessage = _params.message;
         lastOptions = _params.options;
         lastRefundAddress = _refundAddress;
-        return MessagingReceipt({guid: bytes32(uint256(1)), nonce: 1, fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})});
+        return MessagingReceipt({
+            guid: bytes32(uint256(1)),
+            nonce: 1,
+            fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
+        });
     }
 
     function setNativeQuoteFee(uint256 _fee) external {
@@ -112,7 +117,7 @@ contract VaultsFactoryHubSendBootstrapTest is Test {
             1 days, // maxFinalizationTime
             address(0x9999999999999999999999999999999999999999), // lzAdapter
             address(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB), // composerImplementation
-            address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC)  // oftAdapterFactory
+            address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC) // oftAdapterFactory
         );
 
         // Create hub vault owned by owner
