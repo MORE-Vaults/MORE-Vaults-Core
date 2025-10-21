@@ -63,18 +63,25 @@ contract MockEndpointForBroadcast {
         return MessagingFee({nativeFee: quoteFee, lzTokenFee: 0});
     }
 
-    function send(
-        MessagingParams calldata _params,
-        address _refundAddress
-    ) external payable returns (MessagingReceipt memory) {
-        sendCalls.push(SendCall({
-            dstEid: _params.dstEid,
-            receiver: _params.receiver,
-            message: _params.message,
-            refundAddress: _refundAddress,
-            value: msg.value
-        }));
-        return MessagingReceipt({guid: bytes32(sendCalls.length), nonce: uint64(sendCalls.length), fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})});
+    function send(MessagingParams calldata _params, address _refundAddress)
+        external
+        payable
+        returns (MessagingReceipt memory)
+    {
+        sendCalls.push(
+            SendCall({
+                dstEid: _params.dstEid,
+                receiver: _params.receiver,
+                message: _params.message,
+                refundAddress: _refundAddress,
+                value: msg.value
+            })
+        );
+        return MessagingReceipt({
+            guid: bytes32(sendCalls.length),
+            nonce: uint64(sendCalls.length),
+            fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
+        });
     }
 
     function setNativeQuoteFee(uint256 _fee) external {
@@ -127,7 +134,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
             1 days, // maxFinalizationTime
             address(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB), // lzAdapter
             address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC), // composerImplementation
-            address(0xdD2FD4581271e230360230F9337D5c0430Bf44C0)  // oftAdapterFactory
+            address(0xdD2FD4581271e230360230F9337D5c0430Bf44C0) // oftAdapterFactory
         );
 
         // Create hub vault owned by owner
@@ -150,11 +157,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.deal(owner, 1 ether);
         vm.prank(owner);
         factory.hubBroadcastSpokeAdded{value: 0.01 ether}(
-            address(hubVault),
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
+            address(hubVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
 
         // Verify one message was sent
@@ -174,11 +177,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.deal(owner, 1 ether);
         vm.prank(owner);
         factory.hubBroadcastSpokeAdded{value: 0.02 ether}(
-            address(hubVault),
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
+            address(hubVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
 
         // Verify two messages were sent
@@ -199,11 +198,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.deal(owner, 1 ether);
         vm.prank(owner);
         factory.hubBroadcastSpokeAdded{value: 0 ether}(
-            address(hubVault),
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
+            address(hubVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
 
         // Verify no messages were sent
@@ -218,13 +213,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.deal(owner, 1 ether);
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSignature("NotAVault(address)", notAVault));
-        factory.hubBroadcastSpokeAdded{value: 0.01 ether}(
-            notAVault,
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
-        );
+        factory.hubBroadcastSpokeAdded{value: 0.01 ether}(notAVault, NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options);
     }
 
     function test_hubBroadcastSpokeAdded_RevertIfNotOwner() public {
@@ -235,11 +224,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.prank(notOwner);
         vm.expectRevert(abi.encodeWithSignature("NotAnOwnerOfVault(address)", notOwner));
         factory.hubBroadcastSpokeAdded{value: 0.01 ether}(
-            address(hubVault),
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
+            address(hubVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
     }
 
@@ -254,11 +239,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSignature("HubCannotInitiateLink()"));
         factory.hubBroadcastSpokeAdded{value: 0.01 ether}(
-            address(spokeVault),
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
+            address(spokeVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
     }
 
@@ -270,11 +251,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
         vm.deal(owner, 1 ether);
         vm.prank(owner);
         factory.hubBroadcastSpokeAdded{value: 0.03 ether}(
-            address(hubVault),
-            NEW_SPOKE_EID,
-            NEW_SPOKE_VAULT,
-            dstEids,
-            options
+            address(hubVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
 
         // Verify the last call receives the remaining budget

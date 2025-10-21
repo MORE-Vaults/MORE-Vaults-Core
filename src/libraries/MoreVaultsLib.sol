@@ -173,7 +173,6 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
-        uint64 lastAccruedInterestTimestamp;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -759,7 +758,7 @@ library MoreVaultsLib {
 
     function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
         uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
-        return block.timestamp >= _timelockEndsAt || block.timestamp - requestTimestamp > MAX_WITHDRAWAL_DELAY;
+        return block.timestamp >= _timelockEndsAt && block.timestamp - requestTimestamp <= MAX_WITHDRAWAL_DELAY;
     }
 
     function factoryAddress() internal view returns (address) {

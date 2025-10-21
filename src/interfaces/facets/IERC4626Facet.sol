@@ -63,9 +63,10 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
     function erc4626Redeem(address vault, uint256 shares) external returns (uint256 assets);
 
     /**
-     * @notice Executes a generic async action on a vault that is approved by registry for it
-     * @param vault The address of the vault to execute an action on
+     * @notice Executes generic asynchronous actions on vaults
+     * @param vault The address of the vault to execute the action on
+     * @param amount of underlying tokens to be deposited if action is deposit/mint, otherwise can be passed as 0
      * @param data The encoded data for the async action execution
      */
-    function genericAsyncActionExecution(address vault, bytes calldata data) external;
+    function genericAsyncActionExecution(address vault, uint256 amount, bytes calldata data) external;
 }

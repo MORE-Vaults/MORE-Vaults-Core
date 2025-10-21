@@ -53,7 +53,7 @@ contract VaultsFactoryLzReceiveTest is Test {
     address public admin = address(0x1111);
     address public vaultOwner = address(0x2222);
 
-    uint32 public constant LOCAL_EID = 101;  // Hub chain
+    uint32 public constant LOCAL_EID = 101; // Hub chain
     uint32 public constant SPOKE_EID = 102; // Spoke chain
     uint96 public constant MAX_FINALIZATION_TIME = 1 days;
 
@@ -83,11 +83,11 @@ contract VaultsFactoryLzReceiveTest is Test {
             MAX_FINALIZATION_TIME,
             address(0x9999), // lzAdapter
             address(0xAAAA), // composerImplementation
-            address(0xBBBB)  // oftAdapterFactory
+            address(0xBBBB) // oftAdapterFactory
         );
 
         // Deploy mock vaults
-        hubVault = new MockHubVault(vaultOwner, true);  // isHub = true
+        hubVault = new MockHubVault(vaultOwner, true); // isHub = true
         spokeVault = new MockHubVault(vaultOwner, false); // isHub = false
 
         // Register hub vault as factory vault
@@ -103,11 +103,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(address(spokeVault), address(hubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
-        Origin memory origin = Origin({
-            srcEid: SPOKE_EID,
-            sender: bytes32(uint256(uint160(address(factory)))),
-            nonce: 1
-        });
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         vm.expectEmit(true, true, true, true);
         emit CrossChainLinked(SPOKE_EID, address(spokeVault), address(hubVault));
@@ -124,7 +121,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(address(spokeVault), fakeHubVault, vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
-        Origin memory origin = Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         vm.expectRevert(abi.encodeWithSelector(VaultsFactory.NotAVault.selector, fakeHubVault));
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
@@ -137,7 +135,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(address(spokeVault), address(nonHubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
-        Origin memory origin = Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         vm.expectRevert(abi.encodeWithSelector(VaultsFactory.HubCannotInitiateLink.selector));
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
@@ -150,7 +149,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(address(spokeVault), address(hubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
-        Origin memory origin = Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         vm.expectRevert(abi.encodeWithSelector(VaultsFactory.OwnersMismatch.selector, differentOwner, vaultOwner));
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
@@ -160,7 +160,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(address(spokeVault), address(hubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
-        Origin memory origin = Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         factory.exposed_lzReceive(origin, keccak256("guid1"), message, address(endpoint), "");
         factory.exposed_lzReceive(origin, keccak256("guid2"), message, address(endpoint), "");
@@ -177,7 +178,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(LOCAL_EID, address(hubVault), newSpokeEid, newSpokeVault);
         bytes memory message = abi.encode(MSG_TYPE_SPOKE_ADDED, rest);
 
-        Origin memory origin = Origin({srcEid: LOCAL_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: LOCAL_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
 
@@ -195,7 +197,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(LOCAL_EID, address(hubVault), spokes);
         bytes memory message = abi.encode(MSG_TYPE_BOOTSTRAP, rest);
 
-        Origin memory origin = Origin({srcEid: LOCAL_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: LOCAL_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
 
@@ -211,7 +214,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest1 = abi.encode(LOCAL_EID, address(hubVault), initialSpokes);
         bytes memory message1 = abi.encode(MSG_TYPE_BOOTSTRAP, rest1);
 
-        Origin memory origin = Origin({srcEid: LOCAL_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: LOCAL_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         factory.exposed_lzReceive(origin, keccak256("guid1"), message1, address(endpoint), "");
 
@@ -234,7 +238,8 @@ contract VaultsFactoryLzReceiveTest is Test {
         bytes memory rest = abi.encode(address(0x1234));
         bytes memory message = abi.encode(unknownMsgType, rest);
 
-        Origin memory origin = Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         vm.expectRevert(abi.encodeWithSelector(VaultsFactory.UnknownMsgType.selector));
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");

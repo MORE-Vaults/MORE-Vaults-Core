@@ -326,4 +326,12 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.witdrawTimelock;
     }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function getCrossChainAccountingManager() external view returns (address) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        return ds.crossChainAccountingManager;
+    }
 }

@@ -139,7 +139,18 @@ interface IMoreVaultsRegistry {
      */
     function setSelectorAndMask(address vault, bytes4 selector, bool allowed, bytes memory mask) external;
 
+    /**
+     * @notice Set default cross chain accounting manager
+     * @param manager Address of the default cross chain accounting manager
+     */
     function setDefaultCrossChainAccountingManager(address manager) external;
+
+    /**
+     * @notice Set is cross chain accounting manager
+     * @param manager Address of the cross chain accounting manager
+     * @param isManager True if cross chain accounting manager is allowed, false otherwise
+     */
+    function setIsCrossChainAccountingManager(address manager, bool isManager) external;
 
     /**
      * @notice Get all selectors for facet
