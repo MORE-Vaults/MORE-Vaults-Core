@@ -277,7 +277,13 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
                 uint256 assetsUnlocked = IERC4626(vault).convertToAssets(balances.sharesAfter - balances.sharesBefore);
                 ds.lockedTokens[balances.asset] -= assetsUnlocked;
             } else {
-                delete ds.lockedTokens[vault];
+                // Withdrawal cancel: shares returned, unlock only this request's shares
+                uint256 sharesReturned = balances.sharesAfter - balances.sharesBefore;
+                if (ds.lockedTokens[vault] >= sharesReturned) {
+                    ds.lockedTokens[vault] -= sharesReturned;
+                } else {
+                    ds.lockedTokens[vault] = 0;
+                }
             }
             return;
         }
@@ -289,7 +295,13 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
                 ds.lockedTokens[vault] -= sharesUnlocked;
                 MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
             } else {
-                delete ds.lockedTokens[balances.asset];
+                // Deposit cancel: assets returned, unlock only this request's assets
+                uint256 assetsReturned = balances.assetsAfter - balances.assetsBefore;
+                if (ds.lockedTokens[balances.asset] >= assetsReturned) {
+                    ds.lockedTokens[balances.asset] -= assetsReturned;
+                } else {
+                    ds.lockedTokens[balances.asset] = 0;
+                }
             }
             return;
         }
