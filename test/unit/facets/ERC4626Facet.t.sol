@@ -1026,4 +1026,59 @@ contract ERC4626FacetTest is Test {
         facet.genericAsyncActionExecution(address(newVault), data);
         vm.stopPrank();
     }
+
+    // Test for Issue #13: Multiple concurrent async requests should not interfere
+    function test_genericAsyncActionExecution_Issue13_MultipleDepositsCancelShouldNotZeroGlobal() public {
+        MockAsyncERC4626WithLockOnDeposit newVault = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
+
+        bytes4 depositSelector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
+        bytes4 cancelSelector = MockAsyncERC4626WithLockOnDeposit.depositCancel.selector;
+
+        // Setup mocks for both selectors
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(newVault), depositSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(newVault), cancelSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max)))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(newVault)),
+            abi.encode(true)
+        );
+
+        vm.startPrank(address(facet));
+
+        // User A deposits 100
+        uint256 depositAmountA = 100e18;
+        bytes memory dataA = abi.encodeWithSelector(depositSelector, depositAmountA, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(newVault), dataA);
+
+        uint256 lockedAfterA = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+        assertEq(lockedAfterA, depositAmountA, "Should have User A's deposit locked");
+
+        // User B deposits 200
+        uint256 depositAmountB = 200e18;
+        bytes memory dataB = abi.encodeWithSelector(depositSelector, depositAmountB, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(newVault), dataB);
+
+        uint256 lockedAfterB = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+        assertEq(lockedAfterB, depositAmountA + depositAmountB, "Should have both deposits locked");
+
+        // User B cancels their deposit
+        bytes memory dataBCancel = abi.encodeWithSelector(cancelSelector, depositAmountB);
+        facet.genericAsyncActionExecution(address(newVault), dataBCancel);
+
+        uint256 lockedAfterCancel = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+
+        // CRITICAL: Should still have User A's deposit (100), not 0!
+        assertEq(lockedAfterCancel, depositAmountA, "Should only unlock User B's deposit, User A's should remain");
+        assertGt(lockedAfterCancel, 0, "Should NOT be zero - User A's deposit still pending");
+
+        vm.stopPrank();
+    }
 }
