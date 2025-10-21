@@ -27,6 +27,7 @@ interface IVaultsFactory {
     event VaultComposerUpdated(address indexed vault, address indexed composer);
     event ComposerImplementationUpdated(address indexed newImplementation);
     event OFTAdapterFactoryUpdated(address indexed newOFTAdapterFactory);
+    event VaultFailedToPause(address indexed vault);
 
     /**
      * @notice Initialize the factory

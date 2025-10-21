@@ -168,7 +168,9 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         address[] memory vaults = _linkedVaults[_facet].values();
         _setFacetRestricted(_facet, true);
         for (uint256 i = 0; i < vaults.length;) {
-            IVaultFacet(vaults[i]).pause();
+            try IVaultFacet(vaults[i]).pause() {} catch(bytes memory _err) {
+                emit VaultFailedToPause(vaults[i]);
+            }
             unchecked {
                 ++i;
             }
