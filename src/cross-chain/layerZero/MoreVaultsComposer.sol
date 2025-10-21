@@ -54,7 +54,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
     // Async deposit lifecycle is tracked via callbacks and the Deposited event in the interface
     constructor() {
-        // _disableInitializers();
+        _disableInitializers();
     }
 
     /**
