@@ -13,7 +13,6 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error CrossChainRequestWasntFulfilled(bytes32);
     error InvalidActionType();
     error OnlyCrossChainAccountingManager();
-    error SyncActionsDisabledInCrossChainVaults();
     error RequestWasntFulfilled();
     error FinalizationCallFailed();
     error OracleWasntSetForSpoke(address, uint32);
