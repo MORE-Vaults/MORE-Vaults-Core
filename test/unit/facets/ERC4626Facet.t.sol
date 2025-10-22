@@ -1056,7 +1056,7 @@ contract ERC4626FacetTest is Test {
         // User A deposits 100
         uint256 depositAmountA = 100e18;
         bytes memory dataA = abi.encodeWithSelector(depositSelector, depositAmountA, address(facet), address(facet));
-        facet.genericAsyncActionExecution(address(newVault), dataA);
+        facet.genericAsyncActionExecution(address(newVault), depositAmountA, dataA);
 
         uint256 lockedAfterA = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
         assertEq(lockedAfterA, depositAmountA, "Should have User A's deposit locked");
@@ -1064,14 +1064,14 @@ contract ERC4626FacetTest is Test {
         // User B deposits 200
         uint256 depositAmountB = 200e18;
         bytes memory dataB = abi.encodeWithSelector(depositSelector, depositAmountB, address(facet), address(facet));
-        facet.genericAsyncActionExecution(address(newVault), dataB);
+        facet.genericAsyncActionExecution(address(newVault), depositAmountB, dataB);
 
         uint256 lockedAfterB = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
         assertEq(lockedAfterB, depositAmountA + depositAmountB, "Should have both deposits locked");
 
         // User B cancels their deposit
         bytes memory dataBCancel = abi.encodeWithSelector(cancelSelector, depositAmountB);
-        facet.genericAsyncActionExecution(address(newVault), dataBCancel);
+        facet.genericAsyncActionExecution(address(newVault), depositAmountB, dataBCancel);
 
         uint256 lockedAfterCancel = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
 
