@@ -3,23 +3,25 @@ pragma solidity 0.8.28;
 
 import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
 import {AccessControlLib} from "../libraries/AccessControlLib.sol";
-import {IMerklRewardsFacet} from "../interfaces/facets/IMerklRewardsFacet.sol";
+import {IMerkleRewardsHandlerFacet} from "../interfaces/facets/IMerkleRewardsHandlerFacet.sol";
 import {IMerklDistributor} from "../interfaces/external/IMerklDistributor.sol";
+import {IUniversalRewardsDistributor} from "../interfaces/external/IUniversalRewardsDistributor.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
 /**
- * @title MerklRewardsFacet
- * @notice Facet for claiming rewards from Merkl protocol
- * @dev Allows curator/owner to claim Merkl rewards earned by the vault
+ * @title MerkleRewardsHandlerFacet
+ * @notice Facet for claiming merkle-based rewards from multiple protocols
+ * @dev Supports both Merkl Protocol and Morpho Universal Rewards Distributor
+ * @dev Allows curator/owner to claim rewards earned by the vault
  * @dev Follows the same pattern as ERC4626Facet - validates distributor addresses via registry
  */
-contract MerklRewardsFacet is BaseFacetInitializer, IMerklRewardsFacet {
+contract MerkleRewardsHandlerFacet is BaseFacetInitializer, IMerkleRewardsHandlerFacet {
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.MerklRewardsFacet");
+        return keccak256("MoreVaults.storage.initializable.MerkleRewardsHandlerFacet");
     }
 
     function facetName() external pure returns (string memory) {
-        return "MerklRewardsFacet";
+        return "MerkleRewardsHandlerFacet";
     }
 
     function facetVersion() external pure returns (string memory) {
@@ -31,16 +33,16 @@ contract MerklRewardsFacet is BaseFacetInitializer, IMerklRewardsFacet {
      */
     function initialize(bytes calldata /* data */) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.supportedInterfaces[type(IMerklRewardsFacet).interfaceId] = true;
+        ds.supportedInterfaces[type(IMerkleRewardsHandlerFacet).interfaceId] = true;
     }
 
     function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.supportedInterfaces[type(IMerklRewardsFacet).interfaceId] = false;
+        ds.supportedInterfaces[type(IMerkleRewardsHandlerFacet).interfaceId] = false;
     }
 
     /**
-     * @inheritdoc IMerklRewardsFacet
+     * @inheritdoc IMerkleRewardsHandlerFacet
      */
     function claimMerklRewards(
         address distributor,
@@ -81,5 +83,31 @@ contract MerklRewardsFacet is BaseFacetInitializer, IMerklRewardsFacet {
                 ++i;
             }
         }
+    }
+
+    /**
+     * @inheritdoc IMerkleRewardsHandlerFacet
+     */
+    function claimMorphoReward(
+        address distributor,
+        address reward,
+        uint256 claimable,
+        bytes32[] calldata proof
+    ) external returns (uint256 amount) {
+        // Prevent calls during multicall
+        MoreVaultsLib.validateNotMulticall();
+
+        // Only curator or owner can claim rewards
+        AccessControlLib.validateCurator(msg.sender);
+
+        // Validate distributor is whitelisted in registry
+        MoreVaultsLib.validateAddressWhitelisted(distributor);
+
+        // Call Morpho URD to claim rewards
+        // The distributor will calculate: amount = claimable - claimed[vault][reward]
+        amount = IUniversalRewardsDistributor(distributor).claim(address(this), reward, claimable, proof);
+
+        // Emit event for claimed reward
+        emit MorphoRewardClaimed(reward, amount, address(this));
     }
 }
