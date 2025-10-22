@@ -23,6 +23,7 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error AdapterNotAllowed(address);
     error RequestTimedOut();
     error RequestAlreadyFinalized();
+    error NotEnoughMsgValueProvided();
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD

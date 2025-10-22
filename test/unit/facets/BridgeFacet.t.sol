@@ -173,6 +173,42 @@ contract BridgeFacetTest is Test {
         assertEq(info.totalAssets, 100 * 1e18);
     }
 
+    function test_initVaultActionRequest_revert_NotEnoughMsgValueProvided() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        // manager is adapter in storage
+        bytes32 guidVal = keccak256("guid-1");
+        adapter.setReceiptGuid(guidVal);
+        facet.h_setTotalAssets(100 * 1e18);
+
+        // when oraclesCrossChainAccounting=true must revert, so ensure false
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes memory callData = abi.encode(tokens, amounts, address(0xCAFE01), 1 ether);
+        bytes memory opts = bytes("");
+        vm.expectRevert(IBridgeFacet.NotEnoughMsgValueProvided.selector);
+        facet.initVaultActionRequest{value: 0.99 ether}(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, opts);
+
+        adapter.setFee(0.05 ether, 0);
+        vm.expectRevert(IBridgeFacet.NotEnoughMsgValueProvided.selector);
+        facet.initVaultActionRequest{value: 1.04 ether}(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, opts);
+
+        bytes32 guid = facet.initVaultActionRequest{value: 1.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, opts
+        );
+        MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
+        assertEq(info.initiator, address(this));
+        assertEq(uint256(info.actionType), uint256(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT));
+        assertFalse(info.fulfilled);
+        assertFalse(info.finalized);
+        assertEq(info.totalAssets, 100 * 1e18);
+    }
+
     function test_initVaultActionRequest_revert_AccountingViaOracles() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
@@ -267,6 +303,7 @@ contract BridgeFacetTest is Test {
 
         // success (deposit selector routed to harness stub)
         facet.finalizeRequest(guid);
+        assertTrue(facet.getRequestInfo(guid).finalized);
 
         // set timestamp to past to trigger timeout
         // move time forward and re-set request to fulfilled to check RequestTimedOut
