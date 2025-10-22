@@ -161,6 +161,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             actionType: actionType,
             actionCallData: actionCallData,
             fulfilled: false,
+            finalized: false,
             totalAssets: IVaultFacet(address(this)).totalAssets()
         });
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
@@ -188,6 +189,9 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         if (requestInfo.timestamp + 1 hours < block.timestamp) {
             revert RequestTimedOut();
+        }
+        if (requestInfo.finalized) {
+            revert RequestAlreadyFinalized();
         }
         ds.finalizationGuid = guid;
 
@@ -222,6 +226,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         if (!success) revert FinalizationCallFailed();
 
+        ds.guidToCrossChainRequestInfo[guid].finalized = true;
         ds.finalizationGuid = 0;
     }
 

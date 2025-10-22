@@ -333,6 +333,28 @@ contract BridgeFacetTest is Test {
         facet.finalizeRequest(guid);
     }
 
+    function test_finalizeRequest_should_revert_if_already_finalized() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-mint"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(100), address(this));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, bytes(""));
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        vm.stopPrank();
+
+        facet.finalizeRequest(guid);
+
+        vm.expectRevert(IBridgeFacet.RequestAlreadyFinalized.selector);
+        facet.finalizeRequest(guid);
+    }
+
     function test_finalizeRequest_WITHDRAW() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;

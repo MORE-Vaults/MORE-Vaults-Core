@@ -120,6 +120,7 @@ library MoreVaultsLib {
         ActionType actionType;
         bytes actionCallData;
         bool fulfilled;
+        bool finalized;
         uint256 totalAssets;
     }
 
