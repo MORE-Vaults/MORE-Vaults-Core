@@ -11,3 +11,7 @@ docs/
 # Dotenv file
 .env
 .env copy
+
+# Markdown files (except README)
+*.md
+!README.md
