@@ -578,7 +578,7 @@ contract VaultFacetTest is Test {
     function test_requestRedeem_shouldRevertIfSharesIsZero() public {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         vm.prank(user);
-        vm.expectRevert(VaultFacet.InvalidSharesAmount.selector);
+        vm.expectRevert(IVaultFacet.InvalidSharesAmount.selector);
         VaultFacet(facet).requestRedeem(0);
     }
 
@@ -629,7 +629,7 @@ contract VaultFacetTest is Test {
         vm.mockCall(factory, abi.encodeWithSignature("isVaultLinked(address,address)"), abi.encode(true));
         // Then unpause
         vm.prank(guardian);
-        vm.expectRevert(abi.encodeWithSelector(VaultFacet.VaultIsUsingRestrictedFacet.selector, address(101)));
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.VaultIsUsingRestrictedFacet.selector, address(101)));
         VaultFacet(facet).unpause();
     }
 
@@ -1481,7 +1481,7 @@ contract VaultFacetTest is Test {
 
         uint256 shares = 100 ether;
         vm.prank(user);
-        vm.expectRevert(VaultFacet.WithdrawalQueueDisabled.selector);
+        vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
         VaultFacet(facet).requestRedeem(shares);
     }
 
@@ -1491,7 +1491,7 @@ contract VaultFacetTest is Test {
 
         uint256 assets = 100 ether;
         vm.prank(user);
-        vm.expectRevert(VaultFacet.WithdrawalQueueDisabled.selector);
+        vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
         VaultFacet(facet).requestWithdraw(assets);
     }
 

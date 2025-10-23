@@ -151,18 +151,25 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         bytes calldata actionCallData,
         bytes calldata extraOptions
     ) internal returns (bytes32 guid) {
-        guid = IBridgeAdapter(ds.crossChainAccountingManager).initiateCrossChainAccounting{value: msg.value}(
-            vaults, eids, extraOptions, msg.sender
-        ).guid;
-
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
             timestamp: uint64(block.timestamp),
             actionType: actionType,
             actionCallData: actionCallData,
             fulfilled: false,
+            finalized: false,
             totalAssets: IVaultFacet(address(this)).totalAssets()
         });
+        MessagingFee memory fee =
+            IBridgeAdapter(ds.crossChainAccountingManager).quoteReadFee(vaults, eids, extraOptions);
+        if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+            (,,, uint256 value) = abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
+            if (value + fee.nativeFee > msg.value) revert NotEnoughMsgValueProvided();
+        }
+
+        guid = IBridgeAdapter(ds.crossChainAccountingManager).initiateCrossChainAccounting{value: msg.value}(
+            vaults, eids, extraOptions, msg.sender
+        ).guid;
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }
 
@@ -188,6 +195,9 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         if (requestInfo.timestamp + 1 hours < block.timestamp) {
             revert RequestTimedOut();
+        }
+        if (requestInfo.finalized) {
+            revert RequestAlreadyFinalized();
         }
         ds.finalizationGuid = guid;
 
@@ -222,6 +232,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         if (!success) revert FinalizationCallFailed();
 
+        ds.guidToCrossChainRequestInfo[guid].finalized = true;
         ds.finalizationGuid = 0;
     }
 

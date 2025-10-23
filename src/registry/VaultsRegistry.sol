@@ -220,7 +220,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
-    function setDefaultCrossChainAccountingManager(address manager) external virtual {
+    function setDefaultCrossChainAccountingManager(address manager) external virtual onlyRole(DEFAULT_ADMIN_ROLE) {
         defaultCrossChainAccountingManager = manager;
 
         emit DefaultCrossChainAccountingManagerSet(manager);
