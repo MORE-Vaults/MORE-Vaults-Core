@@ -692,7 +692,7 @@ contract ConfigurationFacetTest is Test {
         assertEq(token.balanceOf(address(facet)), 500 ether, "Facet should have remaining tokens");
     }
 
-    function test_recoverAssets_ShouldRecoverWhenOwnerCalls() public {
+    function test_recoverAssets_ShouldRevertWhenOwnerCalls() public {
         // Create a mock ERC20 token
         MockERC20 token = new MockERC20("Test Token", "TST");
 
@@ -703,14 +703,11 @@ contract ConfigurationFacetTest is Test {
 
         vm.startPrank(owner);
 
-        // Recover assets (owner has guardian permissions)
+        // Owner should NOT be able to recover assets (only guardian can)
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
         facet.recoverAssets(address(token), receiver, 1000 ether);
 
         vm.stopPrank();
-
-        // Verify balances
-        assertEq(token.balanceOf(receiver), 1000 ether, "Receiver should have received all tokens");
-        assertEq(token.balanceOf(address(facet)), 0, "Facet should have no tokens left");
     }
 
     function test_recoverAssets_ShouldRevertWhenUnauthorized() public {
