@@ -603,7 +603,7 @@ contract VaultFacetTest is Test {
 
     function test_unpause_ShouldUnpauseVault() public {
         // First pause
-        vm.prank(owner);
+        vm.prank(guardian);
         VaultFacet(facet).pause();
 
         address[] memory restrictedFacets = new address[](1);
@@ -612,14 +612,14 @@ contract VaultFacetTest is Test {
 
         vm.mockCall(factory, abi.encodeWithSignature("isVaultLinked(address,address)"), abi.encode(false));
         // Then unpause
-        vm.prank(owner);
+        vm.prank(guardian);
         VaultFacet(facet).unpause();
         assertFalse(VaultFacet(facet).paused(), "Should be unpaused");
     }
 
     function test_unpause_ShouldRevertIfUsingRestrictedFacet() public {
         // First pause
-        vm.prank(owner);
+        vm.prank(guardian);
         VaultFacet(facet).pause();
 
         address[] memory restrictedFacets = new address[](1);
@@ -628,7 +628,7 @@ contract VaultFacetTest is Test {
 
         vm.mockCall(factory, abi.encodeWithSignature("isVaultLinked(address,address)"), abi.encode(true));
         // Then unpause
-        vm.prank(owner);
+        vm.prank(guardian);
         vm.expectRevert(abi.encodeWithSelector(VaultFacet.VaultIsUsingRestrictedFacet.selector, address(101)));
         VaultFacet(facet).unpause();
     }
@@ -1826,7 +1826,7 @@ contract VaultFacetTest is Test {
         assertFalse(VaultFacet(facet).paused());
 
         // Pause the vault
-        vm.prank(owner);
+        vm.prank(guardian);
         VaultFacet(facet).pause();
         assertTrue(VaultFacet(facet).paused());
 
@@ -1834,7 +1834,7 @@ contract VaultFacetTest is Test {
         vm.mockCall(factory, abi.encodeWithSignature("getRestrictedFacets()"), abi.encode(new address[](0)));
 
         // Unpause the vault
-        vm.prank(owner);
+        vm.prank(guardian);
         VaultFacet(facet).unpause();
         assertFalse(VaultFacet(facet).paused());
     }

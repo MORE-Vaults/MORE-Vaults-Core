@@ -32,7 +32,7 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /// @notice Returns the total amount of the underlying asset that is "managed" by Vault in USD
     /// @return totalAssets The total amount of the underlying asset that is "managed" by Vault in USD
     /// @return success Whether the totalAssetsUsd calculation was successful
-    function totalAssetsUsd() external view returns (uint256, bool success);
+    function totalAssetsUsd() external returns (uint256, bool success);
 
     /// @notice Returns the request for a given owner
     /// @param _owner The owner of the request

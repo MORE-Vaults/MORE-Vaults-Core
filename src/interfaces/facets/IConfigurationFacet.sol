@@ -252,6 +252,10 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     /// @return array of token addresses
     function tokensHeld(bytes32 tokenId) external view returns (address[] memory);
 
+    /// @notice Get the cross chain accounting manager
+    /// @return The cross chain accounting manager
+    function getCrossChainAccountingManager() external view returns (address);
+
     /**
      * @notice Recovers assets that were accidentally sent to the vault
      * @dev Only callable by guardian. Can only recover assets that are NOT in the available assets list

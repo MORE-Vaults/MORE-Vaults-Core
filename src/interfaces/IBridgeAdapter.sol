@@ -15,7 +15,7 @@ interface IBridgeAdapter {
     error InvalidAmount();
     error InvalidDestChain();
     error UnauthorizedVault();
-    error BridgeFailed();
+    error NotEnoughFee();
     error InsufficientBalance();
     error InsufficientAllowance();
     error ChainPaused();
@@ -32,6 +32,7 @@ interface IBridgeAdapter {
     error InvalidAddress();
     error SlippageTooHigh();
     error InvalidVault();
+    error InsufficientMsgValue(uint256 expectedMsgValue, uint256 actualMsgValue);
 
     /**
      * @notice Shared events (each adapter has its own specific BridgeExecuted event)
@@ -107,12 +108,6 @@ interface IBridgeAdapter {
      * @param newSlippageBps New slippage in basis points
      */
     function setSlippage(uint256 newSlippageBps) external;
-
-    /**
-     * @notice Set composer (admin only)
-     * @param _composer Composer address
-     */
-    function setComposer(address _composer) external;
 
     // EID-only pausing API
     function pauseEid(uint32 eid) external;

@@ -14,7 +14,7 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
     bool public shouldRevert = false;
     string public revertMessage = "";
 
-    function initialize(address _vault, address _registry, address _lzAdapter, address _factory) external {
+    function initialize(address _vault, address _registry, address _factory) external {
         if (shouldRevert) {
             if (bytes(revertMessage).length > 0) {
                 revert(revertMessage);
@@ -25,7 +25,6 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
 
         vault = _vault;
         registry = _registry;
-        lzAdapter = _lzAdapter;
         factory = _factory;
     }
 
@@ -88,6 +87,7 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
     function initDeposit(
         bytes32 depositor,
         address tokenAddress,
+        address targetOft,
         uint256 assetAmount,
         SendParam memory sendParam,
         address refundAddress,

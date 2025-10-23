@@ -222,4 +222,35 @@ interface IVaultsFactory {
      * @return local EID
      */
     function localEid() external view returns (uint32);
+
+    /**
+     * @notice Returns vault composer for a vault
+     * @param _vault Vault address
+     * @return composer address of the composer
+     */
+    function vaultComposer(address _vault) external view returns (address);
+
+    /**
+     * @notice Returns LayerZero adapter address
+     * @return LayerZero adapter address
+     */
+    function lzAdapter() external view returns (address);
+
+    /**
+     * @notice Returns MoreVaultsComposer implementation address
+     * @return MoreVaultsComposer implementation address
+     */
+    function composerImplementation() external view returns (address);
+
+    /**
+     * @notice Returns OFT adapter factory address
+     * @return OFT adapter factory address
+     */
+    function oftAdapterFactory() external view returns (address);
+
+    /**
+     * @notice Returns max finalization time
+     * @return max finalization time
+     */
+    function maxFinalizationTime() external view returns (uint96);
 }

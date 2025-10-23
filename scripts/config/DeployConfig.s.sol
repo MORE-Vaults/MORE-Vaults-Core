@@ -97,7 +97,7 @@ contract DeployConfig {
         functionSelectorsLoupeFacet[4] = IERC165.supportsInterface.selector;
 
         // selectors for access control
-        bytes4[] memory functionSelectorsAccessControlFacet = new bytes4[](9);
+        bytes4[] memory functionSelectorsAccessControlFacet = new bytes4[](8);
         functionSelectorsAccessControlFacet[0] = AccessControlFacet
             .transferOwnership
             .selector;
@@ -121,9 +121,6 @@ contract DeployConfig {
             .selector;
         functionSelectorsAccessControlFacet[7] = AccessControlFacet
             .guardian
-            .selector;
-        functionSelectorsAccessControlFacet[8] = AccessControlFacet
-            .moreVaultsRegistry
             .selector;
 
         bytes memory initDataAccessControlFacet = abi.encode(

@@ -12,6 +12,7 @@ contract MockVaultFacet {
     uint32 public localEid;
     address public adapter;
     uint256 public lastAccountingFeeQuote;
+    bool public _paused = false;
 
     mapping(bytes32 => bool) public finalized;
     mapping(bytes32 => uint256) public accountingSum;
@@ -119,6 +120,18 @@ contract MockVaultFacet {
 
     function transfer(address, /*to*/ uint256 /*amount*/ ) external pure returns (bool) {
         return true;
+    }
+
+    function paused() external view returns (bool) {
+        return _paused;
+    }
+
+    function pause() external {
+        _paused = true;
+    }
+
+    function unpause() external {
+        _paused = false;
     }
 
     // Unused stubs pruned

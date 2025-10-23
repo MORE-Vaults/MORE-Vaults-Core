@@ -17,6 +17,10 @@ contract BridgeFacetHarness is BridgeFacet {
         return _totalAssets;
     }
 
+    function totalAssetsUsd() external returns (uint256, bool) {
+        return (_totalAssets, true);
+    }
+
     // Minimal stubs to satisfy interface linkage in tests; logic not needed here
     function deposit(uint256, address) external pure returns (uint256) {
         return 0;

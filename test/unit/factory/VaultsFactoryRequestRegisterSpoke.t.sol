@@ -31,12 +31,7 @@ contract MockLayerZeroEndpoint {
     }
 
     // Support both quote signatures
-    function quote(
-        uint32,
-        bytes calldata,
-        bytes calldata,
-        bool
-    ) external view returns (MessagingFee memory) {
+    function quote(uint32, bytes calldata, bytes calldata, bool) external view returns (MessagingFee memory) {
         return MessagingFee({nativeFee: quoteFee, lzTokenFee: 0});
     }
 
@@ -59,10 +54,11 @@ contract MockLayerZeroEndpoint {
         MessagingFee fee;
     }
 
-    function send(
-        MessagingParams calldata _params,
-        address _refundAddress
-    ) external payable returns (MessagingReceipt memory) {
+    function send(MessagingParams calldata _params, address _refundAddress)
+        external
+        payable
+        returns (MessagingReceipt memory)
+    {
         emit MessageSent(_params.dstEid, _params.message, _refundAddress);
         return MessagingReceipt({
             guid: keccak256(abi.encodePacked(_params.dstEid, _params.message)),
@@ -125,7 +121,7 @@ contract VaultsFactoryRequestRegisterSpokeTest is Test {
             MAX_FINALIZATION_TIME,
             address(0x9999), // lzAdapter
             address(0xAAAA), // composerImplementation
-            address(0xBBBB)  // oftAdapterFactory
+            address(0xBBBB) // oftAdapterFactory
         );
 
         // Deploy mock spoke vault

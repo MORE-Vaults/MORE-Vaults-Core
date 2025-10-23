@@ -155,12 +155,12 @@ contract BridgeFacetTest is Test {
         // manager is adapter in storage
         bytes32 guidVal = keccak256("guid-1");
         adapter.setReceiptGuid(guidVal);
-        facet.h_setTotalAssets(100);
+        facet.h_setTotalAssets(100 * 1e18);
 
         // when oraclesCrossChainAccounting=true must revert, so ensure false
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10), address(0xCAFE01));
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
         bytes memory opts = bytes("");
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, opts);
         assertEq(guid, guidVal);
@@ -170,7 +170,7 @@ contract BridgeFacetTest is Test {
         assertEq(info.initiator, address(this));
         assertEq(uint256(info.actionType), uint256(MoreVaultsLib.ActionType.DEPOSIT));
         assertFalse(info.fulfilled);
-        assertEq(info.totalAssets, 100);
+        assertEq(info.totalAssets, 100 * 1e18);
     }
 
     function test_initVaultActionRequest_revert_AccountingViaOracles() public {
@@ -199,7 +199,7 @@ contract BridgeFacetTest is Test {
         facet.h_setTotalAssets(initTotalAssets);
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
         bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(1), address(0xCAFE01)), bytes("")
+            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(5 * 10 ** decimals), address(0xCAFE01)), bytes("")
         );
         assertEq(guid, guidVal);
 
@@ -226,7 +226,7 @@ contract BridgeFacetTest is Test {
         address[] memory spokes = new address[](1);
         spokes[0] = address(0xBEEF01);
         _mockHubWithSpokes(100, eids, spokes);
-        facet.h_setTotalAssets(200);
+        facet.h_setTotalAssets(200 * 1e18);
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
         bytes32 guid = facet.initVaultActionRequest(
             MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(1), address(0xCAFE01)), bytes("")
@@ -239,7 +239,7 @@ contract BridgeFacetTest is Test {
 
         MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
         assertFalse(info.fulfilled);
-        assertEq(info.totalAssets, 200);
+        assertEq(info.totalAssets, 200 * 1e18);
     }
 
     // finalizeRequest

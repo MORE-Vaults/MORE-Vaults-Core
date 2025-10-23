@@ -21,15 +21,17 @@ interface IMoreVaultsComposer is IOAppComposer {
     error OnlyEndpoint(address caller);
     // 0x91ac5e4f
     error OnlySelf(address caller); // 0xa19dbf00
-    error OnlyValidComposeCaller(address caller); // 0x84fb3f0d
-    error OnlyVault(address caller); // custom
+    error InvalidComposeCaller(address caller); // 0x84fb3f0d
+    error OnlyVaultOrLzAdapter(address caller); // custom
     error DepositNotFound(bytes32 guid); // custom
+    error NotATokenOfOFT();
 
     error InsufficientMsgValue(uint256 expectedMsgValue, uint256 actualMsgValue); // 0x7cb769dc
     error NoMsgValueExpected(); // 0x7578d2bd
 
     error SlippageExceeded(uint256 amountLD, uint256 minAmountLD); // 0x71c4efed
     error AlreadyInitialized(); // custom
+    error VaultIsPaused();
 
     /// ========================== GLOBAL VARIABLE FUNCTIONS =====================================
     function VAULT() external view returns (IVaultFacet);
@@ -44,7 +46,7 @@ interface IMoreVaultsComposer is IOAppComposer {
 
     /// ========================== Proxy OFT (deposit-only) =====================================
 
-    function initialize(address _vault, address _shareOFT, address _lzAdapter, address _vaultFactory) external;
+    function initialize(address _vault, address _shareOFT, address _vaultFactory) external;
 
     /**
      * @notice Quotes the send operation for the given OFT and SendParam
@@ -70,6 +72,7 @@ interface IMoreVaultsComposer is IOAppComposer {
     function initDeposit(
         bytes32 depositor,
         address tokenAddress,
+        address oftAddress,
         uint256 assetAmount,
         SendParam memory sendParam,
         address refundAddress,

@@ -107,7 +107,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         external
         payable
         whenNotPaused
-        nonReentrant
     {
         AccessControlLib.validateCurator(msg.sender);
         _pause();
@@ -156,7 +155,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             vaults, eids, extraOptions, msg.sender
         ).guid;
 
-        MoreVaultsLib._beforeAccounting(ds.beforeAccountingFacets);
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
             timestamp: uint64(block.timestamp),
@@ -196,7 +194,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         bool success;
         if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
             (uint256 assets, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
-            (success,) = address(this).call(abi.encodeWithSelector(IERC4626.deposit.selector, assets, receiver));
+            (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.deposit.selector, assets, receiver));
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (address[] memory tokens, uint256[] memory assets, address receiver, uint256 value) =
                 abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
