@@ -44,6 +44,7 @@ library MoreVaultsLib {
     error AssetAlreadyAvailable();
     error InvalidAddress();
     error NoOracleForAsset();
+    error CannotAddAssetWithExistingBalance();
     error FacetHasBalance(uint256 amount);
     error AccountingFailed(bytes32 selector);
     error UnsupportedProtocol(address protocol);
@@ -366,6 +367,13 @@ library MoreVaultsLib {
         IOracleRegistry oracle = registry.oracle();
         if (address(oracle.getOracleInfo(asset).aggregator) == address(0)) {
             revert NoOracleForAsset();
+        }
+
+        // Prevent adding asset if vault has existing balance
+        // This ensures accidentally sent tokens are recovered before being managed
+        uint256 balance = IERC20(asset).balanceOf(address(this));
+        if (balance > 0) {
+            revert CannotAddAssetWithExistingBalance();
         }
 
         ds.isAssetAvailable[asset] = true;
@@ -800,5 +808,27 @@ library MoreVaultsLib {
         }
 
         return ds.crossChainAccountingManager;
+    }
+
+    /**
+     * @notice Checks if an asset is present in any tokensHeld mapping
+     * @dev Iterates through all held token IDs and checks if the asset exists in any of them
+     * @param asset The address of the asset to check
+     * @return true if asset is found in any tokensHeld mapping, false otherwise
+     */
+    function isAssetHeldToken(address asset) internal view returns (bool) {
+        MoreVaultsStorage storage ds = moreVaultsStorage();
+        bytes32[] memory heldIds = ds.vaultExternalAssets[TokenType.HeldToken].values();
+
+        for (uint256 i = 0; i < heldIds.length;) {
+            if (ds.tokensHeld[heldIds[i]].contains(asset)) {
+                return true;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        return false;
     }
 }

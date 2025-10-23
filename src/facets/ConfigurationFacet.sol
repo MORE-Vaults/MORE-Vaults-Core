@@ -7,9 +7,12 @@ import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol"
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     using EnumerableSet for EnumerableSet.Bytes32Set;
+    using SafeERC20 for IERC20;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.ConfigurationFacet");
@@ -333,5 +336,34 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function getCrossChainAccountingManager() external view returns (address) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.crossChainAccountingManager;
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function recoverAssets(address asset, address receiver, uint256 amount) external {
+        // Prevent calls during multicall
+        MoreVaultsLib.validateNotMulticall();
+
+        // Only guardian can recover assets
+        AccessControlLib.validateGuardian(msg.sender);
+
+        // Validate inputs
+        if (amount == 0) revert InvalidAmount();
+        if (receiver == address(0)) revert InvalidReceiver();
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        // Cannot recover assets that are marked as available (vault is managing them)
+        if (ds.isAssetAvailable[asset]) revert AssetIsAvailable();
+
+        // Cannot recover LP tokens or other "underneath tokens" that are held by facets
+        // These tokens don't have oracles and are priced through facet accounting
+        if (MoreVaultsLib.isAssetHeldToken(asset)) revert AssetIsHeldToken();
+
+        // Transfer the assets to receiver
+        IERC20(asset).safeTransfer(receiver, amount);
+
+        emit AssetsRecovered(asset, receiver, amount);
     }
 }

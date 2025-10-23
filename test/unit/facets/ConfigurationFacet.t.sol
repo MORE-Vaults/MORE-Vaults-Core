@@ -9,6 +9,8 @@ import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol"
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 contract ConfigurationFacetTest is Test {
     ConfigurationFacet public facet;
@@ -60,6 +62,10 @@ contract ConfigurationFacetTest is Test {
             abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
             abi.encode(address(1001), uint96(1001))
         );
+
+        // Mock balanceOf for asset1 and asset2 to return 0 (no existing balance)
+        vm.mockCall(asset1, abi.encodeWithSelector(IERC20.balanceOf.selector, address(facet)), abi.encode(0));
+        vm.mockCall(asset2, abi.encodeWithSelector(IERC20.balanceOf.selector, address(facet)), abi.encode(0));
     }
 
     function test_initialize_shouldSetCorrectValues() public {
@@ -267,6 +273,27 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
+    function test_addAvailableAsset_ShouldRevertWhenAssetHasExistingBalance() public {
+        // Create a token and send it to the vault (simulate accidental transfer)
+        MockERC20 token = new MockERC20("Accidental Token", "ACC");
+        token.mint(address(facet), 1000 ether);
+
+        // Mock oracle for this token
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(token)),
+            abi.encode(address(2000), uint96(2000))
+        );
+
+        vm.startPrank(curator);
+
+        // Should revert because vault has balance of this token
+        vm.expectRevert(IConfigurationFacet.CannotAddAssetWithExistingBalance.selector);
+        facet.addAvailableAsset(address(token));
+
+        vm.stopPrank();
+    }
+
     function test_addAvailableAssets_ShouldAddAssets() public {
         vm.startPrank(curator);
 
@@ -320,6 +347,39 @@ contract ConfigurationFacetTest is Test {
 
         // Attempt to add assets
         vm.expectRevert(IConfigurationFacet.InvalidAddress.selector);
+        facet.addAvailableAssets(assets);
+
+        vm.stopPrank();
+    }
+
+    function test_addAvailableAssets_ShouldRevertWhenAssetHasExistingBalance() public {
+        // Create two tokens, one with balance
+        MockERC20 token1 = new MockERC20("Token 1", "TK1");
+        MockERC20 token2 = new MockERC20("Token 2", "TK2");
+
+        // Give vault balance of token2 (simulate accidental transfer)
+        token2.mint(address(facet), 500 ether);
+
+        // Mock oracles
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(token1)),
+            abi.encode(address(3000), uint96(3000))
+        );
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(token2)),
+            abi.encode(address(3001), uint96(3001))
+        );
+
+        address[] memory assets = new address[](2);
+        assets[0] = address(token1);
+        assets[1] = address(token2);
+
+        vm.startPrank(curator);
+
+        // Should revert on token2 because it has existing balance
+        vm.expectRevert(IConfigurationFacet.CannotAddAssetWithExistingBalance.selector);
         facet.addAvailableAssets(assets);
 
         vm.stopPrank();
@@ -603,5 +663,323 @@ contract ConfigurationFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(address(facet), true);
         vm.stopPrank();
         assertTrue(facet.getWithdrawalQueueStatus());
+    }
+
+    // ===== Tests for recoverAssets =====
+
+    function test_recoverAssets_ShouldRecoverWhenGuardianCalls() public {
+        // Create a mock ERC20 token
+        MockERC20 token = new MockERC20("Test Token", "TST");
+
+        // Mint tokens to the facet (simulating accidentally sent tokens)
+        token.mint(address(facet), 1000 ether);
+
+        address receiver = address(0x999);
+
+        vm.startPrank(guardian);
+
+        // Expect event emission
+        vm.expectEmit(true, true, false, true);
+        emit IConfigurationFacet.AssetsRecovered(address(token), receiver, 500 ether);
+
+        // Recover assets
+        facet.recoverAssets(address(token), receiver, 500 ether);
+
+        vm.stopPrank();
+
+        // Verify balances
+        assertEq(token.balanceOf(receiver), 500 ether, "Receiver should have received tokens");
+        assertEq(token.balanceOf(address(facet)), 500 ether, "Facet should have remaining tokens");
+    }
+
+    function test_recoverAssets_ShouldRevertWhenOwnerCalls() public {
+        // Create a mock ERC20 token
+        MockERC20 token = new MockERC20("Test Token", "TST");
+
+        // Mint tokens to the facet
+        token.mint(address(facet), 1000 ether);
+
+        address receiver = address(0x999);
+
+        vm.startPrank(owner);
+
+        // Owner should NOT be able to recover assets (only guardian can)
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.recoverAssets(address(token), receiver, 1000 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertWhenUnauthorized() public {
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        token.mint(address(facet), 1000 ether);
+
+        vm.startPrank(unauthorized);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.recoverAssets(address(token), address(0x999), 500 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertWhenAssetIsAvailable() public {
+        // Create a mock token and use it as an available asset
+        MockERC20 availableToken = new MockERC20("Available Token", "AVL");
+
+        // Mock oracle for this token
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(availableToken)),
+            abi.encode(address(1002), uint96(1002))
+        );
+
+        // Add token as available asset FIRST (before minting)
+        vm.startPrank(curator);
+        facet.addAvailableAsset(address(availableToken));
+        vm.stopPrank();
+
+        // Now mint tokens to the vault
+        availableToken.mint(address(facet), 1000 ether);
+
+        // Should revert when trying to recover available asset
+        vm.startPrank(guardian);
+        vm.expectRevert(IConfigurationFacet.AssetIsAvailable.selector);
+        facet.recoverAssets(address(availableToken), address(0x999), 100 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRecoverVaultShares() public {
+        // In a real scenario, vault shares would be ERC20 tokens (the vault itself is an ERC20)
+        // We create a mock token to simulate vault shares sent to the vault by mistake
+        MockERC20 vaultSharesToken = new MockERC20("Vault Shares", "vSHARE");
+
+        // Mint some tokens to the facet (simulating vault shares accidentally sent)
+        vaultSharesToken.mint(address(facet), 100 ether);
+
+        vm.startPrank(guardian);
+
+        // Guardian should be able to recover any token, including ones that represent vault shares
+        facet.recoverAssets(address(vaultSharesToken), address(0x999), 50 ether);
+
+        vm.stopPrank();
+
+        // Verify balances
+        assertEq(vaultSharesToken.balanceOf(address(0x999)), 50 ether, "Receiver should have received tokens");
+        assertEq(vaultSharesToken.balanceOf(address(facet)), 50 ether, "Facet should have remaining tokens");
+    }
+
+    function test_recoverAssets_ShouldRevertWhenInsufficientBalance() public {
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        // Mint only 100 tokens
+        token.mint(address(facet), 100 ether);
+
+        vm.startPrank(guardian);
+
+        // Try to recover 200 tokens - should revert from SafeERC20
+        vm.expectRevert();
+        facet.recoverAssets(address(token), address(0x999), 200 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertWhenAmountIsZero() public {
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        token.mint(address(facet), 1000 ether);
+
+        vm.startPrank(guardian);
+
+        vm.expectRevert(IConfigurationFacet.InvalidAmount.selector);
+        facet.recoverAssets(address(token), address(0x999), 0);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertWhenReceiverIsZeroAddress() public {
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        token.mint(address(facet), 1000 ether);
+
+        vm.startPrank(guardian);
+
+        vm.expectRevert(IConfigurationFacet.InvalidReceiver.selector);
+        facet.recoverAssets(address(token), address(0), 500 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertDuringMulticall() public {
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        token.mint(address(facet), 1000 ether);
+
+        // Set isMulticall to true
+        MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
+
+        vm.startPrank(guardian);
+
+        vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
+        facet.recoverAssets(address(token), address(0x999), 500 ether);
+
+        vm.stopPrank();
+    }
+
+    function testFuzz_recoverAssets_ShouldRecoverVariousAmounts(uint256 amount) public {
+        // Bound the amount to reasonable values
+        amount = bound(amount, 1, 1e27); // 1 to 1 billion tokens
+
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        token.mint(address(facet), amount);
+
+        address receiver = address(0x999);
+
+        vm.startPrank(guardian);
+        facet.recoverAssets(address(token), receiver, amount);
+        vm.stopPrank();
+
+        assertEq(token.balanceOf(receiver), amount, "Receiver should have received exact amount");
+        assertEq(token.balanceOf(address(facet)), 0, "Facet should have no tokens left");
+    }
+
+    function test_recoverAssets_ShouldNotAffectAvailableAssets() public {
+        // Create an available token
+        MockERC20 availableAsset = new MockERC20("Available", "AVL");
+
+        // Mock oracle for available asset
+        vm.mockCall(
+            address(oracle),
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(availableAsset)),
+            abi.encode(address(5000), uint96(5000))
+        );
+
+        // Add availableAsset as available (balance is 0 at this point)
+        vm.startPrank(curator);
+        facet.addAvailableAsset(address(availableAsset));
+        vm.stopPrank();
+
+        // Create a different token that is NOT available
+        MockERC20 token = new MockERC20("Test Token", "TST");
+        token.mint(address(facet), 1000 ether);
+
+        vm.startPrank(guardian);
+
+        // Should be able to recover non-available asset
+        facet.recoverAssets(address(token), address(0x999), 500 ether);
+
+        vm.stopPrank();
+
+        // Verify availableAsset is still available
+        assertTrue(facet.isAssetAvailable(address(availableAsset)), "Available asset should still be available");
+    }
+
+    function test_recoverAssets_ShouldRevertWhenAssetIsHeldToken() public {
+        // Create a mock LP token
+        MockERC20 lpToken = new MockERC20("LP Token", "LP");
+
+        // Simulate that this token is held by a facet (e.g., ERC4626 facet)
+        bytes32 heldId = keccak256("TEST_FACET_ID");
+
+        // Register this as a held token ID in vaultExternalAssets
+        MoreVaultsStorageHelper.addVaultExternalAsset(address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), heldId);
+
+        // Add the LP token to tokensHeld for this facet
+        address[] memory tokensToAdd = new address[](1);
+        tokensToAdd[0] = address(lpToken);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), heldId, tokensToAdd);
+
+        // Mint some LP tokens to the vault
+        lpToken.mint(address(facet), 1000 ether);
+
+        // Try to recover - should revert
+        vm.startPrank(guardian);
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(lpToken), address(0x999), 500 ether);
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertForMultipleHeldTokenTypes() public {
+        // Create multiple mock tokens for different facets
+        MockERC20 erc4626Token = new MockERC20("ERC4626 Token", "E4626");
+        MockERC20 erc7540Token = new MockERC20("ERC7540 Token", "E7540");
+
+        bytes32 erc4626Id = keccak256("ERC4626_FACET");
+        bytes32 erc7540Id = keccak256("ERC7540_FACET");
+
+        // Register both as held token IDs
+        MoreVaultsStorageHelper.addVaultExternalAsset(
+            address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), erc4626Id
+        );
+        MoreVaultsStorageHelper.addVaultExternalAsset(
+            address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), erc7540Id
+        );
+
+        // Add ERC4626 token to first held set
+        address[] memory tokens4626 = new address[](1);
+        tokens4626[0] = address(erc4626Token);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), erc4626Id, tokens4626);
+
+        // Add ERC7540 token to second held set
+        address[] memory tokens7540 = new address[](1);
+        tokens7540[0] = address(erc7540Token);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), erc7540Id, tokens7540);
+
+        // Mint tokens
+        erc4626Token.mint(address(facet), 1000 ether);
+        erc7540Token.mint(address(facet), 2000 ether);
+
+        vm.startPrank(guardian);
+
+        // Should revert for ERC4626 token
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(erc4626Token), address(0x999), 100 ether);
+
+        // Should revert for ERC7540 token
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(erc7540Token), address(0x999), 200 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldSucceedForNonHeldToken() public {
+        // Create a held token and a non-held token
+        MockERC20 heldToken = new MockERC20("Held Token", "HELD");
+        MockERC20 normalToken = new MockERC20("Normal Token", "NORM");
+
+        bytes32 heldId = keccak256("HELD_FACET");
+
+        // Register held token
+        MoreVaultsStorageHelper.addVaultExternalAsset(address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), heldId);
+        address[] memory tokensToAdd = new address[](1);
+        tokensToAdd[0] = address(heldToken);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), heldId, tokensToAdd);
+
+        // Mint both tokens
+        heldToken.mint(address(facet), 1000 ether);
+        normalToken.mint(address(facet), 2000 ether);
+
+        vm.startPrank(guardian);
+
+        // Should revert for held token
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(heldToken), address(0x999), 100 ether);
+
+        // Should succeed for normal token
+        facet.recoverAssets(address(normalToken), address(0x999), 500 ether);
+
+        vm.stopPrank();
+
+        // Verify normal token was recovered
+        assertEq(normalToken.balanceOf(address(0x999)), 500 ether, "Normal token should be recovered");
+        assertEq(normalToken.balanceOf(address(facet)), 1500 ether, "Facet should have remaining normal tokens");
+
+        // Verify held token was NOT recovered
+        assertEq(heldToken.balanceOf(address(facet)), 1000 ether, "Held token should not be recovered");
+    }
+}
+
+// Mock ERC20 token for testing
+contract MockERC20 is ERC20 {
+    constructor(string memory name, string memory symbol) ERC20(name, symbol) {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
     }
 }

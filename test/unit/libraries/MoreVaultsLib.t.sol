@@ -365,6 +365,9 @@ contract MoreVaultsLibTest is Test {
             abi.encode(aggregator1, uint96(1000))
         );
 
+        // Mock balanceOf to return 0 (no existing balance)
+        vm.mockCall(newAsset, abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)), abi.encode(0));
+
         vm.expectEmit(true, true, true, true);
         emit MoreVaultsLib.AssetToManageAdded(newAsset);
 
@@ -490,6 +493,9 @@ contract MoreVaultsLibTest is Test {
             abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, wrappedNative),
             abi.encode(aggregator1, uint96(1000))
         );
+
+        // Mock balanceOf to return 0 (no existing balance)
+        vm.mockCall(wrappedNative, abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)), abi.encode(0));
 
         MoreVaultsLib._addAvailableAsset(wrappedNative);
         MoreVaultsLib._enableAssetToDeposit(wrappedNative);
