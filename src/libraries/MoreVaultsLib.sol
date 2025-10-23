@@ -809,4 +809,26 @@ library MoreVaultsLib {
 
         return ds.crossChainAccountingManager;
     }
+
+    /**
+     * @notice Checks if an asset is present in any tokensHeld mapping
+     * @dev Iterates through all held token IDs and checks if the asset exists in any of them
+     * @param asset The address of the asset to check
+     * @return true if asset is found in any tokensHeld mapping, false otherwise
+     */
+    function isAssetHeldToken(address asset) internal view returns (bool) {
+        MoreVaultsStorage storage ds = moreVaultsStorage();
+        bytes32[] memory heldIds = ds.vaultExternalAssets[TokenType.HeldToken].values();
+
+        for (uint256 i = 0; i < heldIds.length;) {
+            if (ds.tokensHeld[heldIds[i]].contains(asset)) {
+                return true;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        return false;
+    }
 }

@@ -872,6 +872,110 @@ contract ConfigurationFacetTest is Test {
         // Verify availableAsset is still available
         assertTrue(facet.isAssetAvailable(address(availableAsset)), "Available asset should still be available");
     }
+
+    function test_recoverAssets_ShouldRevertWhenAssetIsHeldToken() public {
+        // Create a mock LP token
+        MockERC20 lpToken = new MockERC20("LP Token", "LP");
+
+        // Simulate that this token is held by a facet (e.g., ERC4626 facet)
+        bytes32 heldId = keccak256("TEST_FACET_ID");
+
+        // Register this as a held token ID in vaultExternalAssets
+        MoreVaultsStorageHelper.addVaultExternalAsset(address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), heldId);
+
+        // Add the LP token to tokensHeld for this facet
+        address[] memory tokensToAdd = new address[](1);
+        tokensToAdd[0] = address(lpToken);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), heldId, tokensToAdd);
+
+        // Mint some LP tokens to the vault
+        lpToken.mint(address(facet), 1000 ether);
+
+        // Try to recover - should revert
+        vm.startPrank(guardian);
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(lpToken), address(0x999), 500 ether);
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldRevertForMultipleHeldTokenTypes() public {
+        // Create multiple mock tokens for different facets
+        MockERC20 erc4626Token = new MockERC20("ERC4626 Token", "E4626");
+        MockERC20 erc7540Token = new MockERC20("ERC7540 Token", "E7540");
+
+        bytes32 erc4626Id = keccak256("ERC4626_FACET");
+        bytes32 erc7540Id = keccak256("ERC7540_FACET");
+
+        // Register both as held token IDs
+        MoreVaultsStorageHelper.addVaultExternalAsset(
+            address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), erc4626Id
+        );
+        MoreVaultsStorageHelper.addVaultExternalAsset(
+            address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), erc7540Id
+        );
+
+        // Add ERC4626 token to first held set
+        address[] memory tokens4626 = new address[](1);
+        tokens4626[0] = address(erc4626Token);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), erc4626Id, tokens4626);
+
+        // Add ERC7540 token to second held set
+        address[] memory tokens7540 = new address[](1);
+        tokens7540[0] = address(erc7540Token);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), erc7540Id, tokens7540);
+
+        // Mint tokens
+        erc4626Token.mint(address(facet), 1000 ether);
+        erc7540Token.mint(address(facet), 2000 ether);
+
+        vm.startPrank(guardian);
+
+        // Should revert for ERC4626 token
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(erc4626Token), address(0x999), 100 ether);
+
+        // Should revert for ERC7540 token
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(erc7540Token), address(0x999), 200 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_recoverAssets_ShouldSucceedForNonHeldToken() public {
+        // Create a held token and a non-held token
+        MockERC20 heldToken = new MockERC20("Held Token", "HELD");
+        MockERC20 normalToken = new MockERC20("Normal Token", "NORM");
+
+        bytes32 heldId = keccak256("HELD_FACET");
+
+        // Register held token
+        MoreVaultsStorageHelper.addVaultExternalAsset(address(facet), uint8(MoreVaultsLib.TokenType.HeldToken), heldId);
+        address[] memory tokensToAdd = new address[](1);
+        tokensToAdd[0] = address(heldToken);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), heldId, tokensToAdd);
+
+        // Mint both tokens
+        heldToken.mint(address(facet), 1000 ether);
+        normalToken.mint(address(facet), 2000 ether);
+
+        vm.startPrank(guardian);
+
+        // Should revert for held token
+        vm.expectRevert(IConfigurationFacet.AssetIsHeldToken.selector);
+        facet.recoverAssets(address(heldToken), address(0x999), 100 ether);
+
+        // Should succeed for normal token
+        facet.recoverAssets(address(normalToken), address(0x999), 500 ether);
+
+        vm.stopPrank();
+
+        // Verify normal token was recovered
+        assertEq(normalToken.balanceOf(address(0x999)), 500 ether, "Normal token should be recovered");
+        assertEq(normalToken.balanceOf(address(facet)), 1500 ether, "Facet should have remaining normal tokens");
+
+        // Verify held token was NOT recovered
+        assertEq(heldToken.balanceOf(address(facet)), 1000 ether, "Held token should not be recovered");
+    }
 }
 
 // Mock ERC20 token for testing

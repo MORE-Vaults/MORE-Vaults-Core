@@ -22,6 +22,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error InvalidAmount();
     error InvalidReceiver();
     error CannotAddAssetWithExistingBalance();
+    error AssetIsHeldToken();
 
     /**
      * @dev Events
@@ -253,9 +254,10 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
 
     /**
      * @notice Recovers assets that were accidentally sent to the vault
-     * @dev Only callable by guardian. Can only recover assets that are NOT in the available assets list.
-     *      This prevents recovery of assets that the vault is supposed to manage.
-     *      Guardian can recover vault shares for emergency situations.
+     * @dev Only callable by guardian. Can only recover assets that are NOT in the available assets list
+     *      and NOT in any tokensHeld mapping (LP tokens, staking tokens, vault shares).
+     *      This prevents recovery of assets that the vault is supposed to manage or that are
+     *      priced through facet accounting rather than oracle pricing.
      * @param asset The address of the asset to recover
      * @param receiver The address that will receive the recovered assets
      * @param amount The amount of assets to recover

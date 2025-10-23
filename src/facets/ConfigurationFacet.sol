@@ -349,6 +349,10 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         // Cannot recover assets that are marked as available (vault is managing them)
         if (ds.isAssetAvailable[asset]) revert AssetIsAvailable();
 
+        // Cannot recover LP tokens or other "underneath tokens" that are held by facets
+        // These tokens don't have oracles and are priced through facet accounting
+        if (MoreVaultsLib.isAssetHeldToken(asset)) revert AssetIsHeldToken();
+
         // Transfer the assets to receiver
         IERC20(asset).safeTransfer(receiver, amount);
 
