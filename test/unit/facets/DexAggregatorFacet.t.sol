@@ -7,6 +7,7 @@ import {IDexAggregatorFacet} from "../../../src/interfaces/facets/IDexAggregator
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
+import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 
@@ -34,6 +35,7 @@ contract DexAggregatorFacetTest is Test {
     address public curator = address(2);
     address public guardian = address(3);
     address public unauthorized = address(4);
+    address public mockRegistry = address(5);
 
     function setUp() public {
         facet = new DexAggregatorFacet();
@@ -45,14 +47,23 @@ contract DexAggregatorFacetTest is Test {
         MoreVaultsStorageHelper.setOwner(address(facet), owner);
         MoreVaultsStorageHelper.setCurator(address(facet), curator);
         MoreVaultsStorageHelper.setGuardian(address(facet), guardian);
+        MoreVaultsStorageHelper.setMoreVaultsRegistry(address(facet), mockRegistry);
 
-        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(tokenA), true);
-        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(tokenB), true);
+        address[] memory availableAssets = new address[](2);
+        availableAssets[0] = address(tokenA);
+        availableAssets[1] = address(tokenB);
+        MoreVaultsStorageHelper.setAvailableAssets(address(facet), availableAssets);
 
-        MoreVaultsStorageHelper.setWhitelisted(address(facet), address(aggregator), true);
-        MoreVaultsStorageHelper.setWhitelisted(address(facet), address(quoter), true);
-
-        MoreVaultsStorageHelper.setMaxSlippagePercent(address(facet), 100);
+        vm.mockCall(
+            mockRegistry,
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(aggregator)),
+            abi.encode(true)
+        );
+        vm.mockCall(
+            mockRegistry,
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(quoter)),
+            abi.encode(true)
+        );
 
         tokenA.mint(address(facet), 1000e18);
         tokenB.mint(address(aggregator), 1000e18);
