@@ -122,7 +122,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         IVaultsFactory factory = IVaultsFactory(ds.factory);
         (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(factory.localEid(), address(this));
-        IBridgeAdapter adapter = IBridgeAdapter(ds.crossChainAccountingManager);
+        IBridgeAdapter adapter = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager());
         MessagingFee memory fee = adapter.quoteReadFee(vaults, eids, extraOptions);
         return fee.nativeFee;
     }
@@ -161,13 +161,13 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             totalAssets: IVaultFacet(address(this)).totalAssets()
         });
         MessagingFee memory fee =
-            IBridgeAdapter(ds.crossChainAccountingManager).quoteReadFee(vaults, eids, extraOptions);
+            IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager()).quoteReadFee(vaults, eids, extraOptions);
         if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (,,, uint256 value) = abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
             if (value + fee.nativeFee > msg.value) revert NotEnoughMsgValueProvided();
         }
 
-        guid = IBridgeAdapter(ds.crossChainAccountingManager).initiateCrossChainAccounting{value: msg.value}(
+        guid = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager()).initiateCrossChainAccounting{value: msg.value}(
             vaults, eids, extraOptions, msg.sender
         ).guid;
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
@@ -175,7 +175,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
 
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (msg.sender != ds.crossChainAccountingManager) {
+        if (msg.sender != MoreVaultsLib._getCrossChainAccountingManager()) {
             revert OnlyCrossChainAccountingManager();
         }
         if (readSuccess) {

@@ -332,6 +332,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function getCrossChainAccountingManager() external view returns (address) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        return ds.crossChainAccountingManager;
+
+        return MoreVaultsLib._getCrossChainAccountingManager();
     }
 }
