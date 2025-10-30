@@ -7,10 +7,9 @@ viaIR = true
 fs_permissions = [{ access = "read-write", path = "./"}]
 allow_internal_expect_revert = true
 optimizer = true
-optimizer_runs = 4000
+optimizer_runs = 3000
 
 remappings = [
-    "@aave-v3-core/contracts/=lib/aave-v3-core/contracts/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
     "@uniswap-v2/v2-periphery/=lib/v2-periphery/contracts/",
