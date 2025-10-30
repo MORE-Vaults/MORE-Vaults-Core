@@ -174,6 +174,7 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
+        address facetOnRemoval;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -602,11 +603,13 @@ library MoreVaultsLib {
             address factory = ds.factory;
             IVaultsFactory(factory).unlink(_facetAddress);
 
+            ds.facetOnRemoval = _facetAddress;
             (bool success, bytes memory result) = address(_facetAddress).delegatecall(
                 abi.encodeWithSelector(
                     bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
                 )
             );
+            delete ds.facetOnRemoval;
             // revert if onFacetRemoval exists on facet and failed
             if (!success && result.length > 0) {
                 revert OnFacetRemovalFailed(_facetAddress, result);

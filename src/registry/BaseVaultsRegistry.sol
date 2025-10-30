@@ -14,7 +14,6 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 abstract contract BaseVaultsRegistry is IMoreVaultsRegistry, AccessControlUpgradeable {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    /// @dev Aave price oracle address
     IOracleRegistry public oracle;
 
     /// @dev Mapping selector => facet address (shows which facet owns the selector)
