@@ -237,7 +237,7 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
 
         vm.deal(owner, 1 ether);
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSignature("HubCannotInitiateLink()"));
+        vm.expectRevert(abi.encodeWithSignature("OnlyHub()"));
         factory.hubBroadcastSpokeAdded{value: 0.01 ether}(
             address(spokeVault), NEW_SPOKE_EID, NEW_SPOKE_VAULT, dstEids, options
         );
