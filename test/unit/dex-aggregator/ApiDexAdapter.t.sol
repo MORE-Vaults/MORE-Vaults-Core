@@ -2,22 +2,22 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import {EisenAdapter} from "../../../src/dex-aggregator/EisenAdapter.sol";
+import {ApiDexAdapter} from "../../../src/dex-aggregator/ApiDexAdapter.sol";
 import {IDexAdapter} from "../../../src/interfaces/IDexAdapter.sol";
 
-contract EisenAdapterTest is Test {
-    EisenAdapter adapter;
+contract ApiDexAdapterTest is Test {
+    ApiDexAdapter adapter;
 
     address constant TOKEN_A = address(0x1);
     address constant TOKEN_B = address(0x2);
     address constant RECEIVER = address(0x3);
 
     function setUp() public {
-        adapter = new EisenAdapter();
+        adapter = new ApiDexAdapter();
     }
 
     function test_adapterName_ShouldReturnCorrectName() public view {
-        assertEq(adapter.adapterName(), "Eisen Finance");
+        assertEq(adapter.adapterName(), "API DEX Adapter");
     }
 
     function test_getRouterAddress_ShouldRevert() public {
@@ -53,7 +53,7 @@ contract EisenAdapterTest is Test {
     }
 
     function test_buildSwapCalldata_ShouldRevert() public {
-        vm.expectRevert("EisenAdapter: Use buildSwapCalldataWithParams with API data");
+        vm.expectRevert("ApiDexAdapter: Use buildSwapCalldataWithParams with API data");
         adapter.buildSwapCalldata(TOKEN_A, TOKEN_B, 1 ether, 0.99 ether, RECEIVER);
     }
 

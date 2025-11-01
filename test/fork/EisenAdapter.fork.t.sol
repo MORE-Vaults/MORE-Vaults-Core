@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
-import {EisenAdapter} from "../../src/dex-aggregator/EisenAdapter.sol";
+import {ApiDexAdapter} from "../../src/dex-aggregator/ApiDexAdapter.sol";
 import {DexAggregatorFacet} from "../../src/facets/DexAggregatorFacet.sol";
 import {IDexAggregatorFacet} from "../../src/interfaces/facets/IDexAggregatorFacet.sol";
 import {MoreVaultsStorageHelper} from "../helper/MoreVaultsStorageHelper.sol";
@@ -11,12 +11,12 @@ import {IMoreVaultsRegistry} from "../../src/interfaces/IMoreVaultsRegistry.sol"
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 /**
- * @title EisenAdapterForkTest
- * @notice Fork tests for EisenAdapter on Flow EVM
+ * @title ApiDexAdapterForkTest
+ * @notice Fork tests for ApiDexAdapter using Eisen Finance on Flow EVM
  * @dev To run: forge test --match-path test/fork/EisenAdapter.fork.t.sol --fork-url https://mainnet.evm.nodes.onflow.org --ffi -vvv
  */
-contract EisenAdapterForkTest is Test {
-    EisenAdapter adapter;
+contract ApiDexAdapterForkTest is Test {
+    ApiDexAdapter adapter;
     DexAggregatorFacet facet;
 
     // Flow EVM chain ID
@@ -38,7 +38,7 @@ contract EisenAdapterForkTest is Test {
         // Check we're on Flow fork
         require(block.chainid == FLOW_CHAIN_ID, "Must fork Flow EVM");
 
-        adapter = new EisenAdapter();
+        adapter = new ApiDexAdapter();
         facet = new DexAggregatorFacet();
 
         curator = makeAddr("curator");
@@ -72,7 +72,7 @@ contract EisenAdapterForkTest is Test {
     }
 
     function test_adapter_name() public view {
-        assertEq(adapter.adapterName(), "Eisen Finance");
+        assertEq(adapter.adapterName(), "API DEX Adapter");
     }
 
     function test_executeSwap_RealEisenQuote_WFLOW_to_stgUSDC() public {
