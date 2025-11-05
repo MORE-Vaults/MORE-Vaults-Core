@@ -378,6 +378,56 @@ contract MoreVaultsComposerTest is Test {
         composer.refundDeposit(bytes32(uint256(999)));
     }
 
+    // Test for issue #29: Verify refundDeposit uses OFT adapter address, not token address
+    function test_refundDeposit_usesOFTAddress_notTokenAddress() public {
+        vault.setAccountingFee(0.2 ether);
+        vault.setDepositable(address(assetToken), false);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 5e18;
+        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        // Initiate a cross-chain deposit that will create a pending deposit
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+
+        bytes32 guid = bytes32(uint256(0x1));
+
+        // Verify the pending deposit exists and has correct addresses
+        (
+            bytes32 depositor,
+            address tokenAddress,
+            address oftAddress,
+            uint256 assetAmount,
+            address refundAddress,
+            uint256 msgValue,
+            uint32 srcEid,
+
+        ) = composer.pendingDeposits(guid);
+
+        // Verify that tokenAddress and oftAddress are different
+        assertEq(tokenAddress, address(assetToken), "Token address should be the underlying token");
+        assertEq(oftAddress, address(assetOFT), "OFT address should be the OFT adapter");
+        assertTrue(tokenAddress != oftAddress, "Token and OFT addresses must be different");
+
+        // The fix ensures send() is called on oftAddress, not tokenAddress
+        // In production, calling send() on a plain ERC20 token would revert
+        // MockOFT has send() which is why the test passes, but this verifies
+        // we're using the correct address (oftAddress)
+
+        vm.prank(address(vault));
+        composer.refundDeposit{value: 0}(guid);
+
+        // Verify the deposit was deleted after successful refund
+        (depositor, tokenAddress, oftAddress, assetAmount, refundAddress, msgValue, srcEid, ) = composer.pendingDeposits(guid);
+        assertEq(assetAmount, 0, "Deposit should be deleted after refund");
+    }
+
     function test_lzCompose_refund_path_on_other_revert() public {
         vault.setDepositable(address(assetToken), false);
         vault.setAccountingFee(0);
