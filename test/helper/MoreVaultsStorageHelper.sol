@@ -726,4 +726,13 @@ library MoreVaultsStorageHelper {
         // Get shares from second slot
         shares = uint256(vm.load(contractAddress, bytes32(uint256(key) + 1)));
     }
+
+    // Functions for lockedTokens mapping (slot 17)
+    function getLockedTokens(address contractAddress, address token) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token)))));
+    }
+
+    function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
+        setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
+    }
 }

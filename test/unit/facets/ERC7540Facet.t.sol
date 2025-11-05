@@ -498,4 +498,142 @@ contract ERC7540FacetTest is Test {
         bytes32[] memory facets = MoreVaultsStorageHelper.getFacetsForAccounting(address(facet));
         assertTrue(facets.length == 0, "Facets should be removed");
     }
+
+    // Test for issue #27: Missing locked token accounting during async deposit
+    function test_accountingERC7540Facet_ShouldAccountLockedTokensDuringAsyncDeposit() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // First deposit some assets to have initial balance
+        IERC20(asset).approve(address(vault), DEPOSIT_AMOUNT);
+        facet.erc7540Deposit(address(vault), DEPOSIT_AMOUNT);
+
+        // Get initial accounting
+        (uint256 sumBefore,) = facet.accountingERC7540Facet();
+        assertEq(sumBefore, DEPOSIT_AMOUNT, "Initial sum should equal deposit amount");
+
+        // Request async deposit - this should lock the assets
+        uint256 asyncDepositAmount = 50e18;
+        facet.erc7540RequestDeposit(address(vault), asyncDepositAmount);
+
+        // Verify locked tokens are tracked
+        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(asset));
+        assertEq(lockedAssets, asyncDepositAmount, "Assets should be locked");
+
+        // Accounting should still include the locked assets even though shares haven't been received yet
+        (uint256 sumAfterRequest,) = facet.accountingERC7540Facet();
+        assertEq(
+            sumAfterRequest,
+            DEPOSIT_AMOUNT,
+            "Sum should remain the same - locked assets should be accounted for"
+        );
+
+        vm.stopPrank();
+    }
+
+    // Test for issue #27: Missing locked token accounting during async redeem
+    function test_accountingERC7540Facet_ShouldAccountLockedTokensDuringAsyncRedeem() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // First deposit to get shares
+        IERC20(asset).approve(address(vault), DEPOSIT_AMOUNT);
+        facet.erc7540Deposit(address(vault), DEPOSIT_AMOUNT);
+
+        // Get initial accounting
+        (uint256 sumBefore,) = facet.accountingERC7540Facet();
+        assertEq(sumBefore, DEPOSIT_AMOUNT, "Initial sum should equal deposit amount");
+
+        // Request async redeem - this should lock the shares
+        uint256 asyncRedeemShares = 30e18;
+        facet.erc7540RequestRedeem(address(vault), asyncRedeemShares);
+
+        // Verify locked tokens are tracked
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        assertEq(lockedShares, asyncRedeemShares, "Shares should be locked");
+
+        // Accounting should still include the locked shares even though assets haven't been received yet
+        (uint256 sumAfterRequest,) = facet.accountingERC7540Facet();
+        assertEq(
+            sumAfterRequest,
+            DEPOSIT_AMOUNT,
+            "Sum should remain the same - locked shares should be accounted for"
+        );
+
+        vm.stopPrank();
+    }
+
+    // Test for issue #27: Locked tokens should be unlocked after deposit finalization
+    function test_erc7540Deposit_ShouldUnlockTokensAfterFinalization() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // Request async deposit - this should lock the assets
+        uint256 asyncDepositAmount = 50e18;
+        facet.erc7540RequestDeposit(address(vault), asyncDepositAmount);
+
+        // Verify assets are locked
+        uint256 lockedAssetsBefore = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(asset));
+        assertEq(lockedAssetsBefore, asyncDepositAmount, "Assets should be locked after request");
+
+        // Finalize the deposit - this should unlock the assets
+        IERC20(asset).approve(address(vault), asyncDepositAmount);
+        facet.erc7540Deposit(address(vault), asyncDepositAmount);
+
+        // Verify assets are unlocked
+        uint256 lockedAssetsAfter = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(asset));
+        assertEq(lockedAssetsAfter, 0, "Assets should be unlocked after finalization");
+
+        vm.stopPrank();
+    }
+
+    // Test for issue #27: Locked tokens should be unlocked after redeem finalization
+    function test_erc7540Redeem_ShouldUnlockTokensAfterFinalization() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // First deposit to get shares
+        IERC20(asset).approve(address(vault), DEPOSIT_AMOUNT);
+        facet.erc7540Deposit(address(vault), DEPOSIT_AMOUNT);
+
+        // Request async redeem - this should lock the shares
+        uint256 asyncRedeemShares = 30e18;
+        facet.erc7540RequestRedeem(address(vault), asyncRedeemShares);
+
+        // Verify shares are locked
+        uint256 lockedSharesBefore = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        assertEq(lockedSharesBefore, asyncRedeemShares, "Shares should be locked after request");
+
+        // Mint assets to vault to allow redeem
+        MockERC20(asset).mint(address(vault), asyncRedeemShares);
+
+        // Finalize the redeem - this should unlock the shares
+        facet.erc7540Redeem(address(vault), asyncRedeemShares);
+
+        // Verify shares are unlocked
+        uint256 lockedSharesAfter = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        assertEq(lockedSharesAfter, 0, "Shares should be unlocked after finalization");
+
+        vm.stopPrank();
+    }
 }
