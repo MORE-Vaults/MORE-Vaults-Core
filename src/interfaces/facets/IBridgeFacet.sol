@@ -41,6 +41,12 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function setOraclesCrossChainAccounting(bool isTrue) external;
 
     /**
+     * @dev Returns whether oracle-based cross-chain accounting is enabled
+     * @return true if oracle accounting is enabled, false otherwise
+     */
+    function oraclesCrossChainAccounting() external view returns (bool);
+
+    /**
      * @dev Quotes the native fee required to initiate cross-chain accounting
      * @param extraOptions Additional options for the cross-chain read (adapter-specific)
      * @return nativeFee The estimated native token fee required

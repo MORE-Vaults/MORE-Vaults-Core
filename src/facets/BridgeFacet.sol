@@ -67,6 +67,11 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         );
     }
 
+    function oraclesCrossChainAccounting() external view returns (bool) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        return ds.oraclesCrossChainAccounting;
+    }
+
     function setOraclesCrossChainAccounting(bool isTrue) external {
         AccessControlLib.validateOwner(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();

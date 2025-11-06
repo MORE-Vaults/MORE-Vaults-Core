@@ -189,7 +189,12 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (IVaultFacet(address(VAULT)).paused()) {
             revert VaultIsPaused();
         }
-        if (VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT))) {
+        // Check if this is a cross-chain vault and oracle accounting is disabled
+        // If oracle accounting is enabled, use sync path even for cross-chain vaults
+        bool isCrossChainVault = VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT));
+        bool useAsyncFlow = isCrossChainVault && !IBridgeFacet(address(VAULT)).oraclesCrossChainAccounting();
+
+        if (useAsyncFlow) {
             _initDeposit(_composeFrom, IOFT(_oftIn).token(), _oftIn, _amount, sendParam, tx.origin, _srcEid);
         } else {
             _depositAndSend(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin);

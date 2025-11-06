@@ -906,6 +906,138 @@ contract MoreVaultsComposerTest is Test {
         // This demonstrates that trusted OFTs can proceed regardless of token() behavior
     }
 
+    // ============ Issue #39: Cross-chain deposits fail with oracle accounting Tests ============
+
+    /**
+     * @notice Test for issue #39 - Cross-chain deposits should work with oracle accounting enabled
+     * @dev This test demonstrates the bug where handleCompose unconditionally routes to async flow
+     *      for cross-chain vaults, causing revert when oracle accounting is enabled
+     *
+     * Bug scenario:
+     * 1. Vault is configured as cross-chain
+     * 2. Oracle accounting is enabled (ds.oraclesCrossChainAccounting = true)
+     * 3. User initiates cross-chain deposit via lzCompose
+     * 4. handleCompose checks isCrossChainVault() and routes to _initDeposit
+     * 5. _initDeposit calls initVaultActionRequest which reverts with AccountingViaOracles
+     * 6. lzCompose catches the revert and refunds the user (Refunded event)
+     *
+     * Expected behavior: Should emit Deposited event (sync path via _depositAndSend)
+     * Actual behavior (bug): Emits Refunded event because initVaultActionRequest reverts
+     *
+     * This test CURRENTLY FAILS because it expects Deposited but gets Refunded.
+     * After the fix, this test should PASS.
+     */
+    function test_lzCompose_crossChainDeposit_shouldSucceed_whenOracleAccountingEnabled() public {
+        // Setup: Configure vault as cross-chain
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), true);
+
+        // Setup: Enable oracle accounting - this should allow sync deposits
+        vault.setOracleAccountingEnabled(true);
+
+        // Setup: Configure vault for deposits
+        vault.setAccountingFee(0); // No fee since we're using oracle accounting
+        vault.setDepositable(address(assetToken), false);
+
+        // Setup: Prepare compose message
+        SendParam memory sendParam;
+        sendParam.dstEid = 202; // Cross-chain destination
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 1e18;
+        bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        bytes32 guid = bytes32(uint256(5001));
+
+        // Execute: This should emit Deposited event for successful sync deposit
+        // But currently it emits Refunded because handleCompose routes to async flow
+        // which fails with AccountingViaOracles
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Deposited(
+            bytes32(uint256(uint160(user))), // depositor
+            sendParam.to, // to
+            sendParam.dstEid, // dstEid
+            amountLD, // assetAmount
+            amountLD // shareAmount (1:1 in mock)
+        );
+
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: 0.1 ether}(address(assetOFT), guid, msgBytes, address(0), "");
+
+        // Verify: No pending deposit should exist (sync flow)
+        bytes32 expectedGuid = bytes32(uint256(0x1));
+        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(expectedGuid);
+        assertEq(pendingAmount, 0, "No pending deposit for sync flow with oracle accounting");
+    }
+
+    /**
+     * @notice Test that cross-chain deposits still use async flow when oracle accounting is disabled
+     * @dev This verifies that the fix doesn't break the normal async flow
+     */
+    function test_lzCompose_crossChainDeposit_shouldUseAsyncFlow_whenOracleAccountingDisabled() public {
+        // Setup: Configure vault as cross-chain
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), true);
+
+        // Setup: Disable oracle accounting - should use async flow
+        vault.setOracleAccountingEnabled(false);
+
+        // Setup: Configure vault for async deposits
+        vault.setAccountingFee(0.1 ether); // Need accounting fee for async flow
+        vault.setDepositable(address(assetToken), false);
+
+        // Setup: Prepare compose message
+        SendParam memory sendParam;
+        sendParam.dstEid = 202; // Cross-chain destination
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 1e18;
+        bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        // Execute: This should succeed using async flow (initDeposit)
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: 0.2 ether}(address(assetOFT), bytes32(uint256(5002)), msgBytes, address(0), "");
+
+        // Verify: Check that a pending deposit was created (async flow)
+        bytes32 expectedGuid = bytes32(uint256(0x1));
+        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(expectedGuid);
+        assertEq(pendingAmount, amountLD, "Pending deposit should be created for async flow");
+    }
+
+    /**
+     * @notice Test that non-cross-chain vaults always use sync flow regardless of oracle accounting
+     * @dev This ensures the fix doesn't affect non-cross-chain vaults
+     */
+    function test_lzCompose_nonCrossChainDeposit_alwaysUsesSyncFlow() public {
+        // Setup: Configure vault as non-cross-chain
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), false);
+
+        // Setup: Enable oracle accounting (should not matter for non-cross-chain)
+        vault.setOracleAccountingEnabled(true);
+
+        // Setup: Configure vault for deposits
+        vault.setAccountingFee(0);
+        vault.setDepositable(address(assetToken), false);
+
+        // Setup: Prepare compose message
+        SendParam memory sendParam;
+        sendParam.dstEid = 202; // Cross-chain destination
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 1e18;
+        bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        // Execute: Should succeed with sync flow
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: 0.1 ether}(address(assetOFT), bytes32(uint256(5003)), msgBytes, address(0), "");
+
+        // Verify: No pending deposit should be created (sync flow)
+        bytes32 expectedGuid = bytes32(uint256(0x1));
+        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(expectedGuid);
+        assertEq(pendingAmount, 0, "No pending deposit for sync flow");
+    }
+
     /**
      * @notice Test that the vulnerability also affects _initDeposit path (cross-chain vaults)
      * @dev Similar to the first test but for the async deposit path
