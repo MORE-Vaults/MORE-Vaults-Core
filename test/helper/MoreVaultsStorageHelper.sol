@@ -735,4 +735,22 @@ library MoreVaultsStorageHelper {
     function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
     }
+
+    // Functions for facetsForAccounting array (slot 8)
+    function addFacetForAccounting(address contractAddress, bytes32 selector) internal {
+        bytes32 slot = bytes32(uint256(FACETS_FOR_ACCOUNTING));
+
+        // Get current array length
+        uint256 length = uint256(vm.load(contractAddress, slot));
+
+        // Calculate slot for new element (keccak256(slot) + length)
+        bytes32 arraySlot = keccak256(abi.encode(slot));
+        bytes32 elementSlot = bytes32(uint256(arraySlot) + length);
+
+        // Store the selector at the new position
+        vm.store(contractAddress, elementSlot, selector);
+
+        // Increment array length
+        vm.store(contractAddress, slot, bytes32(length + 1));
+    }
 }
