@@ -135,9 +135,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     ) external payable virtual override {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
         if (!LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)) {
-            if (IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())) {
-                revert InvalidComposeCaller(_composeSender);
-            }
+            revert InvalidComposeCaller(_composeSender);
         }
 
         bytes32 composeFrom = _message.composeFrom();

@@ -9,6 +9,7 @@ import {MockEndpointV2} from "../../../../test/mocks/MockEndpointV2.sol";
 import {MockVaultFacet} from "../../../../test/mocks/MockVaultFacet.sol";
 import {MockOFT} from "../../../../test/mocks/MockOFT.sol";
 import {MockOFTAdapter} from "../../../../test/mocks/MockOFTAdapter.sol";
+import {MaliciousOFTAdapter} from "../../../../test/mocks/MaliciousOFTAdapter.sol";
 import {SendParam} from "../../../../lib/devtools/packages/oft-evm/contracts/interfaces/IOFT.sol";
 import {OFTComposeMsgCodec} from "../../../../lib/devtools/packages/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 import {MockLzAdapterView} from "../../../../test/mocks/MockLzAdapterView.sol";
@@ -214,8 +215,8 @@ contract MoreVaultsComposerTest is Test {
         composer.lzCompose(address(assetOFT), bytes32(uint256(1)), msgBytes, address(0), "");
     }
 
-    function test_lzCompose_untrustedOFT_succeeds() public {
-        // When OFT is not trusted by adapter, compose skips depositable check branch
+    function test_lzCompose_untrustedOFT_reverts() public {
+        // After fix for issue #33: untrusted OFTs should ALWAYS revert
         vault.setAccountingFee(0);
         // mark trusted false
         lzAdapter.setTrusted(address(assetOFT), false);
@@ -226,6 +227,9 @@ contract MoreVaultsComposerTest is Test {
         sendParam.minAmountLD = 0;
 
         bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, 1e18);
+
+        // Should revert because OFT is not trusted (fix for issue #33)
+        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.InvalidComposeCaller.selector, address(assetOFT)));
         vm.prank(address(endpoint));
         composer.lzCompose(address(assetOFT), bytes32(uint256(0xabc)), msgBytes, address(0), "");
     }
@@ -774,5 +778,188 @@ contract MoreVaultsComposerTest is Test {
 
         composer.depositAndSend(address(assetToken), 100e18, sendParam, user);
         vm.stopPrank();
+    }
+
+    // ============ Issue #33: Token Substitution Attack Tests ============
+
+    /**
+     * @notice Test for issue #33 - Token substitution attack on non-trusted OFT
+     * @dev This test demonstrates the vulnerability where a malicious OFT can bypass security checks
+     *      by returning different token addresses on successive calls to token()
+     *
+     * Attack scenario:
+     * 1. Malicious OFT is not trusted by LzAdapter
+     * 2. First call to token() returns worthless token (not depositable) - bypasses security check
+     * 3. Second call to token() returns valuable token (USDC) - steals funds from composer
+     * 4. Attacker receives vault shares for tokens they never deposited
+     *
+     * Expected behavior: This test should FAIL with the current vulnerable code
+     * After fix: This test should PASS (transaction should revert with InvalidComposeCaller)
+     */
+    function test_lzCompose_shouldRevert_whenUntrustedOFTWithTokenSubstitution() public {
+        // Setup: Create worthless and valuable tokens
+        MockOFT worthlessToken = new MockOFT("Worthless", "WTH");
+        MockOFT valuableToken = new MockOFT("Valuable", "USDC");
+
+        // Setup: Create malicious OFT adapter
+        MaliciousOFTAdapter maliciousOFT = new MaliciousOFTAdapter(address(worthlessToken), address(valuableToken));
+        maliciousOFT.setEndpoint(address(endpoint));
+
+        // Setup: Fund the composer with valuable tokens (simulating pending deposits)
+        valuableToken.mint(address(composer), 1000e18);
+
+        // Setup: Configure vault to accept valuable token but reject worthless token
+        vault.setDepositable(address(valuableToken), true);
+        vault.setDepositable(address(worthlessToken), false);
+        vault.setAccountingFee(0);
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), false);
+
+        // Setup: Malicious OFT is NOT trusted
+        lzAdapter.setTrusted(address(maliciousOFT), false);
+
+        // Setup: Prepare compose message
+        SendParam memory sendParam;
+        sendParam.dstEid = localEid + 1; // Different chain
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.amountLD = 100; // Small amount to fit in message
+        sendParam.minAmountLD = 0;
+
+        bytes memory composeMsg = abi.encode(sendParam, uint256(0));
+
+        // Setup: Craft the LayerZero message
+        bytes memory oftMessage = abi.encodePacked(
+            uint8(0), // nonce
+            uint32(localEid + 1), // srcEid
+            bytes32(uint256(uint160(user))), // sender
+            uint64(100), // amountLD (small amount to fit in uint64)
+            composeMsg
+        );
+
+        // Execute: Attacker calls lzCompose via endpoint
+        // The malicious OFT will return worthlessToken on first call, valuableToken on subsequent calls
+        vm.prank(address(endpoint));
+        vm.deal(address(endpoint), 1 ether);
+
+        // Expected: Should revert with InvalidComposeCaller because OFT is not trusted
+        // Actual (with bug): The first call to token() returns worthlessToken (not depositable),
+        // so the security check passes. Then subsequent calls return valuableToken and steal funds.
+        vm.expectRevert(
+            abi.encodeWithSelector(IMoreVaultsComposer.InvalidComposeCaller.selector, address(maliciousOFT))
+        );
+        composer.lzCompose{value: 0.1 ether}(
+            address(maliciousOFT), bytes32(uint256(1)), oftMessage, address(0), bytes("")
+        );
+    }
+
+    /**
+     * @notice Test that trusted OFT should still work even with same token() behavior
+     * @dev This ensures our fix doesn't break legitimate use cases
+     */
+    function test_lzCompose_shouldSucceed_whenTrustedOFTEvenIfTokenChanges() public {
+        // Setup: Create tokens
+        MockOFT token1 = new MockOFT("Token1", "TK1");
+        MockOFT token2 = new MockOFT("Token2", "TK2");
+
+        // Setup: Create malicious-like OFT adapter (but it's trusted)
+        MaliciousOFTAdapter trustedButWeirdOFT = new MaliciousOFTAdapter(address(token1), address(token2));
+        trustedButWeirdOFT.setEndpoint(address(endpoint));
+
+        // Setup: Fund the composer
+        token2.mint(address(composer), 1000e18);
+
+        // Setup: Configure vault
+        vault.setDepositable(address(token2), true);
+        vault.setAccountingFee(0);
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), false);
+
+        // Setup: This OFT IS trusted (key difference)
+        lzAdapter.setTrusted(address(trustedButWeirdOFT), true);
+
+        // Setup: Prepare compose message
+        SendParam memory sendParam;
+        sendParam.dstEid = localEid + 1;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.amountLD = 100e18;
+        sendParam.minAmountLD = 0;
+
+        bytes memory composeMsg = abi.encode(sendParam, uint256(0));
+
+        // Setup: Craft the LayerZero message
+        bytes memory oftMessage = abi.encodePacked(
+            uint8(0), // nonce
+            uint32(localEid + 1), // srcEid
+            bytes32(uint256(uint160(user))), // sender
+            uint64(100), // amountLD (small amount to fit in uint64)
+            composeMsg
+        );
+
+        // Execute: Call lzCompose via endpoint
+        vm.prank(address(endpoint));
+        vm.deal(address(endpoint), 1 ether);
+
+        // Should succeed because OFT is trusted (security check is bypassed for trusted OFTs)
+        composer.lzCompose{value: 0.1 ether}(
+            address(trustedButWeirdOFT), bytes32(uint256(1)), oftMessage, address(0), bytes("")
+        );
+
+        // Verify: Operation completed successfully
+        // This demonstrates that trusted OFTs can proceed regardless of token() behavior
+    }
+
+    /**
+     * @notice Test that the vulnerability also affects _initDeposit path (cross-chain vaults)
+     * @dev Similar to the first test but for the async deposit path
+     */
+    function test_lzCompose_shouldRevert_whenUntrustedOFTWithTokenSubstitution_asyncPath() public {
+        // Setup: Create worthless and valuable tokens
+        MockOFT worthlessToken = new MockOFT("Worthless", "WTH");
+        MockOFT valuableToken = new MockOFT("Valuable", "USDC");
+
+        // Setup: Create malicious OFT adapter
+        MaliciousOFTAdapter maliciousOFT = new MaliciousOFTAdapter(address(worthlessToken), address(valuableToken));
+        maliciousOFT.setEndpoint(address(endpoint));
+
+        // Setup: Fund the composer with valuable tokens
+        valuableToken.mint(address(composer), 1000e18);
+
+        // Setup: Configure vault
+        vault.setDepositable(address(valuableToken), true);
+        vault.setDepositable(address(worthlessToken), false);
+        vault.setAccountingFee(0.01 ether);
+        vaultFactory.setIsCrossChainVault(localEid, address(vault), true); // Enable async path
+
+        // Setup: Malicious OFT is NOT trusted
+        lzAdapter.setTrusted(address(maliciousOFT), false);
+
+        // Setup: Prepare compose message
+        SendParam memory sendParam;
+        sendParam.dstEid = localEid + 1;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.amountLD = 100; // Small amount to fit in message
+        sendParam.minAmountLD = 0;
+
+        bytes memory composeMsg = abi.encode(sendParam, uint256(0.02 ether));
+
+        // Setup: Craft the LayerZero message
+        bytes memory oftMessage = abi.encodePacked(
+            uint8(0), // nonce
+            uint32(localEid + 1), // srcEid
+            bytes32(uint256(uint160(user))), // sender
+            uint64(100), // amountLD (small amount to fit in uint64)
+            composeMsg
+        );
+
+        // Execute: Attacker calls lzCompose via endpoint
+        vm.prank(address(endpoint));
+        vm.deal(address(endpoint), 1 ether);
+
+        // Expected: Should revert with InvalidComposeCaller
+        // Actual (with bug): Will succeed and steal funds via async deposit
+        vm.expectRevert(
+            abi.encodeWithSelector(IMoreVaultsComposer.InvalidComposeCaller.selector, address(maliciousOFT))
+        );
+        composer.lzCompose{value: 0.1 ether}(
+            address(maliciousOFT), bytes32(uint256(1)), oftMessage, address(0), bytes("")
+        );
     }
 }
