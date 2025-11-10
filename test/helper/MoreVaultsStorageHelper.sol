@@ -736,9 +736,9 @@ library MoreVaultsStorageHelper {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
     }
 
-    // Functions for facetsForAccounting array (slot 8)
+    // Functions for facetsForAccounting array (slot 3)
     function addFacetForAccounting(address contractAddress, bytes32 selector) internal {
-        bytes32 slot = bytes32(uint256(FACETS_FOR_ACCOUNTING));
+        bytes32 slot = bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + FACETS_FOR_ACCOUNTING);
 
         // Get current array length
         uint256 length = uint256(vm.load(contractAddress, slot));

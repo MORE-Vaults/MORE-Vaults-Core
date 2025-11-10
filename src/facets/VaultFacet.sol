@@ -217,8 +217,28 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 let decodedAmount := mload(retOffset)
                 let isPositive := mload(add(retOffset, 0x20))
                 // if the amount is positive, add it to the total assets else add to debt
-                if isPositive { _totalAssets := add(_totalAssets, decodedAmount) }
-                if iszero(isPositive) { debt := add(debt, decodedAmount) }
+                if isPositive {
+                    let newTotal := add(_totalAssets, decodedAmount)
+                    if lt(newTotal, _totalAssets) {
+                        mstore(0, 0x08c379a0)
+                        mstore(4, 0x20)
+                        mstore(36, 17)
+                        mstore(68, "Accounting overflow")
+                        revert(0, 100)
+                    }
+                    _totalAssets := newTotal
+                }
+                if iszero(isPositive) {
+                    let newDebt := add(debt, decodedAmount)
+                    if lt(newDebt, debt) {
+                        mstore(0, 0x08c379a0)
+                        mstore(4, 0x20)
+                        mstore(36, 17)
+                        mstore(68, "Accounting overflow")
+                        revert(0, 100)
+                    }
+                    debt := newDebt
+                }
             }
 
             // after accounting is done check if total assets are greater than debt

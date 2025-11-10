@@ -27,6 +27,7 @@ import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {console} from "forge-std/console.sol";
+import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -1939,22 +1940,23 @@ contract VaultFacetTest is Test {
     //     assertEq(tokens[0], address(0x123));
     // }
 
-    // ============ Issue #30: Assembly overflow protection tests ============
-
-    /**
-     * @notice Test that current accounting facets are safe (use safe arithmetic)
-     * @dev Demonstrates that existing facets cannot trigger overflow because they use += outside assembly
-     */
-    function test_totalAssets_currentFacetsAreSafe() public {
-        // All current accounting facets (ERC4626Facet, ERC7540Facet, BridgeFacet) use safe arithmetic
-        // They accumulate values with `sum +=` which has automatic overflow protection in Solidity 0.8+
-
-        // This test shows totalAssets works correctly with current implementation
+    // Issue #30: Assembly arithmetic lacks overflow protection
+    function test_accountingFacetOverflow() public {
         MockERC20(asset).mint(facet, 1000 ether);
 
-        uint256 assets = VaultFacet(facet).totalAssets();
+        MaliciousAccountingFacet malicious = new MaliciousAccountingFacet();
+        bytes4 selector = MaliciousAccountingFacet.accountingMaliciousFacet.selector;
 
-        // Should return correct value without overflow
-        assertEq(assets, 1000 ether);
+        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(facet, selector, address(malicious), 0);
+        MoreVaultsStorageHelper.addFacetForAccounting(facet, bytes32(selector));
+
+        vm.mockCall(
+            facet,
+            abi.encodeWithSelector(selector),
+            abi.encode(type(uint256).max, true)
+        );
+
+        vm.expectRevert();
+        VaultFacet(facet).totalAssets();
     }
 }
