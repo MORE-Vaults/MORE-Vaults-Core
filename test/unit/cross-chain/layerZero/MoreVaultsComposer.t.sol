@@ -200,7 +200,7 @@ contract MoreVaultsComposerTest is Test {
     function test_lzCompose_success_depositFlow() public {
         // Configure vault fees and depositable
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Prepare compose message
         SendParam memory sendParam;
@@ -235,6 +235,8 @@ contract MoreVaultsComposerTest is Test {
     }
 
     function test_handleCompose_revert_insufficientMsgValue() public {
+        vault.setDepositable(address(assetToken), true);
+
         SendParam memory sendParam;
         bytes memory composeMsg = abi.encode(sendParam, 1 ether);
 
@@ -255,7 +257,7 @@ contract MoreVaultsComposerTest is Test {
     function test_initDeposit_revert_on_insufficient_readFee() public {
         // require readFee > msg.value inside _initDeposit
         vault.setAccountingFee(1 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
@@ -271,7 +273,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_pendingDeposit_init_and_complete_local_send() public {
         vault.setAccountingFee(0.1 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
@@ -293,7 +295,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_completeDeposit_crosschain_success() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         uint256 amountLD = 1e18;
@@ -326,7 +328,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_completeDeposit_reverts_on_slippage() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         SendParam memory sendParam;
         sendParam.dstEid = 202; // cross chain
@@ -348,7 +350,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_refundDeposit_success() public {
         vault.setAccountingFee(0.2 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
@@ -385,7 +387,7 @@ contract MoreVaultsComposerTest is Test {
     // Test for issue #29: Verify refundDeposit uses OFT adapter address, not token address
     function test_refundDeposit_usesOFTAddress_notTokenAddress() public {
         vault.setAccountingFee(0.2 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
@@ -433,7 +435,7 @@ contract MoreVaultsComposerTest is Test {
     }
 
     function test_lzCompose_refund_path_on_other_revert() public {
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vault.setAccountingFee(0);
         vault.setRevertOnInit(true);
 
@@ -456,7 +458,7 @@ contract MoreVaultsComposerTest is Test {
 
         vault.setAccountingFee(0);
         // must set depositable false due to current adapter check logic
-        vault.setDepositable(address(otherToken), false);
+        vault.setDepositable(address(otherToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sp;
@@ -492,7 +494,7 @@ contract MoreVaultsComposerTest is Test {
     // ============ depositAndSend tests ============
     function test_depositAndSend_success() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Give user some tokens
         assetToken.mint(user, 1000e18);
@@ -510,7 +512,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_depositAndSend_primaryAsset_success() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Use the primary asset (vault.asset()) for single asset deposit
         assetToken.mint(user, 1000e18);
@@ -528,7 +530,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_depositAndSend_multiAsset_success() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Create another asset for multi-asset deposit
         MockOFT otherToken = new MockOFT("Other", "OTH");
@@ -552,7 +554,7 @@ contract MoreVaultsComposerTest is Test {
     // ============ initDeposit tests ============
     function test_initDeposit_success() public {
         vault.setAccountingFee(0.1 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         // Give user some tokens
@@ -580,7 +582,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_initDeposit_primaryAsset_success() public {
         vault.setAccountingFee(0.1 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         // Use the primary asset (vault.asset()) for single asset deposit
@@ -608,7 +610,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_initDeposit_multiAsset_success() public {
         vault.setAccountingFee(0.1 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         // Create another asset for multi-asset deposit
@@ -650,7 +652,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_handleCompose_crossChainVault_path() public {
         vault.setAccountingFee(0.1 ether);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
@@ -667,7 +669,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_handleCompose_nonCrossChainVault_path() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(localEid, address(vault), false);
 
         SendParam memory sendParam;
@@ -684,7 +686,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_completeDeposit_slippage_revert() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
         SendParam memory sendParam;
@@ -707,7 +709,7 @@ contract MoreVaultsComposerTest is Test {
 
     // ============ Additional edge case tests ============
     function test_lzCompose_refund_on_general_error() public {
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
         vault.setAccountingFee(0);
         vault.setRevertOnInit(true);
 
@@ -721,6 +723,8 @@ contract MoreVaultsComposerTest is Test {
     }
 
     function test_lzCompose_insufficientMsgValue_revert_propagation() public {
+        vault.setDepositable(address(assetToken), true);
+
         SendParam memory sendParam;
         bytes memory composeMsg = abi.encode(sendParam, 1 ether);
 
@@ -745,7 +749,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_depositAndSend_slippage_check() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Give user some tokens
         assetToken.mint(user, 1000e18);
@@ -764,7 +768,7 @@ contract MoreVaultsComposerTest is Test {
 
     function test_depositAndSend_local_send_success() public {
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Give user some tokens
         assetToken.mint(user, 1000e18);
@@ -868,6 +872,7 @@ contract MoreVaultsComposerTest is Test {
         token2.mint(address(composer), 1000e18);
 
         // Setup: Configure vault
+        vault.setDepositable(address(token1), true);
         vault.setDepositable(address(token2), true);
         vault.setAccountingFee(0);
         vaultFactory.setIsCrossChainVault(localEid, address(vault), false);
@@ -936,7 +941,7 @@ contract MoreVaultsComposerTest is Test {
 
         // Setup: Configure vault for deposits
         vault.setAccountingFee(0); // No fee since we're using oracle accounting
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Setup: Prepare compose message
         SendParam memory sendParam;
@@ -983,7 +988,7 @@ contract MoreVaultsComposerTest is Test {
 
         // Setup: Configure vault for async deposits
         vault.setAccountingFee(0.1 ether); // Need accounting fee for async flow
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Setup: Prepare compose message
         SendParam memory sendParam;
@@ -1017,7 +1022,7 @@ contract MoreVaultsComposerTest is Test {
 
         // Setup: Configure vault for deposits
         vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), false);
+        vault.setDepositable(address(assetToken), true);
 
         // Setup: Prepare compose message
         SendParam memory sendParam;
