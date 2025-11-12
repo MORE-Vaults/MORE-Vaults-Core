@@ -34,6 +34,7 @@ library StakingFacetStorage {
     }
 
     struct WithdrawalRequest {
+        address protocol;
         address user;
         uint256 amount;
         uint256 timestamp;

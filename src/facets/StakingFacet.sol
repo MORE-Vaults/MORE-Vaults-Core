@@ -115,6 +115,7 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
         requestId = keccak256(abi.encodePacked(protocol, protocolRequestId, block.timestamp));
 
         sfs.withdrawalRequests[requestId] = StakingFacetStorage.WithdrawalRequest({
+            protocol: protocol,
             user: msg.sender,
             amount: receipts,
             timestamp: block.timestamp,
@@ -145,8 +146,7 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
             revert StakingFacetStorage.WithdrawalNotReady(requestId, request.timelockEnd);
         }
 
-        address protocol = address(uint160(uint256(requestId) >> 96));
-        StakingFacetStorage.ProtocolConfig storage config = sfs.protocols[protocol];
+        StakingFacetStorage.ProtocolConfig storage config = sfs.protocols[request.protocol];
 
         amount = IProtocolAdapter(config.adapter).finalizeUnstake(request.protocolRequestId);
 
