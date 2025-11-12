@@ -134,7 +134,7 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
         StakingFacetStorage.WithdrawalRequest storage request = sfs.withdrawalRequests[requestId];
 
         if (request.finalized) {
-            revert StakingFacetStorage.WithdrawalNotReady(requestId, request.timelockEnd);
+            revert StakingFacetStorage.WithdrawalAlreadyFinalized(requestId);
         }
 
         if (block.timestamp < request.timelockEnd) {

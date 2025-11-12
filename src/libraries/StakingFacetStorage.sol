@@ -11,6 +11,7 @@ library StakingFacetStorage {
     error InsufficientStakedBalance(uint256 requested, uint256 available);
     error DepegThresholdExceeded(uint256 depeg, uint256 threshold);
     error WithdrawalNotReady(bytes32 requestId, uint256 timelockEnd);
+    error WithdrawalAlreadyFinalized(bytes32 requestId);
     error CircuitBreakerActive();
     error InvalidProtocolConfig();
     error ProtocolHasBalance(address protocol, uint256 balance);

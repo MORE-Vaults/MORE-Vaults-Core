@@ -248,6 +248,29 @@ contract StakingFacetTest is Test {
         stakingFacet.finalizeUnstake(requestId);
     }
 
+    function test_RevertWhen_FinalizeUnstake_AlreadyFinalized() public {
+        _addProtocol();
+        uint256 stakeAmount = 100 ether;
+        _stakeTokens(stakeAmount);
+
+        vm.startPrank(curator);
+        receiptToken.approve(address(stakingFacet), stakeAmount);
+        bytes32 requestId = stakingFacet.requestUnstake(protocol, stakeAmount, "");
+        vm.stopPrank();
+
+        StakingFacetStorage.WithdrawalRequest memory request = stakingFacet.getWithdrawalRequest(requestId);
+        mockAdapter.setWithdrawalClaimable(request.protocolRequestId, true);
+
+        vm.warp(block.timestamp + 8 days);
+
+        vm.prank(curator);
+        stakingFacet.finalizeUnstake(requestId);
+
+        vm.prank(curator);
+        vm.expectRevert(abi.encodeWithSelector(StakingFacetStorage.WithdrawalAlreadyFinalized.selector, requestId));
+        stakingFacet.finalizeUnstake(requestId);
+    }
+
     function test_AccountingStakingFacet() public {
         _addProtocol();
         uint256 stakeAmount = 100 ether;
