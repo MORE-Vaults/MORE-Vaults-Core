@@ -124,11 +124,6 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
             finalized: false
         });
 
-        config.stakedBalance -= receipts;
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.lockedTokens[config.receiptToken] -= receipts;
-
         emit UnstakeRequested(protocol, receipts, requestId);
     }
 
@@ -149,6 +144,11 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
         StakingFacetStorage.ProtocolConfig storage config = sfs.protocols[request.protocol];
 
         amount = IProtocolAdapter(config.adapter).finalizeUnstake(request.protocolRequestId);
+
+        config.stakedBalance -= request.amount;
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.lockedTokens[config.receiptToken] -= request.amount;
 
         request.finalized = true;
 

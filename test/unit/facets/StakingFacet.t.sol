@@ -179,7 +179,7 @@ contract StakingFacetTest is Test {
         vm.stopPrank();
 
         assertTrue(requestId != bytes32(0));
-        assertEq(stakingFacet.getStakedBalance(protocol), 0);
+        assertEq(stakingFacet.getStakedBalance(protocol), stakeAmount);
 
         StakingFacetStorage.WithdrawalRequest memory request = stakingFacet.getWithdrawalRequest(requestId);
         assertEq(request.amount, stakeAmount);
@@ -223,6 +223,7 @@ contract StakingFacetTest is Test {
         uint256 amount = stakingFacet.finalizeUnstake(requestId);
 
         assertEq(amount, stakeAmount);
+        assertEq(stakingFacet.getStakedBalance(protocol), 0);
 
         StakingFacetStorage.WithdrawalRequest memory finalRequest = stakingFacet.getWithdrawalRequest(requestId);
         assertTrue(finalRequest.finalized);
