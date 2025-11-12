@@ -27,6 +27,8 @@ contract StakingFacetTest is Test {
     address public curator = address(7);
     address public registry = address(1000);
     address public protocol = address(2000);
+    address public yieldProtocol = address(2001);
+    address public restakingProtocol = address(2002);
     address public user = address(1);
     address public oracleRegistry = address(1001);
     address public oracle = address(1002);
@@ -326,6 +328,92 @@ contract StakingFacetTest is Test {
         assertEq(totalValue, 105 ether);
     }
 
+    function test_AddProtocol_YieldTokenization() public {
+        StakingFacetStorage.ProtocolConfig memory config = StakingFacetStorage.ProtocolConfig({
+            protocolAddress: yieldProtocol,
+            protocolType: StakingFacetStorage.ProtocolType.YIELD_TOKENIZATION,
+            depositToken: address(depositToken),
+            receiptToken: address(receiptToken),
+            adapter: address(mockAdapter),
+            isActive: true,
+            stakedBalance: 0
+        });
+
+        vm.prank(owner);
+        stakingFacet.addProtocol(yieldProtocol, config);
+
+        StakingFacetStorage.ProtocolConfig memory storedConfig = stakingFacet.getProtocolConfig(yieldProtocol);
+        assertEq(uint256(storedConfig.protocolType), uint256(StakingFacetStorage.ProtocolType.YIELD_TOKENIZATION));
+        assertTrue(storedConfig.isActive);
+    }
+
+    function test_AddProtocol_LiquidRestaking() public {
+        StakingFacetStorage.ProtocolConfig memory config = StakingFacetStorage.ProtocolConfig({
+            protocolAddress: restakingProtocol,
+            protocolType: StakingFacetStorage.ProtocolType.LIQUID_RESTAKING,
+            depositToken: address(depositToken),
+            receiptToken: address(receiptToken),
+            adapter: address(mockAdapter),
+            isActive: true,
+            stakedBalance: 0
+        });
+
+        vm.prank(owner);
+        stakingFacet.addProtocol(restakingProtocol, config);
+
+        StakingFacetStorage.ProtocolConfig memory storedConfig = stakingFacet.getProtocolConfig(restakingProtocol);
+        assertEq(uint256(storedConfig.protocolType), uint256(StakingFacetStorage.ProtocolType.LIQUID_RESTAKING));
+        assertTrue(storedConfig.isActive);
+    }
+
+    function test_Stake_MultipleProtocolTypes() public {
+        _addProtocol();
+        _addYieldProtocol();
+        _addRestakingProtocol();
+
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(curator);
+        depositToken.mint(curator, stakeAmount * 3);
+        depositToken.approve(address(stakingFacet), stakeAmount * 3);
+
+        stakingFacet.stake(protocol, address(depositToken), stakeAmount, "");
+        stakingFacet.stake(yieldProtocol, address(depositToken), stakeAmount, "");
+        stakingFacet.stake(restakingProtocol, address(depositToken), stakeAmount, "");
+        vm.stopPrank();
+
+        assertEq(stakingFacet.getStakedBalance(protocol), stakeAmount);
+        assertEq(stakingFacet.getStakedBalance(yieldProtocol), stakeAmount);
+        assertEq(stakingFacet.getStakedBalance(restakingProtocol), stakeAmount);
+
+        address[] memory activeProtocols = stakingFacet.getActiveProtocols();
+        assertEq(activeProtocols.length, 3);
+    }
+
+    function test_AccountingStakingFacet_MultipleProtocolTypes() public {
+        _addProtocol();
+        _addYieldProtocol();
+        _addRestakingProtocol();
+
+        uint256 stakeAmount = 100 ether;
+
+        vm.startPrank(curator);
+        depositToken.mint(curator, stakeAmount * 3);
+        depositToken.approve(address(stakingFacet), stakeAmount * 3);
+
+        stakingFacet.stake(protocol, address(depositToken), stakeAmount, "");
+        stakingFacet.stake(yieldProtocol, address(depositToken), stakeAmount, "");
+        stakingFacet.stake(restakingProtocol, address(depositToken), stakeAmount, "");
+        vm.stopPrank();
+
+        mockAdapter.setValueInETH(1.1e18);
+
+        (uint256 sum, bool isPositive) = stakingFacet.accountingStakingFacet();
+
+        assertTrue(isPositive);
+        assertEq(sum, 330 ether);
+    }
+
     function _addProtocol() internal {
         StakingFacetStorage.ProtocolConfig memory config = StakingFacetStorage.ProtocolConfig({
             protocolAddress: protocol,
@@ -339,6 +427,36 @@ contract StakingFacetTest is Test {
 
         vm.prank(owner);
         stakingFacet.addProtocol(protocol, config);
+    }
+
+    function _addYieldProtocol() internal {
+        StakingFacetStorage.ProtocolConfig memory config = StakingFacetStorage.ProtocolConfig({
+            protocolAddress: yieldProtocol,
+            protocolType: StakingFacetStorage.ProtocolType.YIELD_TOKENIZATION,
+            depositToken: address(depositToken),
+            receiptToken: address(receiptToken),
+            adapter: address(mockAdapter),
+            isActive: true,
+            stakedBalance: 0
+        });
+
+        vm.prank(owner);
+        stakingFacet.addProtocol(yieldProtocol, config);
+    }
+
+    function _addRestakingProtocol() internal {
+        StakingFacetStorage.ProtocolConfig memory config = StakingFacetStorage.ProtocolConfig({
+            protocolAddress: restakingProtocol,
+            protocolType: StakingFacetStorage.ProtocolType.LIQUID_RESTAKING,
+            depositToken: address(depositToken),
+            receiptToken: address(receiptToken),
+            adapter: address(mockAdapter),
+            isActive: true,
+            stakedBalance: 0
+        });
+
+        vm.prank(owner);
+        stakingFacet.addProtocol(restakingProtocol, config);
     }
 
     function _stakeTokens(uint256 amount) internal {
