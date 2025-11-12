@@ -3,6 +3,9 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {VaultsFactory, MessagingFee} from "../../../src/factory/VaultsFactory.sol";
+import {
+    OAppSenderUpgradeable
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppSenderUpgradeable.sol";
 import {VaultsFactoryHarness} from "../../mocks/VaultsFactoryHarness.sol";
 import {IAccessControlFacet} from "../../../src/interfaces/facets/IAccessControlFacet.sol";
 
@@ -177,7 +180,7 @@ contract VaultsFactoryRequestRegisterSpokeTest is Test {
         uint256 wrongFee = QUOTE_FEE - 1;
 
         vm.deal(vaultOwner, 1 ether);
-        vm.expectRevert("LZ: invalid fee");
+        vm.expectRevert(abi.encodeWithSelector(OAppSenderUpgradeable.NotEnoughNative.selector, wrongFee));
         vm.prank(vaultOwner);
         factory.requestRegisterSpoke{value: wrongFee}(HUB_EID, hubVault, address(spokeVault), "");
     }

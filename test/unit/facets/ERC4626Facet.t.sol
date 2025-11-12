@@ -485,7 +485,7 @@ contract ERC4626FacetTest is Test {
         // Execute generic async action
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should increase staked amount");
 
@@ -514,7 +514,7 @@ contract ERC4626FacetTest is Test {
         // Execute generic async action
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should increase staked amount");
 
@@ -531,7 +531,7 @@ contract ERC4626FacetTest is Test {
             DEPOSIT_AMOUNT,
             "Should be equal to deposit amount"
         );
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
@@ -560,7 +560,7 @@ contract ERC4626FacetTest is Test {
         // Execute generic async action
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should increase staked amount");
 
@@ -577,7 +577,7 @@ contract ERC4626FacetTest is Test {
             DEPOSIT_AMOUNT,
             "Should be equal to deposit amount"
         );
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
@@ -605,7 +605,7 @@ contract ERC4626FacetTest is Test {
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be greater than 0");
 
@@ -633,7 +633,7 @@ contract ERC4626FacetTest is Test {
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be greater than 0");
 
@@ -652,7 +652,7 @@ contract ERC4626FacetTest is Test {
         );
 
         asset.mint(address(newVault), MINT_SHARES);
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
@@ -680,7 +680,7 @@ contract ERC4626FacetTest is Test {
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be greater than 0");
 
@@ -698,7 +698,7 @@ contract ERC4626FacetTest is Test {
             "Should be equal to mint shares"
         );
 
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
@@ -725,7 +725,7 @@ contract ERC4626FacetTest is Test {
         );
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
@@ -752,7 +752,7 @@ contract ERC4626FacetTest is Test {
         );
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
@@ -764,7 +764,7 @@ contract ERC4626FacetTest is Test {
         );
         data = abi.encodeWithSelector(selector, DEPOSIT_AMOUNT);
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
         vm.stopPrank();
@@ -790,7 +790,7 @@ contract ERC4626FacetTest is Test {
         );
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
@@ -802,7 +802,7 @@ contract ERC4626FacetTest is Test {
         );
         data = abi.encodeWithSelector(selector, DEPOSIT_AMOUNT);
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
         vm.stopPrank();
@@ -828,7 +828,7 @@ contract ERC4626FacetTest is Test {
         );
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
 
@@ -855,7 +855,7 @@ contract ERC4626FacetTest is Test {
         );
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
         newVault.mintShares(address(facet), MINT_SHARES);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
@@ -871,7 +871,7 @@ contract ERC4626FacetTest is Test {
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
         asset.mint(address(newVault), MINT_SHARES);
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
@@ -898,7 +898,7 @@ contract ERC4626FacetTest is Test {
         );
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
@@ -913,7 +913,7 @@ contract ERC4626FacetTest is Test {
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
         asset.mint(address(newVault), MINT_SHARES);
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
         assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
 
@@ -940,7 +940,7 @@ contract ERC4626FacetTest is Test {
         // Execute generic async action
         bytes memory data = abi.encodeWithSelector(selector);
         vm.expectRevert(abi.encodeWithSelector(IERC4626Facet.SelectorNotAllowed.selector, selector));
-        facet.genericAsyncActionExecution(address(vault), data);
+        facet.genericAsyncActionExecution(address(vault), 0, data);
 
         vm.stopPrank();
     }
@@ -950,7 +950,7 @@ contract ERC4626FacetTest is Test {
 
         bytes memory data = abi.encodeWithSelector(bytes4(keccak256("test()")));
         vm.expectRevert(abi.encodeWithSelector(AccessControlLib.UnauthorizedAccess.selector, unauthorized));
-        facet.genericAsyncActionExecution(address(vault), data);
+        facet.genericAsyncActionExecution(address(vault), 0, data);
     }
 
     function test_genericAsyncActionExecution_ShouldRevertWhenVaultNotWhitelisted() public {
@@ -970,7 +970,7 @@ contract ERC4626FacetTest is Test {
 
         bytes memory data = abi.encodeWithSelector(bytes4(keccak256("test()")));
         vm.expectRevert();
-        facet.genericAsyncActionExecution(address(vault), data);
+        facet.genericAsyncActionExecution(address(vault), 0, data);
     }
 
     function test_genericAsyncActionExecution_ShouldRevertWhenUnexpectedChangeOfState() public {
@@ -993,7 +993,7 @@ contract ERC4626FacetTest is Test {
         asset.mint(address(newVault), DEPOSIT_AMOUNT);
         bytes memory data = abi.encodeWithSelector(selector, DEPOSIT_AMOUNT, address(facet), address(facet));
         vm.expectRevert(abi.encodeWithSelector(IERC4626Facet.UnexpectedState.selector));
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), 0, data);
 
         vm.stopPrank();
     }
@@ -1023,7 +1023,62 @@ contract ERC4626FacetTest is Test {
                 hex"e450d38c0000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002b5e3af16b1880000"
             )
         );
-        facet.genericAsyncActionExecution(address(newVault), data);
+        facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
+        vm.stopPrank();
+    }
+
+    // Test for Issue #13: Multiple concurrent async requests should not interfere
+    function test_genericAsyncActionExecution_Issue13_MultipleDepositsCancelShouldNotZeroGlobal() public {
+        MockAsyncERC4626WithLockOnDeposit newVault = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
+
+        bytes4 depositSelector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
+        bytes4 cancelSelector = MockAsyncERC4626WithLockOnDeposit.depositCancel.selector;
+
+        // Setup mocks for both selectors
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(newVault), depositSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(newVault), cancelSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max)))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(newVault)),
+            abi.encode(true)
+        );
+
+        vm.startPrank(address(facet));
+
+        // User A deposits 100
+        uint256 depositAmountA = 100e18;
+        bytes memory dataA = abi.encodeWithSelector(depositSelector, depositAmountA, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(newVault), depositAmountA, dataA);
+
+        uint256 lockedAfterA = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+        assertEq(lockedAfterA, depositAmountA, "Should have User A's deposit locked");
+
+        // User B deposits 200
+        uint256 depositAmountB = 200e18;
+        bytes memory dataB = abi.encodeWithSelector(depositSelector, depositAmountB, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(newVault), depositAmountB, dataB);
+
+        uint256 lockedAfterB = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+        assertEq(lockedAfterB, depositAmountA + depositAmountB, "Should have both deposits locked");
+
+        // User B cancels their deposit
+        bytes memory dataBCancel = abi.encodeWithSelector(cancelSelector, depositAmountB);
+        facet.genericAsyncActionExecution(address(newVault), depositAmountB, dataBCancel);
+
+        uint256 lockedAfterCancel = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+
+        // CRITICAL: Should still have User A's deposit (100), not 0!
+        assertEq(lockedAfterCancel, depositAmountA, "Should only unlock User B's deposit, User A's should remain");
+        assertGt(lockedAfterCancel, 0, "Should NOT be zero - User A's deposit still pending");
+
         vm.stopPrank();
     }
 }

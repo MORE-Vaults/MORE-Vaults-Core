@@ -6,6 +6,9 @@ import {BaseFacetInitializer, IMulticallFacet, MulticallFacet} from "../../../sr
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {IAccessControlFacet} from "../../../src/interfaces/facets/IAccessControlFacet.sol";
+import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
+import {IVaultFacet} from "../../../src/interfaces/facets/IVaultFacet.sol";
 import {console} from "forge-std/console.sol";
 
 contract MulticallFacetTest is Test {
@@ -284,6 +287,127 @@ contract MulticallFacetTest is Test {
         MoreVaultsStorageHelper.setSlippagePercent(address(mock), 1);
         mock.submitActions(newActionsData);
     }
+
+    // ===== Issue #19 Tests: Selector Validation Bypass =====
+
+    function test_Issue19_submitActions_ShouldValidateAllSelectors_CuratorActions() public {
+        // Setup: Create actions with different curator-allowed selectors
+        bytes[] memory multiActions = new bytes[](3);
+        multiActions[0] = abi.encodeWithSignature("mockFunction1()");
+        multiActions[1] = abi.encodeWithSignature("mockFunction2()");
+        multiActions[2] = abi.encodeWithSignature("mockFunction3()");
+
+        vm.startPrank(curator);
+
+        // All selectors should be validated - this should succeed for curator
+        uint256 nonce = facet.submitActions(multiActions);
+
+        // Verify actions were stored
+        (bytes[] memory storedActions,) = facet.getPendingActions(nonce);
+        assertEq(storedActions.length, 3, "All actions should be stored");
+
+        vm.stopPrank();
+    }
+
+    function test_Issue19_submitActions_ShouldRevertIfSecondSelectorRequiresOwner() public {
+        // Test that even if first selector is curator-allowed,
+        // second selector requiring owner should fail for curator
+
+        SelectorValidationMock mock = new SelectorValidationMock();
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(mock), timeLockPeriod);
+        MoreVaultsStorageHelper.setCurator(address(mock), curator);
+        MoreVaultsStorageHelper.setOwner(address(mock), address(this));
+
+        // Create actions: first is curator-allowed, second requires owner
+        bytes[] memory mixedActions = new bytes[](2);
+        mixedActions[0] = abi.encodeWithSignature("mockFunction1()"); // Curator allowed
+        mixedActions[1] = abi.encodeWithSelector(IAccessControlFacet.transferOwnership.selector, address(999)); // Owner only
+
+        vm.startPrank(curator);
+
+        // Should revert because second selector requires owner permission
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        mock.submitActions(mixedActions);
+
+        vm.stopPrank();
+    }
+
+    function test_Issue19_submitActions_ShouldRevertIfThirdSelectorRequiresOwner() public {
+        SelectorValidationMock mock = new SelectorValidationMock();
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(mock), timeLockPeriod);
+        MoreVaultsStorageHelper.setCurator(address(mock), curator);
+        MoreVaultsStorageHelper.setOwner(address(mock), address(this));
+
+        // Create actions: first two curator-allowed, third requires owner
+        bytes[] memory mixedActions = new bytes[](3);
+        mixedActions[0] = abi.encodeWithSignature("mockFunction1()");
+        mixedActions[1] = abi.encodeWithSignature("mockFunction2()");
+        mixedActions[2] = abi.encodeWithSelector(IConfigurationFacet.setTimeLockPeriod.selector, 123); // Owner only
+
+        vm.startPrank(curator);
+
+        // Should revert because third selector requires owner permission
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        mock.submitActions(mixedActions);
+
+        vm.stopPrank();
+    }
+
+    function test_Issue19_submitActions_ShouldRevertOnInvalidSelectorLength() public {
+        vm.startPrank(curator);
+
+        // Create actions with invalid selector (less than 4 bytes)
+        bytes[] memory invalidActions = new bytes[](2);
+        invalidActions[0] = abi.encodeWithSignature("mockFunction1()");
+        invalidActions[1] = new bytes(3); // Only 3 bytes - invalid
+
+        // Should revert due to invalid selector length
+        vm.expectRevert(IMulticallFacet.EmptyActions.selector);
+        facet.submitActions(invalidActions);
+
+        vm.stopPrank();
+    }
+
+    function test_Issue19_submitActions_OwnerCanSubmitOwnerOnlyActions() public {
+        SelectorValidationMock mock = new SelectorValidationMock();
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(mock), timeLockPeriod);
+        address owner = address(this);
+        MoreVaultsStorageHelper.setOwner(address(mock), owner);
+        MoreVaultsStorageHelper.setCurator(address(mock), curator);
+
+        // Create actions with owner-only selectors
+        bytes[] memory ownerActions = new bytes[](3);
+        ownerActions[0] = abi.encodeWithSelector(IAccessControlFacet.transferOwnership.selector, address(999));
+        ownerActions[1] = abi.encodeWithSelector(IConfigurationFacet.setTimeLockPeriod.selector, 456);
+        ownerActions[2] = abi.encodeWithSelector(IVaultFacet.setFee.selector, 100);
+
+        // Owner should be able to submit all owner-only actions
+        uint256 nonce = mock.submitActions(ownerActions);
+
+        // Verify all actions were stored
+        (bytes[] memory storedActions,) = mock.getPendingActions(nonce);
+        assertEq(storedActions.length, 3, "All actions should be stored");
+    }
+
+    function test_Issue19_submitActions_ShouldRevertIfAnyActionInvalidForUnauthorized() public {
+        SelectorValidationMock mock = new SelectorValidationMock();
+        MoreVaultsStorageHelper.setTimeLockPeriod(address(mock), timeLockPeriod);
+        MoreVaultsStorageHelper.setCurator(address(mock), curator);
+        MoreVaultsStorageHelper.setOwner(address(mock), address(this));
+
+        // Create actions where unauthorized user tries to submit
+        bytes[] memory actions = new bytes[](2);
+        actions[0] = abi.encodeWithSignature("mockFunction1()");
+        actions[1] = abi.encodeWithSignature("mockFunction2()");
+
+        vm.startPrank(unauthorized);
+
+        // Should revert because unauthorized is neither curator nor owner
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        mock.submitActions(actions);
+
+        vm.stopPrank();
+    }
 }
 
 contract TotalAssetsMock is MulticallFacet {
@@ -294,5 +418,23 @@ contract TotalAssetsMock is MulticallFacet {
 
     function increaseCounter() external {
         MoreVaultsStorageHelper.setScratchSpace(address(this), 1);
+    }
+}
+
+contract SelectorValidationMock is MulticallFacet {
+    function totalAssets() external pure returns (uint256) {
+        return 1e18;
+    }
+
+    function mockFunction1() external pure returns (bool) {
+        return true;
+    }
+
+    function mockFunction2() external pure returns (bool) {
+        return true;
+    }
+
+    function mockFunction3() external pure returns (bool) {
+        return true;
     }
 }

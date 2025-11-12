@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import {IMoreVaultsRegistry, VaultsRegistry} from "../../../src/registry/VaultsRegistry.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
+import {IAccessControl} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 contract VaultsRegistryTest is Test {
     VaultsRegistry public registry;
@@ -534,9 +535,22 @@ contract VaultsRegistryTest is Test {
     function test_setDefaultCrossChainAccountingManager_ShouldSetDefaultManager() public {
         address manager = address(0x9ABC);
 
+        vm.prank(admin);
         registry.setDefaultCrossChainAccountingManager(manager);
 
         assertEq(registry.defaultCrossChainAccountingManager(), manager);
+    }
+
+    function test_setDefaultCrossChainAccountingManager_ShouldRevertIfNotAdmin() public {
+        address manager = address(0x9ABC);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, registry.DEFAULT_ADMIN_ROLE()
+            )
+        );
+        vm.prank(user);
+        registry.setDefaultCrossChainAccountingManager(manager);
     }
 
     function test_isBridgeAllowed_ShouldReturnCorrectValue() public {

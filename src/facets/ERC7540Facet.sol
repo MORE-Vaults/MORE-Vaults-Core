@@ -92,7 +92,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
                 continue;
             }
             address asset = IERC4626(vault).asset();
-            uint256 balance = IERC20(vault).balanceOf(address(this));
+            uint256 balance = IERC20(vault).balanceOf(address(this)) + ds.lockedTokens[vault];
             uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
             sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
             unchecked {
@@ -109,11 +109,13 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         if (assets == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
 
         IERC20(asset).forceApprove(vault, assets);
         requestId = IERC7540(vault).requestDeposit(assets, address(this), address(this));
+        ds.lockedTokens[asset] += assets;
     }
 
     /**
@@ -123,8 +125,10 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
+        ds.lockedTokens[vault] += shares;
     }
 
     /**
@@ -136,8 +140,14 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        address asset = IERC4626(vault).asset();
         shares = IERC7540(vault).deposit(assets, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
+
+        // Unlock assets that were locked during requestDeposit
+        if (ds.lockedTokens[asset] >= assets) {
+            ds.lockedTokens[asset] -= assets;
+        }
     }
 
     /**
@@ -149,8 +159,14 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        address asset = IERC4626(vault).asset();
         assets = IERC7540(vault).mint(shares, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
+
+        // Unlock assets that were locked during requestDeposit
+        if (ds.lockedTokens[asset] >= assets) {
+            ds.lockedTokens[asset] -= assets;
+        }
     }
 
     /**
@@ -163,6 +179,12 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         shares = IERC7540(vault).withdraw(assets, address(this), address(this));
+
+        // Unlock shares that were locked during requestRedeem
+        if (ds.lockedTokens[vault] >= shares) {
+            ds.lockedTokens[vault] -= shares;
+        }
+
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
     }
 
@@ -176,6 +198,12 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         assets = IERC7540(vault).redeem(shares, address(this), address(this));
+
+        // Unlock shares that were locked during requestRedeem
+        if (ds.lockedTokens[vault] >= shares) {
+            ds.lockedTokens[vault] -= shares;
+        }
+
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
     }
 }

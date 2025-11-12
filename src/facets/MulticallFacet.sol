@@ -42,8 +42,16 @@ contract MulticallFacet is BaseFacetInitializer, IMulticallFacet, ContextUpgrade
      */
     function submitActions(bytes[] calldata actionsData) external override returns (uint256 nonce) {
         if (actionsData.length == 0) revert EmptyActions();
-        bytes4 selector = bytes4(actionsData[0][:4]);
-        AccessControlLib.validatePermissionForSelector(msg.sender, selector);
+
+        // Validate ALL selectors, not just the first one (Issue #19 fix)
+        for (uint256 i = 0; i < actionsData.length;) {
+            if (actionsData[i].length < 4) revert EmptyActions(); // Ensure valid selector length
+            bytes4 selector = bytes4(actionsData[i][:4]);
+            AccessControlLib.validatePermissionForSelector(msg.sender, selector);
+            unchecked {
+                ++i;
+            }
+        }
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 

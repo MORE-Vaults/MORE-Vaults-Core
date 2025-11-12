@@ -27,6 +27,7 @@ import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {console} from "forge-std/console.sol";
+import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -578,7 +579,7 @@ contract VaultFacetTest is Test {
     function test_requestRedeem_shouldRevertIfSharesIsZero() public {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         vm.prank(user);
-        vm.expectRevert(VaultFacet.InvalidSharesAmount.selector);
+        vm.expectRevert(IVaultFacet.InvalidSharesAmount.selector);
         VaultFacet(facet).requestRedeem(0);
     }
 
@@ -629,7 +630,7 @@ contract VaultFacetTest is Test {
         vm.mockCall(factory, abi.encodeWithSignature("isVaultLinked(address,address)"), abi.encode(true));
         // Then unpause
         vm.prank(guardian);
-        vm.expectRevert(abi.encodeWithSelector(VaultFacet.VaultIsUsingRestrictedFacet.selector, address(101)));
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.VaultIsUsingRestrictedFacet.selector, address(101)));
         VaultFacet(facet).unpause();
     }
 
@@ -1481,7 +1482,7 @@ contract VaultFacetTest is Test {
 
         uint256 shares = 100 ether;
         vm.prank(user);
-        vm.expectRevert(VaultFacet.WithdrawalQueueDisabled.selector);
+        vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
         VaultFacet(facet).requestRedeem(shares);
     }
 
@@ -1491,7 +1492,7 @@ contract VaultFacetTest is Test {
 
         uint256 assets = 100 ether;
         vm.prank(user);
-        vm.expectRevert(VaultFacet.WithdrawalQueueDisabled.selector);
+        vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
         VaultFacet(facet).requestWithdraw(assets);
     }
 
@@ -1938,4 +1939,24 @@ contract VaultFacetTest is Test {
     //     assertEq(tokens.length, 1);
     //     assertEq(tokens[0], address(0x123));
     // }
+
+    // Issue #30: Assembly arithmetic lacks overflow protection
+    function test_accountingFacetOverflow() public {
+        MockERC20(asset).mint(facet, 1000 ether);
+
+        MaliciousAccountingFacet malicious = new MaliciousAccountingFacet();
+        bytes4 selector = MaliciousAccountingFacet.accountingMaliciousFacet.selector;
+
+        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(facet, selector, address(malicious), 0);
+        MoreVaultsStorageHelper.addFacetForAccounting(facet, bytes32(selector));
+
+        vm.mockCall(
+            facet,
+            abi.encodeWithSelector(selector),
+            abi.encode(type(uint256).max, true)
+        );
+
+        vm.expectRevert();
+        VaultFacet(facet).totalAssets();
+    }
 }

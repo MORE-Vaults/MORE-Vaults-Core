@@ -24,6 +24,7 @@ contract MockVaultFacet {
     mapping(bytes32 => uint256) public finalizeSharesByGuid;
     bytes32 public lastGuid;
     bool public revertOnInit;
+    bool public oracleAccountingEnabled;
 
     constructor(address _asset, uint32 _eid) {
         assetToken = _asset;
@@ -87,6 +88,7 @@ contract MockVaultFacet {
         returns (bytes32 guid)
     {
         if (revertOnInit) revert("init-revert");
+        if (oracleAccountingEnabled) revert("AccountingViaOracles");
         guid = bytes32(uint256(0x1));
         lastGuid = guid;
     }
@@ -110,6 +112,14 @@ contract MockVaultFacet {
 
     function getLastGuid() external view returns (bytes32) {
         return lastGuid;
+    }
+
+    function setOracleAccountingEnabled(bool v) external {
+        oracleAccountingEnabled = v;
+    }
+
+    function oraclesCrossChainAccounting() external view returns (bool) {
+        return oracleAccountingEnabled;
     }
 
     // ERC20-like minimal stubs for share token behavior

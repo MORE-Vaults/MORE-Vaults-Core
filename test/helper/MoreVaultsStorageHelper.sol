@@ -56,7 +56,6 @@ library MoreVaultsStorageHelper {
     uint256 constant FINALIZATION_GUID = 36;
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
     uint256 constant WITHDRAWAL_FEE = 37;
-    uint256 constant LAST_ACCRUED_INTEREST_TIMESTAMP = 37;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -690,21 +689,6 @@ library MoreVaultsStorageHelper {
         return uint96(uint256((storedValue & mask) >> 8));
     }
 
-    function setLastAccruedInterestTimestamp(address contractAddress, uint64 value) internal {
-        // uint64 starts at 104-bit offset (1 + 96 + 8)
-        bytes32 storedValue = getStorageValue(contractAddress, LAST_ACCRUED_INTEREST_TIMESTAMP);
-        bytes32 mask = bytes32(uint256(type(uint64).max) << 104);
-        setStorageValue(
-            contractAddress, LAST_ACCRUED_INTEREST_TIMESTAMP, (storedValue & ~mask) | bytes32(uint256(value) << 104)
-        );
-    }
-
-    function getLastAccruedInterestTimestamp(address contractAddress) internal view returns (uint64) {
-        bytes32 storedValue = getStorageValue(contractAddress, LAST_ACCRUED_INTEREST_TIMESTAMP);
-        bytes32 mask = bytes32(uint256(type(uint64).max) << 104);
-        return uint64(uint256((storedValue & mask) >> 104));
-    }
-
     // Functions for WITHDRAW_TIMELOCK (slot 25)
     function setWithdrawTimelock(address contractAddress, uint64 value) internal {
         setStorageValue(contractAddress, WITHDRAW_TIMELOCK, bytes32(uint256(value)));
@@ -776,5 +760,32 @@ library MoreVaultsStorageHelper {
             // Update _positions mapping (1-indexed)
             vm.store(contractAddress, positionKey, bytes32(currentLength + 1));
         }
+    }
+
+    // Functions for lockedTokens mapping (slot 17)
+    function getLockedTokens(address contractAddress, address token) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token)))));
+    }
+
+    function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
+        setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
+    }
+
+    // Functions for facetsForAccounting array (slot 3)
+    function addFacetForAccounting(address contractAddress, bytes32 selector) internal {
+        bytes32 slot = bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + FACETS_FOR_ACCOUNTING);
+
+        // Get current array length
+        uint256 length = uint256(vm.load(contractAddress, slot));
+
+        // Calculate slot for new element (keccak256(slot) + length)
+        bytes32 arraySlot = keccak256(abi.encode(slot));
+        bytes32 elementSlot = bytes32(uint256(arraySlot) + length);
+
+        // Store the selector at the new position
+        vm.store(contractAddress, elementSlot, selector);
+
+        // Increment array length
+        vm.store(contractAddress, slot, bytes32(length + 1));
     }
 }

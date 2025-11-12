@@ -13,7 +13,6 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error CrossChainRequestWasntFulfilled(bytes32);
     error InvalidActionType();
     error OnlyCrossChainAccountingManager();
-    error SyncActionsDisabledInCrossChainVaults();
     error RequestWasntFulfilled();
     error FinalizationCallFailed();
     error OracleWasntSetForSpoke(address, uint32);
@@ -22,6 +21,8 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error AccountingViaOracles();
     error AdapterNotAllowed(address);
     error RequestTimedOut();
+    error RequestAlreadyFinalized();
+    error NotEnoughMsgValueProvided();
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD
@@ -38,6 +39,12 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @notice When enabling, checks for the presence of oracles for all spoke chains
      */
     function setOraclesCrossChainAccounting(bool isTrue) external;
+
+    /**
+     * @dev Returns whether oracle-based cross-chain accounting is enabled
+     * @return true if oracle accounting is enabled, false otherwise
+     */
+    function oraclesCrossChainAccounting() external view returns (bool);
 
     /**
      * @dev Quotes the native fee required to initiate cross-chain accounting

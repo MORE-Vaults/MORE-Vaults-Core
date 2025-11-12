@@ -54,7 +54,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
     // Async deposit lifecycle is tracked via callbacks and the Deposited event in the interface
     constructor() {
-        // _disableInitializers();
+        _disableInitializers();
     }
 
     /**
@@ -134,10 +134,11 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         bytes calldata /*_extraData*/
     ) external payable virtual override {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
-        if (!LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)) {
-            if (IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())) {
-                revert InvalidComposeCaller(_composeSender);
-            }
+        if (
+            !LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)
+                || !IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())
+        ) {
+            revert InvalidComposeCaller(_composeSender);
         }
 
         bytes32 composeFrom = _message.composeFrom();
@@ -191,7 +192,12 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (IVaultFacet(address(VAULT)).paused()) {
             revert VaultIsPaused();
         }
-        if (VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT))) {
+        // Check if this is a cross-chain vault and oracle accounting is disabled
+        // If oracle accounting is enabled, use sync path even for cross-chain vaults
+        bool isCrossChainVault = VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT));
+        bool useAsyncFlow = isCrossChainVault && !IBridgeFacet(address(VAULT)).oraclesCrossChainAccounting();
+
+        if (useAsyncFlow) {
             _initDeposit(_composeFrom, IOFT(_oftIn).token(), _oftIn, _amount, sendParam, tx.origin, _srcEid);
         } else {
             _depositAndSend(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin);
@@ -236,7 +242,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         refundSendParam.amountLD = deposit.assetAmount;
 
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, deposit.assetAmount);
-        IOFT(deposit.tokenAddress).send{value: deposit.msgValue}(
+        IOFT(deposit.oftAddress).send{value: deposit.msgValue}(
             refundSendParam, MessagingFee(deposit.msgValue, 0), deposit.refundAddress
         );
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, 0);
