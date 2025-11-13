@@ -8,7 +8,6 @@ contract MockProtocolAdapter is IProtocolAdapter {
     address public immutable depositToken;
     address public immutable receiptToken;
     uint256 public exchangeRate = 1e18;
-    uint256 public valueInETH = 1e18;
 
     mapping(bytes32 => uint256) public withdrawalRequests;
     mapping(bytes32 => bool) public claimableWithdrawals;
@@ -66,12 +65,8 @@ contract MockProtocolAdapter is IProtocolAdapter {
         return 0;
     }
 
-    function getValueInETH(uint256 amount) external view returns (uint256) {
-        return (amount * valueInETH) / 1e18;
-    }
-
-    function getExchangeRate() external view returns (uint256) {
-        return exchangeRate;
+    function getDepositTokenForReceipts(uint256 receiptAmount) external view returns (uint256) {
+        return (receiptAmount * exchangeRate) / 1e18;
     }
 
     function isWithdrawalClaimable(bytes32 requestId) external view returns (bool) {
@@ -84,10 +79,6 @@ contract MockProtocolAdapter is IProtocolAdapter {
 
     function setExchangeRate(uint256 _rate) external {
         exchangeRate = _rate;
-    }
-
-    function setValueInETH(uint256 _value) external {
-        valueInETH = _value;
     }
 
     function setWithdrawalClaimable(bytes32 requestId, bool claimable) external {

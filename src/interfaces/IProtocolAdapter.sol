@@ -12,9 +12,7 @@ interface IProtocolAdapter {
 
     function getPendingRewards() external view returns (uint256);
 
-    function getValueInETH(uint256 amount) external view returns (uint256);
-
-    function getExchangeRate() external view returns (uint256);
+    function getDepositTokenForReceipts(uint256 receiptAmount) external view returns (uint256);
 
     function isWithdrawalClaimable(bytes32 requestId) external view returns (bool);
 

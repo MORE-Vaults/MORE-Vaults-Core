@@ -305,9 +305,13 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
         for (uint256 i; i < protocols.length;) {
             StakingFacetStorage.ProtocolConfig storage config = sfs.protocols[protocols[i]];
 
-            try IProtocolAdapter(config.adapter).getValueInETH(config.stakedBalance) returns (uint256 value) {
-                sum += value;
-            } catch {}
+            try IProtocolAdapter(config.adapter).getDepositTokenForReceipts(config.stakedBalance) returns (
+                uint256 depositTokenAmount
+            ) {
+                sum += MoreVaultsLib.convertToUnderlying(config.depositToken, depositTokenAmount, Math.Rounding.Floor);
+            } catch {
+                sum += MoreVaultsLib.convertToUnderlying(config.receiptToken, config.stakedBalance, Math.Rounding.Floor);
+            }
 
             unchecked {
                 ++i;
@@ -351,9 +355,13 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
         for (uint256 i; i < protocols.length;) {
             StakingFacetStorage.ProtocolConfig storage config = sfs.protocols[protocols[i]];
 
-            try IProtocolAdapter(config.adapter).getValueInETH(config.stakedBalance) returns (uint256 value) {
-                totalValue += value;
-            } catch {}
+            try IProtocolAdapter(config.adapter).getDepositTokenForReceipts(config.stakedBalance) returns (
+                uint256 depositTokenAmount
+            ) {
+                totalValue += MoreVaultsLib.convertToUnderlying(config.depositToken, depositTokenAmount, Math.Rounding.Floor);
+            } catch {
+                totalValue += MoreVaultsLib.convertToUnderlying(config.receiptToken, config.stakedBalance, Math.Rounding.Floor);
+            }
 
             unchecked {
                 ++i;

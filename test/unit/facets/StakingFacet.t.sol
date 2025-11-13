@@ -11,6 +11,7 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 import {MockProtocolAdapter} from "../../mocks/MockProtocolAdapter.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
+import {IAggregatorV2V3Interface} from "../../../src/interfaces/Chainlink/IAggregatorV2V3Interface.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -46,6 +47,7 @@ contract StakingFacetTest is Test {
         MoreVaultsStorageHelper.setMoreVaultsRegistry(address(stakingFacet), registry);
         MoreVaultsStorageHelper.setOwner(address(stakingFacet), owner);
         MoreVaultsStorageHelper.setCurator(address(stakingFacet), curator);
+        MoreVaultsStorageHelper.setUnderlyingAsset(address(stakingFacet), address(depositToken));
 
         vm.mockCall(
             address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.oracle.selector), abi.encode(oracleRegistry)
@@ -53,6 +55,27 @@ contract StakingFacetTest is Test {
 
         vm.mockCall(
             address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector), abi.encode(true)
+        );
+
+        vm.mockCall(
+            address(registry), abi.encodeWithSelector(IMoreVaultsRegistry.getDenominationAsset.selector), abi.encode(address(depositToken))
+        );
+
+        vm.mockCall(
+            address(oracleRegistry), abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, address(depositToken)), abi.encode(1e18)
+        );
+
+        IOracleRegistry.OracleInfo memory mockOracleInfo = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(oracle),
+            stalenessThreshold: 86400
+        });
+
+        vm.mockCall(
+            address(oracleRegistry), abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(depositToken)), abi.encode(mockOracleInfo)
+        );
+
+        vm.mockCall(
+            address(oracle), abi.encodeWithSelector(bytes4(keccak256("decimals()"))), abi.encode(uint8(18))
         );
 
         bytes memory initData = abi.encode(bytes4(keccak256("accountingStakingFacet()")));
@@ -276,7 +299,7 @@ contract StakingFacetTest is Test {
         uint256 stakeAmount = 100 ether;
         _stakeTokens(stakeAmount);
 
-        mockAdapter.setValueInETH(1.1e18);
+        mockAdapter.setExchangeRate(1.1e18);
 
         (uint256 sum, bool isPositive) = stakingFacet.accountingStakingFacet();
 
@@ -289,12 +312,12 @@ contract StakingFacetTest is Test {
         uint256 stakeAmount = 100 ether;
         _stakeTokens(stakeAmount);
 
-        mockAdapter.setValueInETH(1e18);
+        mockAdapter.setExchangeRate(1e18);
         stakingFacet.accountingStakingFacet();
 
         vm.warp(block.timestamp + 30 minutes);
 
-        mockAdapter.setValueInETH(0.96e18);
+        mockAdapter.setExchangeRate(0.96e18);
 
         stakingFacet.accountingStakingFacet();
 
@@ -307,12 +330,12 @@ contract StakingFacetTest is Test {
         uint256 stakeAmount = 100 ether;
         _stakeTokens(stakeAmount);
 
-        mockAdapter.setValueInETH(1e18);
+        mockAdapter.setExchangeRate(1e18);
         stakingFacet.accountingStakingFacet();
 
         vm.warp(block.timestamp + 2 hours);
 
-        mockAdapter.setValueInETH(0.96e18);
+        mockAdapter.setExchangeRate(0.96e18);
 
         (uint256 sum, bool isPositive) = stakingFacet.accountingStakingFacet();
         assertTrue(isPositive);
@@ -346,7 +369,7 @@ contract StakingFacetTest is Test {
         uint256 stakeAmount = 100 ether;
         _stakeTokens(stakeAmount);
 
-        mockAdapter.setValueInETH(1.05e18);
+        mockAdapter.setExchangeRate(1.05e18);
 
         uint256 totalValue = stakingFacet.getTotalStakedValue();
         assertEq(totalValue, 105 ether);
@@ -430,7 +453,7 @@ contract StakingFacetTest is Test {
         stakingFacet.stake(restakingProtocol, address(depositToken), stakeAmount, "");
         vm.stopPrank();
 
-        mockAdapter.setValueInETH(1.1e18);
+        mockAdapter.setExchangeRate(1.1e18);
 
         (uint256 sum, bool isPositive) = stakingFacet.accountingStakingFacet();
 
