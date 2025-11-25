@@ -422,7 +422,7 @@ contract VaultFacetTest is Test {
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-        vm.prank(user);
+        vm.startPrank(user);
         vm.expectRevert(
             abi.encodeWithSelector(
                 ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
@@ -432,6 +432,7 @@ contract VaultFacetTest is Test {
             )
         );
         VaultFacet(facet).mint(mintAmount, user);
+        vm.stopPrank();
     }
 
     function test_withdraw_ShouldBurnShares() public {
@@ -1285,6 +1286,138 @@ contract VaultFacetTest is Test {
         );
         VaultFacet(facet).deposit(tokens, amounts, user2);
         vm.stopPrank();
+    }
+
+    // ============ Issue #40: Whitelist Consistency Tests ============
+
+    /**
+     * @notice Issue #40 - Whitelisted caller can deposit for non-whitelisted receiver
+     * @dev The whitelist controls who can deposit (caller), not who receives shares (receiver)
+     */
+    function test_deposit_WhitelistedCallerCanDepositForNonWhitelistedReceiver() public {
+        address alice = address(0xA11CE);
+        address bob = address(0xB0B);
+        uint256 aliceCap = 100 ether;
+        uint256 depositAmount = 50 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, alice, aliceCap);
+
+        MockERC20(asset).mint(alice, depositAmount);
+        vm.prank(alice);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        vm.startPrank(alice);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, bob);
+        vm.stopPrank();
+
+        assertGt(shares, 0, "Should have received shares");
+        assertEq(IERC20(facet).balanceOf(bob), shares, "Bob should have received the shares");
+
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        assertEq(aliceCapAfter, aliceCap - depositAmount, "Alice's cap should be deducted");
+    }
+
+    /**
+     * @notice Issue #40 - Whitelist cap deduction consistency
+     * @dev Both validation and deduction should use the caller (depositor) address
+     */
+    function test_deposit_WhitelistCapDeductedFromCaller() public {
+        address alice = address(0xA11CE);
+        address bob = address(0xB0B);
+        uint256 aliceCap = 100 ether;
+        uint256 bobCap = 200 ether;
+        uint256 depositAmount = 50 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, alice, aliceCap);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, bob, bobCap);
+
+        MockERC20(asset).mint(alice, depositAmount);
+        vm.prank(alice);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 aliceCapBefore = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        uint256 bobCapBefore = MoreVaultsStorageHelper.getDepositWhitelist(facet, bob);
+
+        vm.prank(alice);
+        VaultFacet(facet).deposit(depositAmount, bob);
+
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        uint256 bobCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, bob);
+
+        assertEq(aliceCapAfter, aliceCapBefore - depositAmount, "Alice's cap should be deducted (she's the depositor)");
+        assertEq(bobCapAfter, bobCapBefore, "Bob's cap should not change (he's just the receiver)");
+    }
+
+    /**
+     * @notice Issue #40 - Whitelisted caller can mint for non-whitelisted receiver
+     * @dev The whitelist controls who can deposit (caller), not who receives shares (receiver)
+     */
+    function test_mint_WhitelistedCallerCanMintForNonWhitelistedReceiver() public {
+        address alice = address(0xA11CE);
+        address bob = address(0xB0B);
+        uint256 aliceCap = 100 ether;
+        uint256 sharesToMint = 5000 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, alice, aliceCap);
+
+        MockERC20(asset).mint(alice, 100 ether);
+        vm.prank(alice);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        vm.startPrank(alice);
+        uint256 assets = VaultFacet(facet).mint(sharesToMint, bob);
+        vm.stopPrank();
+
+        assertGt(assets, 0, "Should have used some assets");
+        assertEq(IERC20(facet).balanceOf(bob), sharesToMint, "Bob should have received the shares");
+
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        assertEq(aliceCapAfter, aliceCap - assets, "Alice's cap should be deducted");
     }
 
     // ============ Withdrawal Fee Tests ============

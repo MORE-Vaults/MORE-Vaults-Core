@@ -445,7 +445,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
         _accrueInterest(newTotalAssets);
-        _validateCapacity(receiver, newTotalAssets, assets);
+        _validateCapacity(msgSender, newTotalAssets, assets);
 
         ds.lastTotalAssets = newTotalAssets;
 
@@ -472,7 +472,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         ds.lastTotalAssets = newTotalAssets;
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
-        _validateCapacity(receiver, newTotalAssets, assets);
+        _validateCapacity(msgSender, newTotalAssets, assets);
         _deposit(msgSender, receiver, assets, shares);
     }
 
@@ -577,7 +577,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             totalConvertedAmount += MoreVaultsLib.convertToUnderlying(ds.wrappedNative, msg.value, Math.Rounding.Floor);
         }
 
-        _validateCapacity(receiver, newTotalAssets, totalConvertedAmount);
+        _validateCapacity(msgSender, newTotalAssets, totalConvertedAmount);
 
         shares = _convertToSharesWithTotals(totalConvertedAmount, totalSupply(), newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, tokens, assets, shares);

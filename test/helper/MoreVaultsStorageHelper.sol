@@ -524,6 +524,10 @@ library MoreVaultsStorageHelper {
         );
     }
 
+    function getDepositWhitelist(address contractAddress, address depositor) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, DEPOSIT_WHITELIST, bytes32(uint256(uint160(depositor)))));
+    }
+
     function setIsNecessaryToCheckLock(address contractAddress, address token, bool isNecessaryToCheckLock) internal {
         setMappingValue(
             contractAddress,
