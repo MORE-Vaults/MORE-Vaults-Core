@@ -537,15 +537,51 @@ contract MoreVaultsLibTest is Test {
     }
 
     // Tests for withdrawal request functions
-    function test_withdrawFromRequest_ShouldAllowWithdrawalWhenQueueDisabled() public {
-        address requester = address(0x123);
+
+    /**
+     * @notice Issue #42 - withdrawFromRequest should use passed msgSender, not msg.sender
+     * @dev When called via BridgeFacet.finalizeRequest, msg.sender is the diamond, not the user
+     */
+    function test_withdrawFromRequest_ShouldAllowWithdrawalWhenQueueDisabledAndMsgSenderIsOwner() public {
+        address owner = address(0x123);
+        address caller = owner; // caller is the owner
         uint256 shares = 100e18;
 
         // Queue is disabled by default
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(caller, owner, shares);
 
-        // Should only allow if msg.sender is the requester
-        assertTrue(result == (address(this) == requester), "Should check requester identity when queue disabled");
+        assertTrue(result, "Should allow withdrawal when caller is the owner");
+    }
+
+    /**
+     * @notice Issue #42 - Diamond can withdraw on behalf of owner when queue disabled
+     * @dev This is the scenario when BridgeFacet.finalizeRequest calls withdraw
+     */
+    function test_withdrawFromRequest_ShouldAllowWithdrawalWhenCalledByDiamondOnBehalfOfOwner() public {
+        address owner = address(0x123);
+        address diamond = address(this); // simulate diamond calling
+        uint256 shares = 100e18;
+
+        // Queue is disabled by default
+        // When called via finalizeRequest, msgSender (from _getInfoForAction) is the real owner
+        // even though msg.sender is the diamond
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, owner, shares);
+
+        assertTrue(result, "Should allow withdrawal when msgSender equals owner");
+    }
+
+    /**
+     * @notice Issue #42 - Should reject when msgSender is not the owner
+     */
+    function test_withdrawFromRequest_ShouldRejectWhenMsgSenderIsNotOwner() public {
+        address owner = address(0x123);
+        address notOwner = address(0x456);
+        uint256 shares = 100e18;
+
+        // Queue is disabled by default
+        bool result = MoreVaultsLib.withdrawFromRequest(notOwner, owner, shares);
+
+        assertFalse(result, "Should reject when msgSender is not the owner");
     }
 
     function test_withdrawFromRequest_ShouldAllowWithdrawalWhenTimelockPassed() public {
@@ -561,7 +597,8 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = shares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1; // Already passed
 
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
+        // When queue is enabled, msgSender doesn't matter - it checks the request
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
 
         assertTrue(result, "Should allow withdrawal when timelock passed");
         assertEq(ds.withdrawalRequests[requester].shares, 0, "Shares should be deducted");
@@ -580,7 +617,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = 50e18; // Less than requested
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, requestedShares);
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, requestedShares);
 
         assertFalse(result, "Should reject withdrawal when insufficient shares");
     }

@@ -495,7 +495,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
-        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
+        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(msgSender, owner, shares);
 
         if (!isWithdrawable) {
             revert CantProcessWithdrawRequest();
@@ -522,7 +522,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
+        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
+
+        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(msgSender, owner, shares);
 
         if (!isWithdrawable) {
             revert CantProcessWithdrawRequest();
@@ -533,7 +535,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
         _accrueInterest(newTotalAssets);
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
