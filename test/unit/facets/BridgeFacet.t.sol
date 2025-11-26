@@ -366,6 +366,61 @@ contract BridgeFacetTest is Test {
         assertFalse(MoreVaultsStorageHelper.getOraclesCrossChainAccounting(address(facet)));
     }
 
+    // Issue #43: Disabling oracle accounting should work even when spokes have balance > 10e4
+    function test_setOraclesCrossChainAccounting_disable_works_when_spokes_have_balance() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+
+        IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(0x1111)),
+            stalenessThreshold: uint96(1)
+        });
+        oracle.setSpokeOracleInfo(address(facet), eids[0], info);
+        // Set spoke value to more than 10e4 threshold (in USD, will be converted to underlying)
+        oracle.setSpokeValue(address(facet), eids[0], 1e8); // 1 USD in 8 decimals
+
+        vm.startPrank(owner);
+        facet.setOraclesCrossChainAccounting(true);
+        assertTrue(facet.oraclesCrossChainAccounting());
+
+        // Should NOT revert - the spoke funds are remote, not local
+        facet.setOraclesCrossChainAccounting(false);
+        assertFalse(facet.oraclesCrossChainAccounting());
+        vm.stopPrank();
+    }
+
+    // Issue #43: Disabling oracle accounting should work even when oracle fails
+    function test_setOraclesCrossChainAccounting_disable_works_when_oracle_fails() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+
+        IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
+            aggregator: IAggregatorV2V3Interface(address(0x1111)),
+            stalenessThreshold: uint96(1)
+        });
+        oracle.setSpokeOracleInfo(address(facet), eids[0], info);
+
+        vm.startPrank(owner);
+        facet.setOraclesCrossChainAccounting(true);
+        assertTrue(facet.oraclesCrossChainAccounting());
+        vm.stopPrank();
+
+        // Simulate oracle failure
+        oracle.setSpokeShouldRevert(address(facet), eids[0], true);
+
+        vm.startPrank(owner);
+        // Should NOT revert - admin needs to disable oracle accounting when oracle fails
+        facet.setOraclesCrossChainAccounting(false);
+        assertFalse(facet.oraclesCrossChainAccounting());
+        vm.stopPrank();
+    }
+
     function test_quoteAccountingFee_returns_native_fee() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;

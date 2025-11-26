@@ -675,13 +675,18 @@ library MoreVaultsLib {
         for (uint256 i; i < ds.facetsForAccounting.length;) {
             if (ds.facetsForAccounting[i] == selector) {
                 if (!_isReplacing) {
-                    (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
-                    if (!success) {
-                        revert AccountingFailed(selector);
-                    }
-                    uint256 decodedAmount = abi.decode(result, (uint256));
-                    if (decodedAmount > 10e4) {
-                        revert FacetHasBalance(decodedAmount);
+                    // Skip balance check for accountingBridgeFacet - it reports remote spoke funds,
+                    // not local funds, and a failing oracle should not prevent disabling oracle accounting
+                    bytes4 accountingBridgeFacetSelector = bytes4(keccak256(abi.encodePacked("accountingBridgeFacet()")));
+                    if (selector != accountingBridgeFacetSelector) {
+                        (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
+                        if (!success) {
+                            revert AccountingFailed(selector);
+                        }
+                        uint256 decodedAmount = abi.decode(result, (uint256));
+                        if (decodedAmount > 10e4) {
+                            revert FacetHasBalance(decodedAmount);
+                        }
                     }
                 }
                 ds.facetsForAccounting[i] = ds.facetsForAccounting[ds.facetsForAccounting.length - 1];
