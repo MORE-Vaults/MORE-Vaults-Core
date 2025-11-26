@@ -55,6 +55,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                 ++i;
             }
         }
+        sum = MoreVaultsLib.convertUsdToUnderlying(sum, Math.Rounding.Floor);
         return (sum, true);
     }
 

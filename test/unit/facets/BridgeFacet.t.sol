@@ -121,11 +121,38 @@ contract BridgeFacetTest is Test {
         spokes[0] = address(0xAAA1);
         spokes[1] = address(0xAAA2);
         _mockHubWithSpokes(100, eids, spokes);
-        oracle.setSpokeValue(address(facet), 101, 5);
-        oracle.setSpokeValue(address(facet), 102, 7);
+        oracle.setSpokeValue(address(facet), 101, 5e8);
+        oracle.setSpokeValue(address(facet), 102, 7e8);
+
+        // underlying price is 1 USD (1e8), so 12e8 USD = 12e18 underlying
+        (uint256 sum, bool isPositive) = facet.accountingBridgeFacet();
+        assertEq(sum, 12e18);
+        assertTrue(isPositive);
+    }
+
+    /**
+     * @notice Issue #41 - accountingBridgeFacet should convert USD to underlying asset
+     * @dev When underlying asset price != 1 USD, the conversion must be applied
+     */
+    function test_accountingBridgeFacet_converts_usd_to_underlying() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xAAA1);
+        _mockHubWithSpokes(100, eids, spokes);
+
+        // Spoke value is 1000 USD (with 8 decimals like chainlink)
+        uint256 spokeUsdValue = 1000e8;
+        oracle.setSpokeValue(address(facet), 101, spokeUsdValue);
+
+        // Underlying asset price is 2 USD (so 1000 USD = 500 underlying tokens)
+        oracle.setAssetPrice(address(underlying), 2e8);
 
         (uint256 sum, bool isPositive) = facet.accountingBridgeFacet();
-        assertEq(sum, 12);
+
+        // Expected: 1000 USD / 2 USD per token = 500 tokens (with 18 decimals)
+        uint256 expectedUnderlying = 500e18;
+        assertEq(sum, expectedUnderlying, "Should convert USD value to underlying asset amount");
         assertTrue(isPositive);
     }
 
