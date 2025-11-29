@@ -121,9 +121,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
     /**
      * @inheritdoc IERC7540Facet
-     * @dev Supports both standard ERC-7540 vaults (where vault == shareToken)
-     *      and ERC-7575 vaults (where vault has an external shareToken).
-     *      For ERC-7575 vaults, approval is given to the shareToken before requesting redeem.
+     * @dev Supports ERC-7575 vaults with external share tokens
      */
     function erc7540RequestRedeem(address vault, uint256 shares) external returns (uint256 requestId) {
         if (shares == 0) revert ZeroAmount();
@@ -131,18 +129,12 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        // ERC-7575: Handle vaults with external share tokens
-        // If vault.share() exists and returns a non-zero address different from vault,
-        // we need to approve that external shareToken for the vault to pull shares
+        // Approve external share token if vault implements ERC-7575
         try IERC7575(vault).share() returns (address shareToken) {
             if (shareToken != address(0) && shareToken != vault) {
                 IERC20(shareToken).forceApprove(vault, shares);
             }
-        } catch {
-            // Vault doesn't implement ERC-7575 or share() reverted
-            // This is expected for standard ERC-7540 vaults where vault == shareToken
-            // Continue with normal flow
-        }
+        } catch {}
 
         requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
         ds.lockedTokens[vault] += shares;

@@ -1364,4 +1364,5 @@ contract ERC7540FacetTest is Test {
         // MORE Vault's own VaultFacet is protected
         // But MORE Vault cannot protect against vulnerabilities in external vaults
     }
+
 }
