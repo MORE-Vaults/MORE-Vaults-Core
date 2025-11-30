@@ -1099,4 +1099,134 @@ contract MoreVaultsComposerTest is Test {
             address(maliciousOFT), bytes32(uint256(1)), oftMessage, address(0), bytes("")
         );
     }
+
+    // ============ Deposited Event Normalization Tests ============
+    
+    /**
+     * @notice Test that Deposited event emits normalized share amount for cross-chain sends
+     * @dev LayerZero normalizes amounts to sharedDecimals (6 decimals), removing dust.
+     *      The event should reflect the actual amount sent, not the original share amount.
+     */
+    function test_Deposited_event_emitsNormalizedAmount_crossChain() public {
+        vault.setAccountingFee(0);
+        vault.setDepositable(address(assetToken), true);
+
+        // Give user some tokens
+        assetToken.mint(user, 1000e18);
+        vm.startPrank(user);
+        assetToken.approve(address(composer), 1000e18);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202; // Cross-chain destination
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        // Use an amount that will have dust after normalization
+        uint256 amountWithDust = 100e18 + 123456789; // This will have dust
+        uint256 shareAmount = amountWithDust; // 1:1 in mock vault
+        
+        // Calculate expected normalized amount (remove dust for 18 decimal token with 6 shared decimals)
+        uint256 decimalConversionRate = 1e12; // 10^(18-6)
+        uint256 expectedNormalizedAmount = (shareAmount / decimalConversionRate) * decimalConversionRate;
+        
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Deposited(
+            OFTComposeMsgCodec.addressToBytes32(user),
+            sendParam.to,
+            sendParam.dstEid,
+            amountWithDust, // assetAmount (original)
+            expectedNormalizedAmount // shareAmount (normalized)
+        );
+
+        composer.depositAndSend(address(assetToken), amountWithDust, sendParam, user);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that Deposited event emits original amount for local sends (no normalization)
+     * @dev Local sends don't go through LayerZero normalization, so the event should show the full amount.
+     */
+    function test_Deposited_event_emitsOriginalAmount_local() public {
+        vault.setAccountingFee(0);
+        vault.setDepositable(address(assetToken), true);
+
+        // Give user some tokens
+        assetToken.mint(user, 1000e18);
+        vm.startPrank(user);
+        assetToken.approve(address(composer), 1000e18);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = localEid; // Same as VAULT_EID for local send
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 depositAmount = 100e18 + 123456789; // Amount with dust
+        uint256 shareAmount = depositAmount; // 1:1 in mock vault
+        
+        // For local sends, no normalization occurs, so the full amount should be in the event
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Deposited(
+            OFTComposeMsgCodec.addressToBytes32(user),
+            sendParam.to,
+            sendParam.dstEid,
+            depositAmount, // assetAmount
+            shareAmount // shareAmount (no normalization for local)
+        );
+
+        composer.depositAndSend(address(assetToken), depositAmount, sendParam, user);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that completeDeposit emits normalized amount for cross-chain sends
+     * @dev When completing an async deposit, the event should reflect the normalized amount sent.
+     */
+    function test_completeDeposit_emitsNormalizedAmount_crossChain() public {
+        vault.setAccountingFee(0.1 ether);
+        vault.setDepositable(address(assetToken), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        // Setup: Create pending deposit
+        assetToken.mint(user, 1000e18);
+        deal(user, 10 ether);
+        vm.startPrank(user);
+        assetToken.approve(address(composer), 1000e18);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 depositAmount = 100e18 + 987654321; // Amount with dust
+        composer.initDeposit{value: 0.1 ether}(
+            OFTComposeMsgCodec.addressToBytes32(user),
+            address(assetToken),
+            address(assetOFT),
+            depositAmount,
+            sendParam,
+            user,
+            201
+        );
+        vm.stopPrank();
+
+        // Complete the deposit
+        bytes32 guid = bytes32(uint256(0x1));
+        vault.setFinalizeShares(guid, depositAmount); // 1:1 in mock
+        
+        // Calculate expected normalized amount
+        uint256 decimalConversionRate = 1e12;
+        uint256 expectedNormalizedAmount = (depositAmount / decimalConversionRate) * decimalConversionRate;
+        
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Deposited(
+            OFTComposeMsgCodec.addressToBytes32(user),
+            sendParam.to,
+            sendParam.dstEid,
+            depositAmount, // assetAmount (original)
+            expectedNormalizedAmount // shareAmount (normalized)
+        );
+
+        vm.prank(address(vault));
+        composer.completeDeposit(guid);
+    }
 }

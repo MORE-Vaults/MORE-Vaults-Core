@@ -6,7 +6,7 @@ import {ERC4626, IERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {IOFT, SendParam, MessagingFee, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
@@ -222,8 +222,8 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
         delete pendingDeposits[_guid];
 
-        _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
-        emit Deposited(deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, shares);
+        uint256 amountSentLD = _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
+        emit Deposited(deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, amountSentLD);
     }
 
     function refundDeposit(bytes32 _guid) external payable virtual nonReentrant {
@@ -305,8 +305,8 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         _sendParam.amountLD = shareAmount;
         _sendParam.minAmountLD = 0;
 
-        _send(SHARE_OFT, _sendParam, _refundAddress, msg.value);
-        emit Deposited(_depositor, _sendParam.to, _sendParam.dstEid, _assetAmount, shareAmount);
+        uint256 amountSentLD = _send(SHARE_OFT, _sendParam, _refundAddress, msg.value);
+        emit Deposited(_depositor, _sendParam.to, _sendParam.dstEid, _assetAmount, amountSentLD);
     }
 
     function initDeposit(
@@ -398,14 +398,17 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
      * @param _oft The OFT contract address to use for sending
      * @param _sendParam The parameters for the send operation
      * @param _refundAddress Address to receive excess payment of the LZ fees
+     * @return amountSentLD The amount actually sent (after LayerZero normalization for cross-chain, equal to amountLD for local)
      */
-    function _send(address _oft, SendParam memory _sendParam, address _refundAddress, uint256 _msgValue) internal {
+    function _send(address _oft, SendParam memory _sendParam, address _refundAddress, uint256 _msgValue) internal returns (uint256 amountSentLD) {
         if (_sendParam.dstEid == VAULT_EID) {
             if (msg.value > 0) revert NoMsgValueExpected();
             IERC20(SHARE_ERC20).safeTransfer(_sendParam.to.bytes32ToAddress(), _sendParam.amountLD);
+            return _sendParam.amountLD;
         } else {
-            // crosschain send
-            IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
+            // crosschain send - LayerZero normalizes the amount, so we get the actual sent amount from the receipt
+            (, OFTReceipt memory oftReceipt) = IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
+            return oftReceipt.amountSentLD;
         }
     }
 
