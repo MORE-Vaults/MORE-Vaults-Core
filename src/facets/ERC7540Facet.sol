@@ -11,6 +11,7 @@ import {IERC7540Facet} from "../interfaces/facets/IERC7540Facet.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IERC7540} from "../interfaces/IERC7540.sol";
+import {IERC7575} from "forge-std/interfaces/IERC7575.sol";
 
 /**
  * @title ERC7540Facet
@@ -120,12 +121,20 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
     /**
      * @inheritdoc IERC7540Facet
+     * @dev Supports ERC-7575 vaults with external share tokens
      */
     function erc7540RequestRedeem(address vault, uint256 shares) external returns (uint256 requestId) {
         if (shares == 0) revert ZeroAmount();
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        // Approve external share token if vault implements ERC-7575
+        try IERC7575(vault).share() returns (address shareToken) {
+            if (shareToken != address(0) && shareToken != vault) {
+                IERC20(shareToken).forceApprove(vault, shares);
+            }
+        } catch {}
 
         requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
         ds.lockedTokens[vault] += shares;
