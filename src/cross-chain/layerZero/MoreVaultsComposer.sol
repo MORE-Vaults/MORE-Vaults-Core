@@ -242,9 +242,12 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         refundSendParam.to = deposit.depositor;
         refundSendParam.amountLD = deposit.assetAmount;
 
+        // Combine stored msgValue with additional msg.value to handle fee volatility
+        uint256 totalMsgValue = deposit.msgValue + msg.value;
+
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, deposit.assetAmount);
-        IOFT(deposit.oftAddress).send{value: deposit.msgValue}(
-            refundSendParam, MessagingFee(deposit.msgValue, 0), deposit.refundAddress
+        IOFT(deposit.oftAddress).send{value: totalMsgValue}(
+            refundSendParam, MessagingFee(totalMsgValue, 0), deposit.refundAddress
         );
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, 0);
         emit Refunded(_guid);

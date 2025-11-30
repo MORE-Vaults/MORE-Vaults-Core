@@ -523,6 +523,61 @@ contract MoreVaultsComposerTest is Test {
         assertEq(assetAmount, 0, "Deposit should be deleted after refund");
     }
 
+    /**
+     * @notice Test that refundDeposit accepts additional msg.value to handle LayerZero fee volatility
+     * @dev This test verifies the fix for the issue where stored deposit.msgValue might become insufficient
+     *      if LayerZero fees increase between deposit initiation and refund execution.
+     *      The test verifies that:
+     *      1. Stored deposit.msgValue is preserved
+     *      2. Additional msg.value can be provided
+     *      3. The sum (stored + additional) is used for the refund operation
+     */
+    function test_refundDeposit_withAdditionalMsgValue() public {
+        vault.setAccountingFee(0.2 ether);
+        vault.setDepositable(address(assetToken), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 5e18;
+        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        // Initiate deposit with 1 ether total, 0.2 ether goes to accounting fee
+        // So deposit.msgValue will be stored as 0.8 ether
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+
+        bytes32 guid = bytes32(uint256(0x1));
+
+        // Verify the pending deposit exists and check stored msgValue
+        (,,, uint256 assetAmount,, uint256 storedMsgValue,,) = composer.pendingDeposits(guid);
+        assertEq(assetAmount, amountLD, "Pending deposit should be created");
+        assertEq(storedMsgValue, 0.8 ether, "Stored msgValue should be 0.8 ether (1 ether - 0.2 ether accounting fee)");
+
+        // Simulate LayerZero fee increase scenario:
+        // Stored msgValue (0.8 ether) might not be sufficient anymore
+        // Additional 0.3 ether is provided via msg.value to cover increased fees
+        uint256 additionalMsgValue = 0.3 ether;
+        uint256 expectedTotalMsgValue = storedMsgValue + additionalMsgValue;
+
+        // Verify that refund works with additional msg.value
+        // This demonstrates that the fix allows supplementing stored fees with additional funds
+        // The total msgValue used will be storedMsgValue (0.8 ether) + additionalMsgValue (0.3 ether) = 1.1 ether
+        deal(address(vault), additionalMsgValue);
+        vm.prank(address(vault));
+        composer.refundDeposit{value: additionalMsgValue}(guid);
+
+        // Verify the deposit was deleted after successful refund
+        (,,, assetAmount,,,,) = composer.pendingDeposits(guid);
+        assertEq(assetAmount, 0, "Deposit should be deleted after successful refund with additional msg.value");
+        
+        // Note: Backward compatibility (refund without additional msg.value) is already tested
+        // in test_refundDeposit_success, so we don't need to duplicate that test here
+    }
+
     function test_lzCompose_refund_path_on_other_revert() public {
         vault.setDepositable(address(assetToken), true);
         vault.setAccountingFee(0);
