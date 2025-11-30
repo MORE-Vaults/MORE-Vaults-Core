@@ -217,6 +217,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
         uint256 shares = _deposit(_guid, deposit.tokenAddress);
+        _assertSlippage(shares, deposit.sendParam.minAmountLD);
         deposit.sendParam.amountLD = shares;
         deposit.sendParam.minAmountLD = 0;
 
