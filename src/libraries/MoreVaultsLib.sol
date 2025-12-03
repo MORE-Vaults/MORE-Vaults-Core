@@ -122,6 +122,9 @@ library MoreVaultsLib {
         bool fulfilled;
         bool finalized;
         uint256 totalAssets;
+        uint256 finalizationResult;
+        uint256 minAmountOut; // Minimum expected result amount for slippage check (0 = check not required)
+
     }
 
     struct MoreVaultsStorage {

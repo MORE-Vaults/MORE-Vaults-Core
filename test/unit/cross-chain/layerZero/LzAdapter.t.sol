@@ -231,7 +231,7 @@ contract MockVaultsRegistry {
 contract MockLzComposer {
     mapping(bytes32 => bool) public completedDeposits;
 
-    function completeDeposit(bytes32 guid) external {
+    function sendDepositShares(bytes32 guid) external {
         completedDeposits[guid] = true;
     }
 
@@ -261,7 +261,7 @@ contract MockVault {
         isHub = _isHub;
     }
 
-    function finalizeRequest(bytes32 guid) external {
+    function executeRequest(bytes32 guid) external {
         finalizedRequests[guid] = true;
     }
 

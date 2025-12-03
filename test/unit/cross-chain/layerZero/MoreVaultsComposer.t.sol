@@ -290,10 +290,10 @@ contract MoreVaultsComposerTest is Test {
         bytes32 guid = bytes32(uint256(0x1));
         vault.setFinalizeShares(guid, amountLD);
         vm.prank(address(vault));
-        composer.completeDeposit(guid);
+        composer.sendDepositShares(guid);
     }
 
-    function test_completeDeposit_crosschain_success() public {
+    function test_sendDepositShares_crosschain_success() public {
         vault.setAccountingFee(0);
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
@@ -314,10 +314,10 @@ contract MoreVaultsComposerTest is Test {
         vault.setFinalizeShares(guid, amountLD);
 
         vm.prank(address(vault));
-        composer.completeDeposit(guid);
+        composer.sendDepositShares(guid);
     }
 
-    function test_completeDeposit_success_withSlippageCheck() public {
+    function test_sendDepositShares_success_withSlippageCheck() public {
         vault.setAccountingFee(0);
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
@@ -339,103 +339,18 @@ contract MoreVaultsComposerTest is Test {
 
         // Should succeed because actualShares (1e18) >= minAmountLD (0.9e18)
         vm.prank(address(vault));
-        composer.completeDeposit(guid);
+        composer.sendDepositShares(guid);
     }
 
-    function test_completeDeposit_reverts_OnlyVaultOrLzAdapter_and_missing() public {
+    function test_sendDepositShares_reverts_OnlyVaultOrLzAdapter_and_missing() public {
         vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.OnlyVaultOrLzAdapter.selector, address(this)));
-        composer.completeDeposit(bytes32(uint256(1)));
+        composer.sendDepositShares(bytes32(uint256(1)));
 
         vm.expectRevert(abi.encodeWithSelector(IMoreVaultsComposer.DepositNotFound.selector, bytes32(uint256(1))));
         vm.prank(address(vault));
-        composer.completeDeposit(bytes32(uint256(1)));
+        composer.sendDepositShares(bytes32(uint256(1)));
     }
 
-    function test_completeDeposit_reverts_on_slippage() public {
-        vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), true);
-        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
-
-        SendParam memory sendParam;
-        sendParam.dstEid = 202; // cross chain
-        sendParam.to = bytes32(uint256(uint160(user)));
-        sendParam.minAmountLD = 2e18; // require more shares than minted
-
-        uint256 amountLD = 1e18;
-        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
-
-        vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.5 ether}(address(assetOFT), bytes32(uint256(2001)), full, address(0), "");
-        bytes32 guid = vault.getLastGuid();
-        uint256 actualShares = 1e18; // Less than minAmountLD (2e18)
-        vault.setFinalizeShares(guid, actualShares);
-
-        // Expect revert with SlippageExceeded error
-        vm.expectRevert(
-            abi.encodeWithSelector(IMoreVaultsComposer.SlippageExceeded.selector, actualShares, sendParam.minAmountLD)
-        );
-        vm.prank(address(vault));
-        composer.completeDeposit(guid);
-    }
-
-    /**
-     * @notice Test that completeDeposit reverts when slippage exceeds user's minimum requirement
-     * @dev This test verifies the fix for the vulnerability where completeDeposit did not validate
-     *      minAmountLD before completing async deposits, exposing users to unlimited slippage.
-     * 
-     * Scenario:
-     * 1. User initiates async deposit with minAmountLD = 1.5e18 (expects at least 1.5 shares per asset)
-     * 2. Due to price movement, vault only mints 1e18 shares (less than minimum)
-     * 3. completeDeposit should revert with SlippageExceeded error
-     * 4. User's deposit remains in pending state and can be refunded
-     */
-    function test_completeDeposit_reverts_whenSlippageExceedsMinAmount() public {
-        // Setup: Configure vault for async deposits
-        vault.setAccountingFee(0.1 ether);
-        vault.setDepositable(address(assetToken), true);
-        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
-
-        // Setup: User deposits 1e18 assets expecting at least 1.5e18 shares (1.5:1 ratio)
-        uint256 assetAmount = 1e18;
-        SendParam memory sendParam;
-        sendParam.dstEid = 202;
-        sendParam.to = bytes32(uint256(uint160(user)));
-        sendParam.minAmountLD = 1.5e18; // User expects minimum 1.5 shares per asset
-
-        // Initiate async deposit
-        bytes memory full = _buildComposeMsg(sendParam, 0, 201, assetAmount);
-        bytes32 lzGuid = bytes32(uint256(0x999));
-
-        vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.2 ether}(address(assetOFT), lzGuid, full, address(0), "");
-
-        // Get the actual GUID returned by initVaultActionRequest
-        bytes32 guid = vault.getLastGuid();
-
-        // Verify pending deposit was created
-        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(guid);
-        assertEq(pendingAmount, assetAmount, "Pending deposit should be created");
-
-        // Simulate unfavorable price movement: vault only mints 1e18 shares (1:1 ratio)
-        // This is less than user's minimum requirement of 1.5e18 shares
-        uint256 actualSharesMinted = 1e18; // Less than minAmountLD (1.5e18)
-        vault.setFinalizeShares(guid, actualSharesMinted);
-
-        // Attempt to complete deposit - should revert due to slippage
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IMoreVaultsComposer.SlippageExceeded.selector, 
-                actualSharesMinted,      // amountLD: 1e18
-                sendParam.minAmountLD    // minAmountLD: 1.5e18
-            )
-        );
-        vm.prank(address(vault));
-        composer.completeDeposit(guid);
-
-        // Verify: Deposit should still be pending (not deleted) after revert
-        (,,, pendingAmount,,,,) = composer.pendingDeposits(guid);
-        assertEq(pendingAmount, assetAmount, "Deposit should remain pending after slippage revert");
-    }
 
     function test_refundDeposit_success() public {
         vault.setAccountingFee(0.2 ether);
@@ -618,7 +533,7 @@ contract MoreVaultsComposerTest is Test {
         bytes32 guid = bytes32(uint256(0x1)); // GUID from MessagingReceipt
         vault.setFinalizeShares(guid, 2e18);
         vm.prank(address(vault));
-        composer.completeDeposit(guid);
+        composer.sendDepositShares(guid);
     }
 
     function test_receive_accepts_eth() public {
@@ -828,33 +743,6 @@ contract MoreVaultsComposerTest is Test {
         composer.lzCompose{value: 0.1 ether}(address(assetOFT), bytes32(uint256(1002)), msgBytes, address(0), "");
     }
 
-    function test_completeDeposit_slippage_revert() public {
-        vault.setAccountingFee(0);
-        vault.setDepositable(address(assetToken), true);
-        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
-
-        SendParam memory sendParam;
-        sendParam.dstEid = 202;
-        sendParam.to = bytes32(uint256(uint160(user)));
-        sendParam.minAmountLD = 2e18; // require more shares than minted
-
-        uint256 amountLD = 1e18;
-        bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, amountLD);
-
-        vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.1 ether}(address(assetOFT), bytes32(uint256(2001)), msgBytes, address(0), "");
-
-        bytes32 guid = bytes32(uint256(0x1));
-        uint256 actualShares = 1e18; // Less than minAmountLD (2e18)
-        vault.setFinalizeShares(guid, actualShares);
-
-        // Expect revert with SlippageExceeded error
-        vm.expectRevert(
-            abi.encodeWithSelector(IMoreVaultsComposer.SlippageExceeded.selector, actualShares, sendParam.minAmountLD)
-        );
-        vm.prank(address(vault));
-        composer.completeDeposit(guid);
-    }
 
     // ============ Additional edge case tests ============
     function test_lzCompose_refund_on_general_error() public {
@@ -1327,10 +1215,10 @@ contract MoreVaultsComposerTest is Test {
     }
 
     /**
-     * @notice Test that completeDeposit emits normalized amount for cross-chain sends
+     * @notice Test that sendDepositShares emits normalized amount for cross-chain sends
      * @dev When completing an async deposit, the event should reflect the normalized amount sent.
      */
-    function test_completeDeposit_emitsNormalizedAmount_crossChain() public {
+    function test_sendDepositShares_emitsNormalizedAmount_crossChain() public {
         vault.setAccountingFee(0.1 ether);
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
@@ -1376,6 +1264,6 @@ contract MoreVaultsComposerTest is Test {
         );
 
         vm.prank(address(vault));
-        composer.completeDeposit(guid);
+        composer.sendDepositShares(guid);
     }
 }

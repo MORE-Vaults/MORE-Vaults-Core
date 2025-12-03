@@ -345,17 +345,31 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         CallInfo memory info = _guidToCallInfo[_guid];
         if (info.vault == address(0)) revert InvalidVault();
 
+        // Step 1: Update accounting information (always succeeds)
         IBridgeFacet(info.vault).updateAccountingInfoForRequest(_guid, sum, readSuccess);
+
+        // Step 2: If read succeeded, attempt to execute the request action
+        bool executionSuccess = false;
+        if (readSuccess) {
+            try IBridgeFacet(info.vault).executeRequest(_guid) {
+                executionSuccess = true;
+            } catch {
+                // Execution failed (e.g., due to slippage), handle via callback
+                executionSuccess = false;
+            }
+        }
+
+        // Step 3: Call composer callback to handle the result
         if (info.initiator == vaultsFactory.vaultComposer(info.vault)) {
-            _callbackToComposer(info.initiator, _guid, readSuccess);
+            _callbackToComposer(info.initiator, _guid, readSuccess && executionSuccess);
         }
 
         delete _guidToCallInfo[_guid];
     }
 
-    function _callbackToComposer(address composer, bytes32 guid, bool readSuccess) internal {
-        if (readSuccess) {
-            try ILzComposer(composer).completeDeposit(guid) {}
+    function _callbackToComposer(address composer, bytes32 guid, bool success) internal {
+        if (success) {
+            try ILzComposer(composer).sendDepositShares(guid) {}
             catch (bytes memory _err) {
                 /// @dev A revert where the msg.value passed is lower than the min expected msg.value is handled separately
                 /// This is because it is possible to re-trigger from the endpoint the compose operation with the right msg.value

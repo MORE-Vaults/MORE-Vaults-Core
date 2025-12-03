@@ -205,19 +205,23 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     }
 
     /**
-     * @notice Completes an async deposit operation
+     * @notice Sends deposit shares after successful request execution
      * @param _guid The unique identifier of the pending deposit
-     * @dev This function should be called when the async deposit operation is completed
+     * @dev This function is called after the request action has been executed successfully
+     * @dev Retrieves the execution result (shares) and sends them to the destination
      */
-    function completeDeposit(bytes32 _guid) external virtual nonReentrant {
+    function sendDepositShares(bytes32 _guid) external virtual nonReentrant {
         if (msg.sender != address(VAULT) && msg.sender != address(VAULT_FACTORY.lzAdapter())) {
             revert OnlyVaultOrLzAdapter(msg.sender);
         }
 
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
-        uint256 shares = _deposit(_guid, deposit.tokenAddress);
-        _assertSlippage(shares, deposit.sendParam.minAmountLD);
+        
+        // Request action already executed in executeRequest
+        // Slippage check was already performed in _executeRequest
+        // Get execution result (number of shares)
+        uint256 shares = IBridgeFacet(address(VAULT)).getFinalizationResult(_guid);
         deposit.sendParam.amountLD = shares;
         deposit.sendParam.minAmountLD = 0;
 
@@ -235,6 +239,17 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
 
         delete pendingDeposits[_guid];
+
+        // Decrease approve for vault by deposit amount (supports parallel deposits)
+        // If request execution didn't occur, approve wasn't used and should be decreased
+        // If request execution occurred, approve was already automatically decreased via safeTransferFrom
+        uint256 currentAllowance = IERC20(deposit.tokenAddress).allowance(address(this), address(VAULT));
+        if (currentAllowance >= deposit.assetAmount) {
+            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), deposit.assetAmount);
+        } else if (currentAllowance > 0) {
+            // If approve is less than expected (partially used), decrease by available amount
+            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), currentAllowance);
+        }
 
         // cross-chain refund back to origin
         SendParam memory refundSendParam;
@@ -355,6 +370,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (IOFT(_oftAddress).token() != _tokenAddress) {
             revert NotATokenOfOFT();
         }
+        
+        // Increase approve BEFORE creating request so it's available for request execution
+        // Use safeIncreaseAllowance to support parallel deposits
+        // Request execution occurs in executeRequest and calls deposit,
+        // which takes tokens via safeTransferFrom using approve
+        IERC20(_tokenAddress).safeIncreaseAllowance(address(VAULT), _assetAmount);
+        
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
         if (_tokenAddress == IERC4626(VAULT).asset()) {
@@ -368,8 +390,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             assets[0] = _assetAmount;
             actionCallData = abi.encode(tokens, assets, address(this));
         }
+        // Pass minAmountOut for slippage check in _executeRequest
         bytes32 guid =
-            IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(actionType, actionCallData, "");
+            IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(actionType, actionCallData, _sendParam.minAmountLD, "");
         pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,
@@ -380,19 +403,6 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             _srcEid,
             _sendParam
         );
-    }
-
-    /**
-     * @dev Internal function to deposit assets into the vault
-     * @param _guid The unique identifier of the pending deposit
-     * @param _tokenAddress The address of the token to deposit
-     * @return shareAmount The number of shares received from the vault deposit
-     * @notice This function is expected to be overridden by the inheriting contract to implement custom/nonERC4626 deposit logic
-     */
-    function _deposit(bytes32 _guid, address _tokenAddress) internal virtual returns (uint256 shareAmount) {
-        IERC20(_tokenAddress).forceApprove(address(VAULT), pendingDeposits[_guid].assetAmount);
-        shareAmount = abi.decode(IBridgeFacet(address(VAULT)).finalizeRequest(_guid), (uint256));
-        IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
     }
 
     /**
