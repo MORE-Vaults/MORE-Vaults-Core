@@ -45,6 +45,8 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     error RestrictedFacet(address);
     /// @dev Thrown when hub owner and spoke owner do not match
     error OwnersMismatch(address hubOwner, address spokeOwner);
+    /// @dev Thrown when trying to register a second spoke from the same chain
+    error SpokeAlreadyExistsForChain(uint32 hubEid, address hubVault, uint32 spokeEid);
     /// @dev Thrown on unknown message type
     error UnknownMsgType();
 
@@ -630,6 +632,19 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     }
 
     function _updateConnections(uint32 _hubEid, address _hubVault, uint32 _spokeEid, address _spokeVault) internal {
+        // Check if a spoke from the same chain already exists for this hub vault
+        EnumerableSet.Bytes32Set storage spokesSet = _hubToSpokesSet[_hubEid][_hubVault];
+        uint256 length = spokesSet.length();
+        for (uint256 i = 0; i < length;) {
+            (uint32 existingSpokeEid,) = _decodeSpokeKey(spokesSet.at(i));
+            if (existingSpokeEid == _spokeEid) {
+                revert SpokeAlreadyExistsForChain(_hubEid, _hubVault, _spokeEid);
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
         if (_spokeToHub[_spokeEid][_spokeVault] == bytes32(0)) {
             _spokeToHub[_spokeEid][_spokeVault] = _encodeSpokeKey(_hubEid, _hubVault);
         }
