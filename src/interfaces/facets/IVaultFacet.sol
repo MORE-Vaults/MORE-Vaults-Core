@@ -24,6 +24,7 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     error SyncActionsDisabledInThisVault();
     error RequestWasntFulfilled();
     error RequestWithdrawDisabled();
+    error ZeroAddress();
 
     /// @dev Events
     event Deposit(address indexed sender, address indexed owner, address[] tokens, uint256[] assets, uint256 shares);

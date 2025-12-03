@@ -174,6 +174,7 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
+        mapping(address => uint256) userHighWaterMarkPerShare;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);

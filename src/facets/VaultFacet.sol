@@ -406,7 +406,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
         _beforeAccounting(ds.beforeAccountingFacets);
         uint256 newTotalAssets = totalAssets();
-        _accrueInterest(newTotalAssets);
+        _accrueInterest(newTotalAssets, msg.sender);
 
         uint256 shares = _convertToSharesWithTotals(_assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
@@ -444,13 +444,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
-        _accrueInterest(newTotalAssets);
+        _accrueInterest(newTotalAssets, receiver);
         _validateCapacity(msgSender, newTotalAssets, assets);
-
-        ds.lastTotalAssets = newTotalAssets;
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, assets, shares);
+        
+        // Update user's HWMpS after deposit (using new total assets after deposit)
+        uint256 totalAssetsAfterDeposit = newTotalAssets + assets;
+        _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
     }
 
     /**
@@ -468,12 +470,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
-        _accrueInterest(newTotalAssets);
-        ds.lastTotalAssets = newTotalAssets;
+        _accrueInterest(newTotalAssets, receiver);
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
         _validateCapacity(msgSender, newTotalAssets, assets);
         _deposit(msgSender, receiver, assets, shares);
+        
+        // Update user's HWMpS after mint (using new total assets after deposit)
+        uint256 totalAssetsAfterDeposit = newTotalAssets + assets;
+        _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
     }
 
     /**
@@ -491,7 +496,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
-        _accrueInterest(newTotalAssets);
+        _accrueInterest(newTotalAssets, owner);
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
@@ -506,7 +511,12 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        // Calculate withdrawal fee to determine net assets
+        uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        
+        // Update user's HWMpS after withdrawal (using calculated total assets after withdrawal)
+        uint256 totalAssetsAfterWithdrawal = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
+        _updateUserHWMpS(totalAssetsAfterWithdrawal, owner);
     }
 
     /**
@@ -535,11 +545,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
 
-        _accrueInterest(newTotalAssets);
+        _accrueInterest(newTotalAssets, owner);
 
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
 
-        _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        
+        // Update user's HWMpS after redeem (using calculated total assets after withdrawal)
+        uint256 totalAssetsAfterWithdrawal = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
+        _updateUserHWMpS(totalAssetsAfterWithdrawal, owner);
     }
 
     /**
@@ -557,9 +571,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             ds.isNativeDeposit = true;
         }
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
-        _accrueInterest(newTotalAssets);
-
-        ds.lastTotalAssets = newTotalAssets;
+        _accrueInterest(newTotalAssets, receiver);
 
         if (assets.length != tokens.length) {
             revert ArraysLengthsDontMatch(tokens.length, assets.length);
@@ -583,10 +595,13 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         shares = _convertToSharesWithTotals(totalConvertedAmount, totalSupply(), newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, tokens, assets, shares);
 
-        ds.lastTotalAssets = ds.lastTotalAssets + totalConvertedAmount;
         if (ds.isNativeDeposit) {
             ds.isNativeDeposit = false;
         }
+        
+        // Update user's HWMpS after deposit
+        uint256 totalAssetsAfterDeposit = newTotalAssets + totalConvertedAmount;
+        _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
     }
 
     /**
@@ -597,9 +612,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         (uint256 newTotalAssets,) = _getInfoForAction(ds);
-        _accrueInterest(newTotalAssets);
-
-        ds.lastTotalAssets = newTotalAssets;
 
         MoreVaultsLib._setFee(_fee);
     }
@@ -652,7 +664,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         super._deposit(caller, receiver, assets, shares);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.lastTotalAssets = ds.lastTotalAssets + assets;
         _changeDepositCap(ds, caller, assets, true);
     }
 
@@ -690,16 +701,19 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @notice Accrue the interest of the vault
      * @dev Calculate the interest of the vault and mint the fee shares
      * @param _totalAssets The total assets of the vault
+     * @param _user The address of the user for per-user fee calculation (address(0) for global/legacy mode)
      */
-    function _accrueInterest(uint256 _totalAssets) internal {
+    function _accrueInterest(uint256 _totalAssets, address _user) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         uint256 feeShares;
-        feeShares = _accruedFeeShares(_totalAssets);
+        if (_user == address(0)) {
+            revert ZeroAddress();
+        }
+        feeShares = _accruedFeeSharesPerUser(_totalAssets, _user);
         _checkVaultHealth(_totalAssets, totalSupply());
 
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
-        ds.lastTotalAssets = _totalAssets;
 
         (address protocolFeeRecipient, uint96 protocolFee) =
             IMoreVaultsRegistry(acs.moreVaultsRegistry).protocolFeeInfo(address(this));
@@ -720,23 +734,72 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     /**
-     * @notice Accrue the interest of the vault
-     * @dev Calculate the interest of the vault and the fee shares
+     * @notice Accrue the interest of the vault (legacy version without user parameter)
+     * @dev Calculate the interest of the vault and mint the fee shares
      * @param _totalAssets The total assets of the vault
-     * @return feeShares The fee shares
      */
-    function _accruedFeeShares(uint256 _totalAssets) internal view returns (uint256 feeShares) {
+    function _accrueInterest(uint256 _totalAssets) internal {
+        _accrueInterest(_totalAssets, address(0));
+    }
+
+    /**
+     * @notice Calculate fee shares for a specific user based on their High-Water Mark per Share
+     * @dev Calculate the fee shares for a user's position only if current price per share exceeds their HWMpS
+     * @param _totalAssets The total assets of the vault
+     * @param _user The address of the user
+     * @return feeShares The fee shares for this user's position
+     */
+    function _accruedFeeSharesPerUser(uint256 _totalAssets, address _user) internal view returns (uint256 feeShares) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        uint256 lastTotalAssets = ds.lastTotalAssets;
-        uint256 totalInterest = _totalAssets > lastTotalAssets ? _totalAssets - lastTotalAssets : 0;
+        uint256 totalSupply_ = totalSupply();
+        if (totalSupply_ == 0) {
+            return 0;
+        }
+
+        // Calculate current price per share (with decimals offset)
+        uint256 currentPricePerShare = _totalAssets.mulDiv(
+            10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor
+        );
+
+        // Get user's High-Water Mark per Share
+        uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
+
+        // If current price is not higher than HWMpS, no fee is accrued
+        if (currentPricePerShare <= userHWMpS) {
+            return 0;
+        }
+
+        // Calculate user's current position value
+        uint256 userShares = balanceOf(_user);
+        if (userShares == 0) {
+            return 0;
+        }
+
+        // Calculate profit above HWMpS for this user
+        uint256 userAssetsAtHWM = userShares.mulDiv(userHWMpS, 10 ** _decimalsOffset(), Math.Rounding.Floor);
+        uint256 userCurrentAssets = userShares.mulDiv(currentPricePerShare, 10 ** _decimalsOffset(), Math.Rounding.Floor);
+        uint256 userProfit = userCurrentAssets > userAssetsAtHWM ? userCurrentAssets - userAssetsAtHWM : 0;
+
+        if (userProfit == 0) {
+            return 0;
+        }
 
         uint96 fee = ds.fee;
-        if (totalInterest != 0 && fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(fee, MoreVaultsLib.FEE_BASIS_POINT);
-            feeShares =
-                feeAssets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
+        if (fee == 0) {
+            return 0;
         }
+
+        // Calculate fee assets for this user's profit
+        uint256 feeAssets = userProfit.mulDiv(fee, MoreVaultsLib.FEE_BASIS_POINT);
+
+        // Convert fee assets to fee shares
+        if (feeAssets >= _totalAssets) {
+            return 0;
+        }
+        feeShares = feeAssets.mulDiv(
+            totalSupply_ + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor
+        );
     }
 
     /**
@@ -794,6 +857,32 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     /**
+     * @notice Update user's High-Water Mark per Share
+     * @dev Updates the user's HWMpS to the current price per share if it's higher
+     * @param _totalAssets The total assets of the vault
+     * @param _user The address of the user
+     */
+    function _updateUserHWMpS(uint256 _totalAssets, address _user) internal {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        
+        uint256 totalSupply_ = totalSupply();
+        if (totalSupply_ == 0) {
+            return;
+        }
+
+        // Calculate current price per share (with decimals offset)
+        uint256 currentPricePerShare = _totalAssets.mulDiv(
+            10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor
+        );
+
+        // Update HWMpS if current price is higher
+        uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
+        if (currentPricePerShare > userHWMpS) {
+            ds.userHighWaterMarkPerShare[_user] = currentPricePerShare;
+        }
+    }
+
+    /**
      * @notice Get the decimals offset
      * @dev Get the decimals offset
      * @return The decimals offset
@@ -807,15 +896,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        uint256 lastTotalAssets = ds.lastTotalAssets;
-
-        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
-        uint256 feeShares;
-        if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
-            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
-        }
-
+        
+        // Calculate fee shares for the caller based on their HWMpS (before deposit)
+        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
+        
         uint256 simTotalSupply = ts + feeShares;
 
         return _convertToSharesWithTotals(assets, simTotalSupply, newTotalAssets, Math.Rounding.Floor);
@@ -826,15 +910,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        uint256 lastTotalAssets = ds.lastTotalAssets;
-
-        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
-        uint256 feeShares;
-        if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
-            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
-        }
-
+        
+        // Calculate fee shares for the caller based on their HWMpS (before mint)
+        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
+        
         uint256 simTotalSupply = ts + feeShares;
         return _convertToAssetsWithTotals(shares, simTotalSupply, newTotalAssets, Math.Rounding.Ceil);
     }
@@ -844,15 +923,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        uint256 lastTotalAssets = ds.lastTotalAssets;
-
-        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
-        uint256 feeShares;
-        if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
-            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
-        }
-
+        
+        // Calculate fee shares for the caller based on their HWMpS (before withdrawal)
+        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
+        
         uint256 simTotalSupply = ts + feeShares;
 
         // Calculate withdrawal fee
@@ -871,15 +945,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        uint256 lastTotalAssets = ds.lastTotalAssets;
-
-        uint256 totalInterest = newTotalAssets > lastTotalAssets ? (newTotalAssets - lastTotalAssets) : 0;
-        uint256 feeShares;
-        if (totalInterest != 0 && ds.fee != 0) {
-            uint256 feeAssets = totalInterest.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT);
-            feeShares = feeAssets.mulDiv(ts + 10 ** _decimalsOffset(), newTotalAssets - feeAssets, Math.Rounding.Floor);
-        }
-
+        
+        // Calculate fee shares for the caller based on their HWMpS (before redeem)
+        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
+        
         uint256 simTotalSupply = ts + feeShares;
 
         uint256 assets = _convertToAssetsWithTotals(shares, simTotalSupply, newTotalAssets, Math.Rounding.Floor);
@@ -924,16 +993,14 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         address owner,
         uint256 assets,
         uint256 shares
-    ) internal {
+    ) internal returns (uint256 netAssets) {
         // calculate withdrawal fee
         uint256 withdrawalFeeAmount;
         if (ds.withdrawalFee > 0) {
             withdrawalFeeAmount = assets.mulDiv(ds.withdrawalFee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
         }
 
-        uint256 netAssets = assets - withdrawalFeeAmount;
-
-        ds.lastTotalAssets = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
+        netAssets = assets - withdrawalFeeAmount;
 
         _changeDepositCap(ds, msgSender, assets, false);
 

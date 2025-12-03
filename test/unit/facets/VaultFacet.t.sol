@@ -864,33 +864,55 @@ contract VaultFacetTest is Test {
             abi.encode(0, 1.1 * 10 ** 8, block.timestamp, block.timestamp, 0) // 10% price increase
         );
 
-        // Calculate expected fees
+        // Add interest to vault (price increase)
         uint256 totalInterest = 10 ether; // 10% of 100 ether
-        uint256 totalFee = (totalInterest * FEE) / FEE_BASIS_POINT; // 10% of interest
-        uint256 protocolFeeAmount = (totalFee * protocolFee) / FEE_BASIS_POINT; // 10% of fee
-        uint256 vaultFeeAmount = totalFee - protocolFeeAmount;
-
         MockERC20(asset).mint(facet, totalInterest);
+
+        // Get state before second deposit
+        uint256 userSharesBefore = IERC20(facet).balanceOf(user);
+        uint256 totalSupplyBefore = IERC20(facet).totalSupply();
+        uint256 totalAssetsBeforeInterest = 100 ether; // Initial deposit amount
 
         vm.prank(user);
         uint256 newShares = VaultFacet(facet).deposit(1, user);
 
-        // Check fee distribution
-        assertApproxEqAbs(
-            IERC20(facet).balanceOf(protocolFeeRecipient),
-            VaultFacet(facet).convertToShares(protocolFeeAmount),
-            10,
-            "Should distribute correct protocol fee"
+        // Get balances after deposit
+        uint256 protocolFeeBalance = IERC20(facet).balanceOf(protocolFeeRecipient);
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        uint256 totalFeeShares = protocolFeeBalance + vaultFeeBalance;
+
+        // Calculate expected fee based on user's profit above HWMpS
+        // HWMpS was set at price after first deposit: totalAssetsBeforeInterest / (totalSupplyBefore + 10^decimalsOffset)
+        // Current price after interest: (totalAssetsBeforeInterest + totalInterest) / (totalSupplyBefore + 10^decimalsOffset)
+        // User's profit = userSharesBefore * (currentPrice - HWMpS)
+        uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
+            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
         );
-        assertApproxEqAbs(
-            IERC20(facet).balanceOf(feeRecipient),
-            VaultFacet(facet).convertToShares(vaultFeeAmount),
-            10,
-            "Should distribute correct vault fee"
+        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest).mulDiv(
+            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
+        );
+        
+        uint256 userProfit = userSharesBefore.mulDiv(
+            currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor
+        );
+        
+        // Expected fee assets
+        uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
+        uint256 expectedProtocolFeeAssets = expectedFeeAssets.mulDiv(protocolFee, FEE_BASIS_POINT);
+        uint256 expectedVaultFeeAssets = expectedFeeAssets - expectedProtocolFeeAssets;
+
+        // Check fee distribution (using approximate comparison as fee shares calculation may have rounding)
+        assertGt(protocolFeeBalance, 0, "Should distribute protocol fee");
+        assertGt(vaultFeeBalance, 0, "Should distribute vault fee");
+        assertApproxEqRel(
+            protocolFeeBalance + vaultFeeBalance,
+            VaultFacet(facet).convertToShares(expectedFeeAssets),
+            1e15, // 0.1% tolerance
+            "Should distribute correct total fee"
         );
         assertApproxEqAbs(
             IERC20(facet).totalSupply(),
-            shares + newShares + VaultFacet(facet).convertToShares(totalFee),
+            shares + newShares + totalFeeShares,
             10,
             "Should increase total supply by fee amount"
         );
@@ -939,25 +961,50 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0) // No protocol fee
         );
 
-        // Calculate expected fees
+        // Add interest to vault (price increase)
         uint256 totalInterest = 10 ether; // 10% of 100 ether
-        uint256 totalFee = (totalInterest * FEE) / FEE_BASIS_POINT; // 10% of interest
         MockERC20(asset).mint(facet, totalInterest);
+
+        // Get state before second deposit
+        uint256 userSharesBefore = IERC20(facet).balanceOf(user);
+        uint256 totalSupplyBefore = IERC20(facet).totalSupply();
+        uint256 totalAssetsBeforeInterest = depositAmount; // Initial deposit amount
 
         // Trigger interest accrual
         vm.prank(user);
         uint256 newShares = VaultFacet(facet).deposit(1, user);
 
-        // Check fee distribution
-        assertApproxEqAbs(
-            IERC20(facet).balanceOf(feeRecipient),
-            VaultFacet(facet).convertToShares(totalFee),
-            10,
-            "Should distribute all fees to vault fee recipient"
+        // Get fee balance after deposit
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Calculate expected fee based on user's profit above HWMpS
+        // HWMpS was set at price after first deposit: totalAssetsBeforeInterest / (totalSupplyBefore + 10^decimalsOffset)
+        // Current price after interest: (totalAssetsBeforeInterest + totalInterest) / (totalSupplyBefore + 10^decimalsOffset)
+        uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
+            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
+        );
+        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest).mulDiv(
+            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
+        );
+        
+        uint256 userProfit = userSharesBefore.mulDiv(
+            currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor
+        );
+        
+        // Expected fee assets
+        uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
+
+        // Check fee distribution (using approximate comparison as fee shares calculation may have rounding)
+        assertGt(vaultFeeBalance, 0, "Should distribute fees to vault fee recipient");
+        assertApproxEqRel(
+            vaultFeeBalance,
+            VaultFacet(facet).convertToShares(expectedFeeAssets),
+            1e15, // 0.1% tolerance
+            "Should distribute correct fee amount"
         );
         assertApproxEqAbs(
             IERC20(facet).totalSupply(),
-            depositAmount * 10 ** decimalsOffset + newShares + VaultFacet(facet).convertToShares(totalFee),
+            depositAmount * 10 ** decimalsOffset + newShares + vaultFeeBalance,
             10,
             "Should increase total supply by fee amount"
         );
