@@ -132,7 +132,12 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         bytes calldata _message, // expected to contain a composeMessage = abi.encode(SendParam hopSendParam,uint256 minMsgValue)
         address, /*_executor*/
         bytes calldata /*_extraData*/
-    ) external payable virtual override {
+    )
+        external
+        payable
+        virtual
+        override
+    {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
         if (
             !LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)
@@ -217,7 +222,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
-        
+
         // Request action already executed in executeRequest
         // Slippage check was already performed in _executeRequest
         // Get execution result (number of shares)
@@ -228,7 +233,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         delete pendingDeposits[_guid];
 
         uint256 amountSentLD = _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
-        emit Deposited(deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, amountSentLD);
+        emit Deposited(
+            deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, amountSentLD
+        );
     }
 
     function refundDeposit(bytes32 _guid) external payable virtual nonReentrant {
@@ -370,13 +377,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (IOFT(_oftAddress).token() != _tokenAddress) {
             revert NotATokenOfOFT();
         }
-        
+
         // Increase approve BEFORE creating request so it's available for request execution
         // Use safeIncreaseAllowance to support parallel deposits
         // Request execution occurs in executeRequest and calls deposit,
         // which takes tokens via safeTransferFrom using approve
         IERC20(_tokenAddress).safeIncreaseAllowance(address(VAULT), _assetAmount);
-        
+
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
         if (_tokenAddress == IERC4626(VAULT).asset()) {
@@ -391,8 +398,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             actionCallData = abi.encode(tokens, assets, address(this));
         }
         // Pass minAmountOut for slippage check in _executeRequest
-        bytes32 guid =
-            IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(actionType, actionCallData, _sendParam.minAmountLD, "");
+        bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
+            actionType, actionCallData, _sendParam.minAmountLD, ""
+        );
         pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,
@@ -414,14 +422,18 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
      * @param _refundAddress Address to receive excess payment of the LZ fees
      * @return amountSentLD The amount actually sent (after LayerZero normalization for cross-chain, equal to amountLD for local)
      */
-    function _send(address _oft, SendParam memory _sendParam, address _refundAddress, uint256 _msgValue) internal returns (uint256 amountSentLD) {
+    function _send(address _oft, SendParam memory _sendParam, address _refundAddress, uint256 _msgValue)
+        internal
+        returns (uint256 amountSentLD)
+    {
         if (_sendParam.dstEid == VAULT_EID) {
             if (msg.value > 0) revert NoMsgValueExpected();
             IERC20(SHARE_ERC20).safeTransfer(_sendParam.to.bytes32ToAddress(), _sendParam.amountLD);
             return _sendParam.amountLD;
         } else {
             // crosschain send - LayerZero normalizes the amount, so we get the actual sent amount from the receipt
-            (, OFTReceipt memory oftReceipt) = IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
+            (, OFTReceipt memory oftReceipt) =
+                IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
             return oftReceipt.amountSentLD;
         }
     }

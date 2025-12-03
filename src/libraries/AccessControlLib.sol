@@ -119,8 +119,7 @@ library AccessControlLib {
                 || selector == IConfigurationFacet.setWithdrawalFee.selector
                 || selector == IConfigurationFacet.updateWithdrawalQueueStatus.selector
                 || selector == IConfigurationFacet.setCrossChainAccountingManager.selector
-                || selector == IVaultFacet.setFee.selector
-                || selector == IBridgeFacet.initVaultActionRequest.selector
+                || selector == IVaultFacet.setFee.selector || selector == IBridgeFacet.initVaultActionRequest.selector
         ) {
             validateOwner(caller);
         } else {

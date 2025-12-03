@@ -76,8 +76,7 @@ contract BridgeFacetTest is Test {
 
         // provide oracle info for spoke
         IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(address(0x1111)),
-            stalenessThreshold: uint96(1)
+            aggregator: IAggregatorV2V3Interface(address(0x1111)), stalenessThreshold: uint96(1)
         });
         // use helper function in mock to set spoke oracle info
         oracle.setSpokeOracleInfo(address(facet), eids[0], info);
@@ -220,11 +219,15 @@ contract BridgeFacetTest is Test {
         bytes memory callData = abi.encode(tokens, amounts, address(0xCAFE01), 1 ether);
         bytes memory opts = bytes("");
         vm.expectRevert(IBridgeFacet.NotEnoughMsgValueProvided.selector);
-        facet.initVaultActionRequest{value: 0.99 ether}(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, opts);
+        facet.initVaultActionRequest{value: 0.99 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, opts
+        );
 
         adapter.setFee(0.05 ether, 0);
         vm.expectRevert(IBridgeFacet.NotEnoughMsgValueProvided.selector);
-        facet.initVaultActionRequest{value: 1.04 ether}(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, opts);
+        facet.initVaultActionRequest{value: 1.04 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, opts
+        );
 
         bytes32 guid = facet.initVaultActionRequest{value: 1.05 ether}(
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, opts
@@ -314,8 +317,7 @@ contract BridgeFacetTest is Test {
         _mockHubWithSpokes(100, eids, spokes);
 
         IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(address(0x1111)),
-            stalenessThreshold: uint96(1)
+            aggregator: IAggregatorV2V3Interface(address(0x1111)), stalenessThreshold: uint96(1)
         });
         oracle.setSpokeOracleInfo(address(facet), eids[0], info);
 
@@ -336,8 +338,7 @@ contract BridgeFacetTest is Test {
         _mockHubWithSpokes(100, eids, spokes);
 
         IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(address(0x1111)),
-            stalenessThreshold: uint96(1)
+            aggregator: IAggregatorV2V3Interface(address(0x1111)), stalenessThreshold: uint96(1)
         });
         oracle.setSpokeOracleInfo(address(facet), eids[0], info);
         // Set spoke value to more than 10e4 threshold (in USD, will be converted to underlying)
@@ -362,8 +363,7 @@ contract BridgeFacetTest is Test {
         _mockHubWithSpokes(100, eids, spokes);
 
         IOracleRegistry.OracleInfo memory info = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(address(0x1111)),
-            stalenessThreshold: uint96(1)
+            aggregator: IAggregatorV2V3Interface(address(0x1111)), stalenessThreshold: uint96(1)
         });
         oracle.setSpokeOracleInfo(address(facet), eids[0], info);
 
@@ -508,7 +508,8 @@ contract BridgeFacetTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100;
         bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes(""));
+        bytes32 guid =
+            facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes(""));
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -545,9 +546,7 @@ contract BridgeFacetTest is Test {
         facet.updateAccountingInfoForRequest(guid, 0, true);
 
         // Expect revert with SlippageExceeded error
-        vm.expectRevert(
-            abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
         facet.executeRequest(guid);
         vm.stopPrank();
     }
@@ -581,7 +580,7 @@ contract BridgeFacetTest is Test {
         vm.stopPrank();
     }
 
-   /**
+    /**
      * @notice Test that executeRequest succeeds when result meets minAmountOut for DEPOSIT
      */
     function test_executeRequest_DEPOSIT_reverts_if_in_multicall() public {
@@ -626,9 +625,7 @@ contract BridgeFacetTest is Test {
         facet.updateAccountingInfoForRequest(guid, 0, true);
 
         // Expect revert with SlippageExceeded error
-        vm.expectRevert(
-            abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualAssets, minAmountOut)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualAssets, minAmountOut));
         facet.executeRequest(guid);
         vm.stopPrank();
     }
@@ -660,7 +657,7 @@ contract BridgeFacetTest is Test {
         vm.stopPrank();
     }
 
-        /**
+    /**
      * @notice Test that executeRequest does not check slippage for SET_FEE
      */
     function test_executeRequest_SET_FEE_reverts_if_called_by_non_diamond() public {
@@ -697,7 +694,9 @@ contract BridgeFacetTest is Test {
         amounts[0] = 100e18;
         uint256 minAmountOut = 150e18; // Expect at least 150 shares
         bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes(""));
+        bytes32 guid = facet.initVaultActionRequest(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes("")
+        );
 
         // Set deposit result to be less than minAmountOut
         uint256 actualShares = 100e18; // Less than minAmountOut (150e18)
@@ -707,9 +706,7 @@ contract BridgeFacetTest is Test {
         facet.updateAccountingInfoForRequest(guid, 0, true);
 
         // Expect revert with SlippageExceeded error
-        vm.expectRevert(
-            abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut)
-        );
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
         facet.executeRequest(guid);
         vm.stopPrank();
     }

@@ -34,9 +34,8 @@ contract FixHelperFacet is BaseFacetInitializer, ContextUpgradeable, ReentrancyG
             IERC20(address(this)).balanceOf(address(0x0d28781A95959d515ed4F8283964876ce2605Dc2))
         );
         // _burn(address(0x4fBB19B3dc3c63B8eC5d0077eE9783e0b1557644), IERC20(address(this)).balanceOf(address(0x4fBB19B3dc3c63B8eC5d0077eE9783e0b1557644)));
-        IERC20(address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766)).transfer(
-            address(0x0d28781A95959d515ed4F8283964876ce2605Dc2), 2 ether
-        );
+        IERC20(address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766))
+            .transfer(address(0x0d28781A95959d515ed4F8283964876ce2605Dc2), 2 ether);
         // MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         // ds.maxSlippagePercent = 10000;
     }

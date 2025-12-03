@@ -888,14 +888,11 @@ contract VaultFacetTest is Test {
         uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
             10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
         );
-        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest).mulDiv(
-            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
-        );
-        
-        uint256 userProfit = userSharesBefore.mulDiv(
-            currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor
-        );
-        
+        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest)
+        .mulDiv(10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
+
+        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor);
+
         // Expected fee assets
         uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
         uint256 expectedProtocolFeeAssets = expectedFeeAssets.mulDiv(protocolFee, FEE_BASIS_POINT);
@@ -983,14 +980,11 @@ contract VaultFacetTest is Test {
         uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
             10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
         );
-        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest).mulDiv(
-            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
-        );
-        
-        uint256 userProfit = userSharesBefore.mulDiv(
-            currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor
-        );
-        
+        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest)
+        .mulDiv(10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
+
+        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor);
+
         // Expected fee assets
         uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
 
@@ -2130,11 +2124,7 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setSelectorToFacetAndPosition(facet, selector, address(malicious), 0);
         MoreVaultsStorageHelper.addFacetForAccounting(facet, bytes32(selector));
 
-        vm.mockCall(
-            facet,
-            abi.encodeWithSelector(selector),
-            abi.encode(type(uint256).max, true)
-        );
+        vm.mockCall(facet, abi.encodeWithSelector(selector), abi.encode(type(uint256).max, true));
 
         vm.expectRevert();
         VaultFacet(facet).totalAssets();

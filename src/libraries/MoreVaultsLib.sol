@@ -124,7 +124,6 @@ library MoreVaultsLib {
         uint256 totalAssets;
         uint256 finalizationResult;
         uint256 minAmountOut; // Minimum expected result amount for slippage check (0 = check not required)
-
     }
 
     struct MoreVaultsStorage {
@@ -600,17 +599,16 @@ library MoreVaultsLib {
                 ds.facetFunctionSelectors[lastFacetAddress].facetAddressPosition = facetAddressPosition;
             }
             ds.facetAddresses.pop();
-            delete ds
-                .facetFunctionSelectors[_facetAddress]
-                .facetAddressPosition;
+            delete ds.facetFunctionSelectors[_facetAddress].facetAddressPosition;
             address factory = ds.factory;
             IVaultsFactory(factory).unlink(_facetAddress);
 
-            (bool success, bytes memory result) = address(_facetAddress).delegatecall(
-                abi.encodeWithSelector(
-                    bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
-                )
-            );
+            (bool success, bytes memory result) = address(_facetAddress)
+                .delegatecall(
+                    abi.encodeWithSelector(
+                        bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
+                    )
+                );
             // revert if onFacetRemoval exists on facet and failed
             if (!success && result.length > 0) {
                 revert OnFacetRemovalFailed(_facetAddress, result);
@@ -678,7 +676,8 @@ library MoreVaultsLib {
                 if (!_isReplacing) {
                     // Skip balance check for accountingBridgeFacet - it reports remote spoke funds,
                     // not local funds, and a failing oracle should not prevent disabling oracle accounting
-                    bytes4 accountingBridgeFacetSelector = bytes4(keccak256(abi.encodePacked("accountingBridgeFacet()")));
+                    bytes4 accountingBridgeFacetSelector =
+                        bytes4(keccak256(abi.encodePacked("accountingBridgeFacet()")));
                     if (selector != accountingBridgeFacetSelector) {
                         (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
                         if (!success) {
@@ -738,9 +737,8 @@ library MoreVaultsLib {
 
         uint256 consumption;
         unchecked {
-            consumption = tokensHeldLength * gl.heldTokenAccountingGas
-                + stakingTokensLength * gl.stakingTokenAccountingGas
-                + ds.availableAssets.length * gl.availableTokenAccountingGas
+            consumption = tokensHeldLength * gl.heldTokenAccountingGas + stakingTokensLength
+                * gl.stakingTokenAccountingGas + ds.availableAssets.length * gl.availableTokenAccountingGas
                 + ds.facetsForAccounting.length * gl.facetAccountingGas + gl.nestedVaultsGas;
         }
 

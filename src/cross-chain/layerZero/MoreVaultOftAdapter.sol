@@ -9,7 +9,6 @@ import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 contract MoreVaultOftAdapter is OFTAdapter {
     using SafeERC20 for IERC20;
 
-    
     /// @notice Event emitted when tokens are rescued
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
@@ -21,7 +20,7 @@ contract MoreVaultOftAdapter is OFTAdapter {
 
     /// @notice Error thrown when native currency transfer fails
     error NativeTransferFailed();
-    
+
     constructor(address _token, address _lzEndpoint, address _owner)
         OFTAdapter(_token, _lzEndpoint, _owner)
         Ownable(_owner)
@@ -38,13 +37,13 @@ contract MoreVaultOftAdapter is OFTAdapter {
      */
     function rescue(address _token, address payable _to, uint256 _amount) external onlyOwner {
         if (_to == address(0)) revert ZeroAddress();
-        
+
         if (_token == address(0)) {
             // Rescue native currency (ETH)
             uint256 balance = address(this).balance;
             uint256 amountToRescue = _amount == type(uint256).max ? balance : _amount;
             if (amountToRescue > balance) revert InsufficientBalance();
-            
+
             (bool success,) = _to.call{value: amountToRescue}("");
             if (!success) revert NativeTransferFailed();
             emit Rescued(address(0), _to, amountToRescue);
@@ -53,7 +52,7 @@ contract MoreVaultOftAdapter is OFTAdapter {
             uint256 balance = IERC20(_token).balanceOf(address(this));
             uint256 amountToRescue = _amount == type(uint256).max ? balance : _amount;
             if (amountToRescue > balance) revert InsufficientBalance();
-            
+
             IERC20(_token).safeTransfer(_to, amountToRescue);
             emit Rescued(_token, _to, amountToRescue);
         }

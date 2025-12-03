@@ -339,7 +339,10 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         bytes calldata _message,
         address, /*_executor*/
         bytes calldata /*_extraData*/
-    ) internal override {
+    )
+        internal
+        override
+    {
         (uint256 sum, bool readSuccess) = abi.decode(_message, (uint256, bool));
 
         CallInfo memory info = _guidToCallInfo[_guid];

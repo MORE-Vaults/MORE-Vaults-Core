@@ -449,7 +449,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, assets, shares);
-        
+
         // Update user's HWMpS after deposit (using new total assets after deposit)
         uint256 totalAssetsAfterDeposit = newTotalAssets + assets;
         _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
@@ -475,7 +475,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
         _validateCapacity(msgSender, newTotalAssets, assets);
         _deposit(msgSender, receiver, assets, shares);
-        
+
         // Update user's HWMpS after mint (using new total assets after deposit)
         uint256 totalAssetsAfterDeposit = newTotalAssets + assets;
         _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
@@ -513,7 +513,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Calculate withdrawal fee to determine net assets
         uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
-        
+
         // Update user's HWMpS after withdrawal (using calculated total assets after withdrawal)
         uint256 totalAssetsAfterWithdrawal = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
         _updateUserHWMpS(totalAssetsAfterWithdrawal, owner);
@@ -550,7 +550,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
 
         uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
-        
+
         // Update user's HWMpS after redeem (using calculated total assets after withdrawal)
         uint256 totalAssetsAfterWithdrawal = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
         _updateUserHWMpS(totalAssetsAfterWithdrawal, owner);
@@ -598,7 +598,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (ds.isNativeDeposit) {
             ds.isNativeDeposit = false;
         }
-        
+
         // Update user's HWMpS after deposit
         uint256 totalAssetsAfterDeposit = newTotalAssets + totalConvertedAmount;
         _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
@@ -758,9 +758,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // Calculate current price per share (with decimals offset)
-        uint256 currentPricePerShare = _totalAssets.mulDiv(
-            10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor
-        );
+        uint256 currentPricePerShare =
+            _totalAssets.mulDiv(10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor);
 
         // Get user's High-Water Mark per Share
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
@@ -778,7 +777,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Calculate profit above HWMpS for this user
         uint256 userAssetsAtHWM = userShares.mulDiv(userHWMpS, 10 ** _decimalsOffset(), Math.Rounding.Floor);
-        uint256 userCurrentAssets = userShares.mulDiv(currentPricePerShare, 10 ** _decimalsOffset(), Math.Rounding.Floor);
+        uint256 userCurrentAssets =
+            userShares.mulDiv(currentPricePerShare, 10 ** _decimalsOffset(), Math.Rounding.Floor);
         uint256 userProfit = userCurrentAssets > userAssetsAtHWM ? userCurrentAssets - userAssetsAtHWM : 0;
 
         if (userProfit == 0) {
@@ -797,9 +797,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (feeAssets >= _totalAssets) {
             return 0;
         }
-        feeShares = feeAssets.mulDiv(
-            totalSupply_ + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor
-        );
+        feeShares =
+            feeAssets.mulDiv(totalSupply_ + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
     }
 
     /**
@@ -864,16 +863,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function _updateUserHWMpS(uint256 _totalAssets, address _user) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        
+
         uint256 totalSupply_ = totalSupply();
         if (totalSupply_ == 0) {
             return;
         }
 
         // Calculate current price per share (with decimals offset)
-        uint256 currentPricePerShare = _totalAssets.mulDiv(
-            10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor
-        );
+        uint256 currentPricePerShare =
+            _totalAssets.mulDiv(10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor);
 
         // Update HWMpS if current price is higher
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
@@ -896,10 +894,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        
+
         // Calculate fee shares for the caller based on their HWMpS (before deposit)
         uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
-        
+
         uint256 simTotalSupply = ts + feeShares;
 
         return _convertToSharesWithTotals(assets, simTotalSupply, newTotalAssets, Math.Rounding.Floor);
@@ -910,10 +908,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        
+
         // Calculate fee shares for the caller based on their HWMpS (before mint)
         uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
-        
+
         uint256 simTotalSupply = ts + feeShares;
         return _convertToAssetsWithTotals(shares, simTotalSupply, newTotalAssets, Math.Rounding.Ceil);
     }
@@ -923,10 +921,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        
+
         // Calculate fee shares for the caller based on their HWMpS (before withdrawal)
         uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
-        
+
         uint256 simTotalSupply = ts + feeShares;
 
         // Calculate withdrawal fee
@@ -945,10 +943,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateERC4626Compatible(ds);
         uint256 newTotalAssets = totalAssets();
         uint256 ts = totalSupply();
-        
+
         // Calculate fee shares for the caller based on their HWMpS (before redeem)
         uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
-        
+
         uint256 simTotalSupply = ts + feeShares;
 
         uint256 assets = _convertToAssetsWithTotals(shares, simTotalSupply, newTotalAssets, Math.Rounding.Floor);

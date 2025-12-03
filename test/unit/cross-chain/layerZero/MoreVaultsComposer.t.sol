@@ -351,7 +351,6 @@ contract MoreVaultsComposerTest is Test {
         composer.sendDepositShares(bytes32(uint256(1)));
     }
 
-
     function test_refundDeposit_success() public {
         vault.setAccountingFee(0.2 ether);
         vault.setDepositable(address(assetToken), true);
@@ -417,7 +416,6 @@ contract MoreVaultsComposerTest is Test {
             address refundAddress,
             uint256 msgValue,
             uint32 srcEid,
-
         ) = composer.pendingDeposits(guid);
 
         // Verify that tokenAddress and oftAddress are different
@@ -434,7 +432,8 @@ contract MoreVaultsComposerTest is Test {
         composer.refundDeposit{value: 0}(guid);
 
         // Verify the deposit was deleted after successful refund
-        (depositor, tokenAddress, oftAddress, assetAmount, refundAddress, msgValue, srcEid, ) = composer.pendingDeposits(guid);
+        (depositor, tokenAddress, oftAddress, assetAmount, refundAddress, msgValue, srcEid,) =
+            composer.pendingDeposits(guid);
         assertEq(assetAmount, 0, "Deposit should be deleted after refund");
     }
 
@@ -488,7 +487,7 @@ contract MoreVaultsComposerTest is Test {
         // Verify the deposit was deleted after successful refund
         (,,, assetAmount,,,,) = composer.pendingDeposits(guid);
         assertEq(assetAmount, 0, "Deposit should be deleted after successful refund with additional msg.value");
-        
+
         // Note: Backward compatibility (refund without additional msg.value) is already tested
         // in test_refundDeposit_success, so we don't need to duplicate that test here
     }
@@ -742,7 +741,6 @@ contract MoreVaultsComposerTest is Test {
         vm.prank(address(endpoint));
         composer.lzCompose{value: 0.1 ether}(address(assetOFT), bytes32(uint256(1002)), msgBytes, address(0), "");
     }
-
 
     // ============ Additional edge case tests ============
     function test_lzCompose_refund_on_general_error() public {
@@ -1138,7 +1136,7 @@ contract MoreVaultsComposerTest is Test {
     }
 
     // ============ Deposited Event Normalization Tests ============
-    
+
     /**
      * @notice Test that Deposited event emits normalized share amount for cross-chain sends
      * @dev LayerZero normalizes amounts to sharedDecimals (6 decimals), removing dust.
@@ -1161,11 +1159,11 @@ contract MoreVaultsComposerTest is Test {
         // Use an amount that will have dust after normalization
         uint256 amountWithDust = 100e18 + 123456789; // This will have dust
         uint256 shareAmount = amountWithDust; // 1:1 in mock vault
-        
+
         // Calculate expected normalized amount (remove dust for 18 decimal token with 6 shared decimals)
         uint256 decimalConversionRate = 1e12; // 10^(18-6)
         uint256 expectedNormalizedAmount = (shareAmount / decimalConversionRate) * decimalConversionRate;
-        
+
         vm.expectEmit(true, true, true, true);
         emit IMoreVaultsComposer.Deposited(
             OFTComposeMsgCodec.addressToBytes32(user),
@@ -1199,7 +1197,7 @@ contract MoreVaultsComposerTest is Test {
 
         uint256 depositAmount = 100e18 + 123456789; // Amount with dust
         uint256 shareAmount = depositAmount; // 1:1 in mock vault
-        
+
         // For local sends, no normalization occurs, so the full amount should be in the event
         vm.expectEmit(true, true, true, true);
         emit IMoreVaultsComposer.Deposited(
@@ -1249,11 +1247,11 @@ contract MoreVaultsComposerTest is Test {
         // Complete the deposit
         bytes32 guid = bytes32(uint256(0x1));
         vault.setFinalizeShares(guid, depositAmount); // 1:1 in mock
-        
+
         // Calculate expected normalized amount
         uint256 decimalConversionRate = 1e12;
         uint256 expectedNormalizedAmount = (depositAmount / decimalConversionRate) * decimalConversionRate;
-        
+
         vm.expectEmit(true, true, true, true);
         emit IMoreVaultsComposer.Deposited(
             OFTComposeMsgCodec.addressToBytes32(user),

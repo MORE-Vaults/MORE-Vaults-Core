@@ -13,8 +13,9 @@ import {
     Origin,
     MessagingFee
 } from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
-import {OAppOptionsType3Upgradeable} from
-    "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
+import {
+    OAppOptionsType3Upgradeable
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
@@ -345,7 +346,10 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         bytes calldata _message,
         address, /* _executor */
         bytes calldata /* _extraData */
-    ) internal override {
+    )
+        internal
+        override
+    {
         // OAppReceiver already validated endpoint and peer
         (uint16 msgType, bytes memory rest) = abi.decode(_message, (uint16, bytes));
         if (msgType == MSG_TYPE_REGISTER_SPOKE) {

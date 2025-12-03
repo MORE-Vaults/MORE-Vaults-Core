@@ -107,7 +107,9 @@ contract ERC4626RouterTest is Test {
         vault.setSlippage(100); // 1% slippage
 
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(ERC4626Router.SlippageExceeded.selector, expectedShares * 99 / 100, minShares));
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.SlippageExceeded.selector, expectedShares * 99 / 100, minShares)
+        );
         router.depositWithSlippage(vault, assets, minShares, receiver);
     }
 

@@ -11,7 +11,8 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     error ArraysLengthsDontMatch(uint256, uint256);
     error WithdrawFailed(string);
     error VaultDebtIsGreaterThanAssets();
-    error NotAnERC4626CompatibleVault();    error WithdrawSchedulerInvalidTimestamp(uint256 timestamp);
+    error NotAnERC4626CompatibleVault();
+    error WithdrawSchedulerInvalidTimestamp(uint256 timestamp);
     error CantCoverWithdrawRequests(uint256, uint256);
     error InvalidSharesAmount();
     error InvalidAssetsAmount();
@@ -34,7 +35,7 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     event WithdrawRequestCreated(address requester, uint256 sharesAmount, uint256 endsAt);
 
     event WithdrawRequestFulfilled(address requester, address receiver, uint256 sharesAmount, uint256 assetAmount);
-    
+
     event WithdrawRequestDeleted(address requester);
 
     /// @notice Pauses all vault operations

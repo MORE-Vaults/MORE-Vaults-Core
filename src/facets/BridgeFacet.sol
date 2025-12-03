@@ -182,9 +182,12 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             if (value + fee.nativeFee > msg.value) revert NotEnoughMsgValueProvided();
         }
 
-        guid = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager()).initiateCrossChainAccounting{value: msg.value}(
+        guid =
+        IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
+        .initiateCrossChainAccounting{value: msg.value}(
             vaults, eids, extraOptions, msg.sender
-        ).guid;
+        )
+        .guid;
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }
 
@@ -194,8 +197,9 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             revert OnlyCrossChainAccountingManager();
         }
         if (readSuccess) {
-            ds.guidToCrossChainRequestInfo[guid].totalAssets +=
-                MoreVaultsLib.convertUsdToUnderlying(sumOfSpokesUsdValue, Math.Rounding.Floor);
+            ds.guidToCrossChainRequestInfo[guid].totalAssets += MoreVaultsLib.convertUsdToUnderlying(
+                sumOfSpokesUsdValue, Math.Rounding.Floor
+            );
         }
         ds.guidToCrossChainRequestInfo[guid].fulfilled = readSuccess;
 

@@ -26,7 +26,7 @@ contract TestERC20 is ERC20 {
 
 contract MoreVaultOftAdapterTest is Test {
     uint32 public localEid = uint32(101);
-    
+
     MockEndpointV2 endpoint;
     TestERC20 token;
     MoreVaultOftAdapter adapter;
@@ -37,27 +37,27 @@ contract MoreVaultOftAdapterTest is Test {
     function setUp() public {
         endpoint = new MockEndpointV2(localEid);
         token = new TestERC20("Test Token", "TEST", 18);
-        
+
         vm.prank(owner);
         adapter = new MoreVaultOftAdapter(address(token), address(endpoint), owner);
-        
+
         // Mint some tokens to the adapter to simulate dust accumulation
         token.mint(address(adapter), 1000e18);
         vm.deal(address(adapter), 5 ether);
     }
 
     // ============ Rescue ERC20 Token Tests ============
-    
+
     function test_rescue_ERC20_success() public {
         uint256 dustAmount = 123e18;
         uint256 initialBalance = token.balanceOf(recipient);
-        
+
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
         emit MoreVaultOftAdapter.Rescued(address(token), recipient, dustAmount);
-        
+
         adapter.rescue(address(token), payable(recipient), dustAmount);
-        
+
         assertEq(token.balanceOf(recipient), initialBalance + dustAmount, "Recipient should receive tokens");
         assertEq(token.balanceOf(address(adapter)), 1000e18 - dustAmount, "Adapter balance should decrease");
     }
@@ -65,10 +65,10 @@ contract MoreVaultOftAdapterTest is Test {
     function test_rescue_ERC20_allTokens() public {
         uint256 adapterBalance = token.balanceOf(address(adapter));
         uint256 initialBalance = token.balanceOf(recipient);
-        
+
         vm.prank(owner);
         adapter.rescue(address(token), payable(recipient), type(uint256).max);
-        
+
         assertEq(token.balanceOf(recipient), initialBalance + adapterBalance, "Recipient should receive all tokens");
         assertEq(token.balanceOf(address(adapter)), 0, "Adapter balance should be zero");
     }
@@ -87,24 +87,24 @@ contract MoreVaultOftAdapterTest is Test {
 
     function test_rescue_ERC20_reverts_whenInsufficientBalance() public {
         uint256 excessiveAmount = token.balanceOf(address(adapter)) + 1;
-        
+
         vm.prank(owner);
         vm.expectRevert(MoreVaultOftAdapter.InsufficientBalance.selector);
         adapter.rescue(address(token), payable(recipient), excessiveAmount);
     }
 
     // ============ Rescue Native Currency Tests ============
-    
+
     function test_rescue_nativeCurrency_success() public {
         uint256 dustAmount = 2 ether;
         uint256 initialBalance = recipient.balance;
-        
+
         vm.prank(owner);
         vm.expectEmit(true, true, true, true);
         emit MoreVaultOftAdapter.Rescued(address(0), recipient, dustAmount);
-        
+
         adapter.rescue(address(0), payable(recipient), dustAmount);
-        
+
         assertEq(recipient.balance, initialBalance + dustAmount, "Recipient should receive ETH");
         assertEq(address(adapter).balance, 5 ether - dustAmount, "Adapter balance should decrease");
     }
@@ -112,10 +112,10 @@ contract MoreVaultOftAdapterTest is Test {
     function test_rescue_nativeCurrency_allBalance() public {
         uint256 adapterBalance = address(adapter).balance;
         uint256 initialBalance = recipient.balance;
-        
+
         vm.prank(owner);
         adapter.rescue(address(0), payable(recipient), type(uint256).max);
-        
+
         assertEq(recipient.balance, initialBalance + adapterBalance, "Recipient should receive all ETH");
         assertEq(address(adapter).balance, 0, "Adapter balance should be zero");
     }
@@ -134,20 +134,20 @@ contract MoreVaultOftAdapterTest is Test {
 
     function test_rescue_nativeCurrency_reverts_whenInsufficientBalance() public {
         uint256 excessiveAmount = address(adapter).balance + 1;
-        
+
         vm.prank(owner);
         vm.expectRevert(MoreVaultOftAdapter.InsufficientBalance.selector);
         adapter.rescue(address(0), payable(recipient), excessiveAmount);
     }
 
     // ============ Edge Cases ============
-    
+
     function test_rescue_zeroAmount() public {
         uint256 initialBalance = token.balanceOf(recipient);
-        
+
         vm.prank(owner);
         adapter.rescue(address(token), payable(recipient), 0);
-        
+
         assertEq(token.balanceOf(recipient), initialBalance, "Recipient balance should not change");
     }
 
@@ -155,13 +155,13 @@ contract MoreVaultOftAdapterTest is Test {
         // Create another token
         TestERC20 token2 = new TestERC20("Token 2", "T2", 18);
         token2.mint(address(adapter), 500e18);
-        
+
         vm.prank(owner);
         adapter.rescue(address(token), payable(recipient), 100e18);
-        
+
         vm.prank(owner);
         adapter.rescue(address(token2), payable(recipient), 200e18);
-        
+
         assertEq(token.balanceOf(recipient), 100e18, "Should rescue first token");
         assertEq(token2.balanceOf(recipient), 200e18, "Should rescue second token");
     }

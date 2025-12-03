@@ -786,11 +786,7 @@ contract ERC7540FacetTest is Test {
 
         // Accounting should still include the locked assets even though shares haven't been received yet
         (uint256 sumAfterRequest,) = facet.accountingERC7540Facet();
-        assertEq(
-            sumAfterRequest,
-            DEPOSIT_AMOUNT,
-            "Sum should remain the same - locked assets should be accounted for"
-        );
+        assertEq(sumAfterRequest, DEPOSIT_AMOUNT, "Sum should remain the same - locked assets should be accounted for");
 
         vm.stopPrank();
     }
@@ -823,11 +819,7 @@ contract ERC7540FacetTest is Test {
 
         // Accounting should still include the locked shares even though assets haven't been received yet
         (uint256 sumAfterRequest,) = facet.accountingERC7540Facet();
-        assertEq(
-            sumAfterRequest,
-            DEPOSIT_AMOUNT,
-            "Sum should remain the same - locked shares should be accounted for"
-        );
+        assertEq(sumAfterRequest, DEPOSIT_AMOUNT, "Sum should remain the same - locked shares should be accounted for");
 
         vm.stopPrank();
     }
@@ -1170,9 +1162,7 @@ contract ERC7540FacetTest is Test {
         (uint256 manipulatedAccounting,) = facet.accountingERC7540Facet();
 
         // Accounting is inflated!
-        assertTrue(
-            manipulatedAccounting > normalAccounting, "Attacker can manipulate accounting via convertToAssets"
-        );
+        assertTrue(manipulatedAccounting > normalAccounting, "Attacker can manipulate accounting via convertToAssets");
 
         vm.stopPrank();
 
@@ -1202,11 +1192,7 @@ contract ERC7540FacetTest is Test {
         (uint256 accountingAfter,) = facet.accountingERC7540Facet();
 
         // Accounting should include locked tokens (they still have value)
-        assertEq(
-            accountingAfter,
-            accountingBefore,
-            "Accounting should remain same (locked tokens still counted)"
-        );
+        assertEq(accountingAfter, accountingBefore, "Accounting should remain same (locked tokens still counted)");
 
         // Verify locked tokens are tracked
         uint256 lockedTokens = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
@@ -1364,5 +1350,4 @@ contract ERC7540FacetTest is Test {
         // MORE Vault's own VaultFacet is protected
         // But MORE Vault cannot protect against vulnerabilities in external vaults
     }
-
 }

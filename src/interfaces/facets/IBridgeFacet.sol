@@ -103,8 +103,8 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function executeRequest(bytes32 guid) external;
 
     /**
-
-    /**
+     *
+     **
      * @dev Returns the request info for a given guid
      * @param guid Request number to get info for
      * @return Request info

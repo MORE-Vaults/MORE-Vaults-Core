@@ -137,7 +137,15 @@ contract MockVaultFacet {
         return true;
     }
 
-    function transfer(address, /*to*/ uint256 /*amount*/ ) external pure returns (bool) {
+    function transfer(
+        address,
+        /*to*/
+        uint256 /*amount*/
+    )
+        external
+        pure
+        returns (bool)
+    {
         return true;
     }
 

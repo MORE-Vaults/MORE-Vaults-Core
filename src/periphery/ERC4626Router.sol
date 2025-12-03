@@ -12,12 +12,10 @@ contract ERC4626Router {
 
     error SlippageExceeded(uint256 actual, uint256 limit);
 
-    function depositWithSlippage(
-        IERC4626 vault,
-        uint256 assets,
-        uint256 minShares,
-        address receiver
-    ) external returns (uint256 shares) {
+    function depositWithSlippage(IERC4626 vault, uint256 assets, uint256 minShares, address receiver)
+        external
+        returns (uint256 shares)
+    {
         IERC20 asset = IERC20(vault.asset());
         asset.safeTransferFrom(msg.sender, address(this), assets);
         asset.forceApprove(address(vault), assets);
@@ -27,12 +25,10 @@ contract ERC4626Router {
         if (shares < minShares) revert SlippageExceeded(shares, minShares);
     }
 
-    function mintWithSlippage(
-        IERC4626 vault,
-        uint256 shares,
-        uint256 maxAssets,
-        address receiver
-    ) external returns (uint256 assets) {
+    function mintWithSlippage(IERC4626 vault, uint256 shares, uint256 maxAssets, address receiver)
+        external
+        returns (uint256 assets)
+    {
         IERC20 asset = IERC20(vault.asset());
         asset.safeTransferFrom(msg.sender, address(this), maxAssets);
         asset.forceApprove(address(vault), maxAssets);
@@ -45,13 +41,10 @@ contract ERC4626Router {
         if (refund > 0) asset.safeTransfer(msg.sender, refund);
     }
 
-    function withdrawWithSlippage(
-        IERC4626 vault,
-        uint256 assets,
-        uint256 maxShares,
-        address receiver,
-        address owner
-    ) external returns (uint256 shares) {
+    function withdrawWithSlippage(IERC4626 vault, uint256 assets, uint256 maxShares, address receiver, address owner)
+        external
+        returns (uint256 shares)
+    {
         IERC20(address(vault)).safeTransferFrom(owner, address(this), maxShares);
 
         shares = vault.withdraw(assets, receiver, address(this));
@@ -62,13 +55,10 @@ contract ERC4626Router {
         if (refund > 0) IERC20(address(vault)).safeTransfer(owner, refund);
     }
 
-    function redeemWithSlippage(
-        IERC4626 vault,
-        uint256 shares,
-        uint256 minAssets,
-        address receiver,
-        address owner
-    ) external returns (uint256 assets) {
+    function redeemWithSlippage(IERC4626 vault, uint256 shares, uint256 minAssets, address receiver, address owner)
+        external
+        returns (uint256 assets)
+    {
         IERC20(address(vault)).safeTransferFrom(owner, address(this), shares);
 
         assets = vault.redeem(shares, receiver, address(this));
