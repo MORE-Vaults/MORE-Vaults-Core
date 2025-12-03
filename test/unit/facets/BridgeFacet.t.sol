@@ -15,6 +15,7 @@ import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.s
 import {IBridgeFacet} from "../../../src/interfaces/facets/IBridgeFacet.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IAggregatorV2V3Interface} from "../../../src/interfaces/Chainlink/IAggregatorV2V3Interface.sol";
+import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 
 contract BridgeFacetTest is Test {
     BridgeFacetHarness public facet;
@@ -482,7 +483,9 @@ contract BridgeFacetTest is Test {
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         bytes memory callData = abi.encode(uint96(100));
+        vm.startPrank(address(facet));
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, 0, bytes(""));
+        vm.stopPrank();
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -578,6 +581,26 @@ contract BridgeFacetTest is Test {
         vm.stopPrank();
     }
 
+   /**
+     * @notice Test that executeRequest succeeds when result meets minAmountOut for DEPOSIT
+     */
+    function test_executeRequest_DEPOSIT_reverts_if_in_multicall() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-deposit-ok"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 assets = 100e18;
+        uint256 minAmountOut = 150e18; // Expect at least 150 shares
+        bytes memory callData = abi.encode(assets, address(this));
+        MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
+        vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, minAmountOut, bytes(""));
+    }
+
     /**
      * @notice Test that executeRequest reverts when slippage exceeds minAmountOut for MINT
      */
@@ -625,7 +648,9 @@ contract BridgeFacetTest is Test {
         uint96 fee = 100;
         uint256 minAmountOut = 1000; // Should be ignored for SET_FEE
         bytes memory callData = abi.encode(fee);
+        vm.startPrank(address(facet));
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, minAmountOut, bytes(""));
+        vm.stopPrank();
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -633,6 +658,25 @@ contract BridgeFacetTest is Test {
         // Should succeed even with minAmountOut set (SET_FEE doesn't check slippage)
         facet.executeRequest(guid);
         vm.stopPrank();
+    }
+
+        /**
+     * @notice Test that executeRequest does not check slippage for SET_FEE
+     */
+    function test_executeRequest_SET_FEE_reverts_if_called_by_non_diamond() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-setfee-noslippage"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint96 fee = 100;
+        uint256 minAmountOut = 1000; // Should be ignored for SET_FEE
+        bytes memory callData = abi.encode(fee);
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, minAmountOut, bytes(""));
     }
 
     /**

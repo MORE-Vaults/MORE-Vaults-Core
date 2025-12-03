@@ -139,6 +139,11 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         uint256 minAmountOut,
         bytes calldata extraOptions
     ) external payable whenNotPaused nonReentrant returns (bytes32 guid) {
+        if (actionType == MoreVaultsLib.ActionType.SET_FEE) {
+            AccessControlLib.validateDiamond(msg.sender);
+        } else {
+            MoreVaultsLib.validateNotMulticall();
+        }
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         IVaultsFactory factory = IVaultsFactory(ds.factory);
         (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(factory.localEid(), address(this));
