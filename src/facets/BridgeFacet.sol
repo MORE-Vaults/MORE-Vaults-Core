@@ -139,11 +139,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         uint256 minAmountOut,
         bytes calldata extraOptions
     ) external payable whenNotPaused nonReentrant returns (bytes32 guid) {
-        if (actionType == MoreVaultsLib.ActionType.SET_FEE) {
-            AccessControlLib.validateDiamond(msg.sender);
-        } else {
-            MoreVaultsLib.validateNotMulticall();
-        }
+        MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         IVaultsFactory factory = IVaultsFactory(ds.factory);
         (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(factory.localEid(), address(this));
@@ -260,22 +256,14 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
             (success, result) =
                 address(this).call(abi.encodeWithSelector(IERC4626.redeem.selector, shares, receiver, owner));
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.SET_FEE) {
-            uint96 fee = abi.decode(requestInfo.actionCallData, (uint96));
-            (success,) = address(this).call(abi.encodeWithSelector(IVaultFacet.setFee.selector, fee));
         }
         if (!success) revert FinalizationCallFailed();
 
         uint256 resultValue = 0;
-        if (requestInfo.actionType != MoreVaultsLib.ActionType.SET_FEE) {
-            resultValue = abi.decode(result, (uint256));
-        }
+        resultValue = abi.decode(result, (uint256));
 
-        // Slippage check for all vault actions except SET_FEE
-        if (requestInfo.minAmountOut > 0 && requestInfo.actionType != MoreVaultsLib.ActionType.SET_FEE) {
-            if (resultValue < requestInfo.minAmountOut) {
-                revert SlippageExceeded(resultValue, requestInfo.minAmountOut);
-            }
+        if (resultValue < requestInfo.minAmountOut) {
+            revert SlippageExceeded(resultValue, requestInfo.minAmountOut);
         }
 
         ds.guidToCrossChainRequestInfo[guid].finalized = true;

@@ -473,27 +473,6 @@ contract BridgeFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_executeRequest_SET_FEE() public {
-        uint32[] memory eids = new uint32[](1);
-        eids[0] = 101;
-        address[] memory spokes = new address[](1);
-        spokes[0] = address(0xBEEF01);
-        _mockHubWithSpokes(100, eids, spokes);
-        adapter.setReceiptGuid(keccak256("guid-setfee"));
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
-
-        bytes memory callData = abi.encode(uint96(100));
-        vm.startPrank(address(facet));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, 0, bytes(""));
-        vm.stopPrank();
-
-        vm.startPrank(address(adapter));
-        facet.updateAccountingInfoForRequest(guid, 0, true);
-
-        facet.executeRequest(guid);
-        vm.stopPrank();
-    }
-
     function test_executeRequest_MULTI_ASSETS_DEPOSIT() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
@@ -628,52 +607,6 @@ contract BridgeFacetTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualAssets, minAmountOut));
         facet.executeRequest(guid);
         vm.stopPrank();
-    }
-
-    /**
-     * @notice Test that executeRequest does not check slippage for SET_FEE
-     */
-    function test_executeRequest_SET_FEE_no_slippage_check() public {
-        uint32[] memory eids = new uint32[](1);
-        eids[0] = 101;
-        address[] memory spokes = new address[](1);
-        spokes[0] = address(0xBEEF01);
-        _mockHubWithSpokes(100, eids, spokes);
-        adapter.setReceiptGuid(keccak256("guid-setfee-noslippage"));
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
-
-        uint96 fee = 100;
-        uint256 minAmountOut = 1000; // Should be ignored for SET_FEE
-        bytes memory callData = abi.encode(fee);
-        vm.startPrank(address(facet));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, minAmountOut, bytes(""));
-        vm.stopPrank();
-
-        vm.startPrank(address(adapter));
-        facet.updateAccountingInfoForRequest(guid, 0, true);
-
-        // Should succeed even with minAmountOut set (SET_FEE doesn't check slippage)
-        facet.executeRequest(guid);
-        vm.stopPrank();
-    }
-
-    /**
-     * @notice Test that executeRequest does not check slippage for SET_FEE
-     */
-    function test_executeRequest_SET_FEE_reverts_if_called_by_non_diamond() public {
-        uint32[] memory eids = new uint32[](1);
-        eids[0] = 101;
-        address[] memory spokes = new address[](1);
-        spokes[0] = address(0xBEEF01);
-        _mockHubWithSpokes(100, eids, spokes);
-        adapter.setReceiptGuid(keccak256("guid-setfee-noslippage"));
-        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
-
-        uint96 fee = 100;
-        uint256 minAmountOut = 1000; // Should be ignored for SET_FEE
-        bytes memory callData = abi.encode(fee);
-        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.SET_FEE, callData, minAmountOut, bytes(""));
     }
 
     /**
