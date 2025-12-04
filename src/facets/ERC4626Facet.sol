@@ -226,7 +226,9 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         address vault,
         uint256 amount,
         bytes calldata data // data for async action execution
-    ) external {
+    )
+        external
+    {
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
@@ -306,18 +308,12 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         }
         // Cases for request without locks
         if (
-            (
-                balances.sharesAfter == balances.sharesBefore // request was created without locks
-                    && balances.assetsAfter == balances.assetsBefore
-            )
-                || (
-                    balances.sharesAfter > balances.sharesBefore // withdrawal request was finalized without locks
-                        && balances.assetsAfter < balances.assetsBefore
-                )
-                || (
-                    balances.sharesAfter < balances.sharesBefore // deposit request was finalized without locks
-                        && balances.assetsAfter > balances.assetsBefore
-                )
+            (balances.sharesAfter == balances.sharesBefore // request was created without locks
+                    && balances.assetsAfter == balances.assetsBefore)
+                || (balances.sharesAfter > balances.sharesBefore // withdrawal request was finalized without locks
+                    && balances.assetsAfter < balances.assetsBefore)
+                || (balances.sharesAfter < balances.sharesBefore // deposit request was finalized without locks
+                    && balances.assetsAfter > balances.assetsBefore)
         ) {
             return;
         } else {

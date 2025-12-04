@@ -63,9 +63,7 @@ contract MockEndpointForBootstrap {
         lastOptions = _params.options;
         lastRefundAddress = _refundAddress;
         return MessagingReceipt({
-            guid: bytes32(uint256(1)),
-            nonce: 1,
-            fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
+            guid: bytes32(uint256(1)), nonce: 1, fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
         });
     }
 
@@ -168,7 +166,7 @@ contract VaultsFactoryHubSendBootstrapTest is Test {
 
         vm.deal(owner, 1 ether);
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSignature("HubCannotInitiateLink()"));
+        vm.expectRevert(abi.encodeWithSignature("OnlyHub()"));
         factory.hubSendBootstrap{value: 0.01 ether}(DST_EID, address(spokeVaultNotHub), options);
     }
 
@@ -176,7 +174,7 @@ contract VaultsFactoryHubSendBootstrapTest is Test {
         vm.deal(owner, 1 ether);
 
         vm.prank(owner);
-        vm.expectRevert("LZ: invalid fee");
+        vm.expectRevert(abi.encodeWithSignature("NotEnoughNative(uint256)", 0.005 ether));
         factory.hubSendBootstrap{value: 0.005 ether}(DST_EID, address(hubVault), options);
     }
 

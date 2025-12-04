@@ -98,8 +98,7 @@ contract OracleRegistryTest is Test {
         vm.prank(admin);
         IOracleRegistry.OracleInfo[] memory incorrectInfos = new IOracleRegistry.OracleInfo[](1);
         incorrectInfos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(address(0)),
-            stalenessThreshold: staleness
+            aggregator: IAggregatorV2V3Interface(address(0)), stalenessThreshold: staleness
         });
         vm.expectRevert(IOracleRegistry.AggregatorNotSet.selector);
         registry.setOracleInfos(assets, incorrectInfos);
@@ -339,8 +338,7 @@ contract OracleRegistryTest is Test {
         MockAggregator mockAgg = new MockAggregator(1234, block.timestamp);
         IOracleRegistry.OracleInfo[] memory spokeInfos = new IOracleRegistry.OracleInfo[](1);
         spokeInfos[0] = IOracleRegistry.OracleInfo({
-            aggregator: IAggregatorV2V3Interface(address(mockAgg)),
-            stalenessThreshold: 2 hours
+            aggregator: IAggregatorV2V3Interface(address(mockAgg)), stalenessThreshold: 2 hours
         });
 
         vm.prank(admin);

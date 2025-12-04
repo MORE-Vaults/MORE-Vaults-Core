@@ -23,6 +23,7 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error RequestTimedOut();
     error RequestAlreadyFinalized();
     error NotEnoughMsgValueProvided();
+    error SlippageExceeded(uint256 amountLD, uint256 minAmountLD);
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD
@@ -39,6 +40,12 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @notice When enabling, checks for the presence of oracles for all spoke chains
      */
     function setOraclesCrossChainAccounting(bool isTrue) external;
+
+    /**
+     * @dev Returns whether oracle-based cross-chain accounting is enabled
+     * @return true if oracle accounting is enabled, false otherwise
+     */
+    function oraclesCrossChainAccounting() external view returns (bool);
 
     /**
      * @dev Quotes the native fee required to initiate cross-chain accounting
@@ -62,14 +69,17 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @dev Initiates a request to perform an action in a cross-chain vault
      * @param actionType Type of action to perform (deposit, withdraw, mint, etc.)
      * @param actionCallData Action call data
+     * @param minAmountOut Minimum expected output amount for slippage protection (0 = no slippage check)
      * @param extraOptions Additional options for cross-chain transfer
      * @return guid Unique request number for tracking
      * @notice Function requires gas payment for cross-chain transfer
      * @notice Available only when the contract is not paused
+     * @notice minAmountOut is used for slippage protection for all actions except SET_FEE
      */
     function initVaultActionRequest(
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
+        uint256 minAmountOut,
         bytes calldata extraOptions
     ) external payable returns (bytes32 guid);
 
@@ -84,18 +94,27 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external;
 
     /**
-     * @dev Finalizes the execution of a cross-chain request
-     * @param guid Request number to finalize
-     * @notice Executes the actual action after receiving all data from spoke vaults
-     * @notice Supports various action types: deposit, withdraw, mint, set fee
-     * @notice Can only be called after successful accounting information update
+     * @dev Executes a cross-chain request action (deposit, mint, withdraw, etc.)
+     * @param guid Request number to execute
+     * @notice Can only be called by the cross-chain accounting manager
+     * @notice Requires the request to be fulfilled
+     * @notice Executes the action and performs slippage check
      */
-    function finalizeRequest(bytes32 guid) external payable returns (bytes memory result);
+    function executeRequest(bytes32 guid) external;
 
     /**
+     *
+     **
      * @dev Returns the request info for a given guid
      * @param guid Request number to get info for
      * @return Request info
      */
     function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory);
+
+    /**
+     * @dev Returns the finalization result for a given guid
+     * @param guid Request number to get finalization result for
+     * @return result The finalization result (e.g., shares amount for deposits)
+     */
+    function getFinalizationResult(bytes32 guid) external view returns (uint256 result);
 }

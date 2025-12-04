@@ -96,7 +96,7 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
         // Mock implementation
     }
 
-    function completeDeposit(bytes32 guid) external {
+    function sendDepositShares(bytes32 guid) external {
         // Mock implementation
     }
 

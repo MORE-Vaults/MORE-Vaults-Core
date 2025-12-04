@@ -22,8 +22,10 @@ contract MockVaultFacet {
     mapping(address => mapping(address => uint256)) public allowance;
     uint256 public maxDepositLimit = type(uint256).max;
     mapping(bytes32 => uint256) public finalizeSharesByGuid;
+    mapping(bytes32 => uint256) public minAmountOutByGuid; // Store minAmountOut for slippage check
     bytes32 public lastGuid;
     bool public revertOnInit;
+    bool public oracleAccountingEnabled;
 
     constructor(address _asset, uint32 _eid) {
         assetToken = _asset;
@@ -81,23 +83,32 @@ contract MockVaultFacet {
         lastAccountingFeeQuote = v;
     }
 
-    function initVaultActionRequest(MoreVaultsLib.ActionType, bytes calldata, bytes calldata)
+    function initVaultActionRequest(MoreVaultsLib.ActionType, bytes calldata, uint256 minAmountOut, bytes calldata)
         external
         payable
         returns (bytes32 guid)
     {
         if (revertOnInit) revert("init-revert");
+        if (oracleAccountingEnabled) revert("AccountingViaOracles");
         guid = bytes32(uint256(0x1));
         lastGuid = guid;
+        minAmountOutByGuid[guid] = minAmountOut; // Store minAmountOut for slippage check
     }
 
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sum, bool) external {
         accountingSum[guid] = sum;
     }
 
-    function finalizeRequest(bytes32 guid) external payable returns (bytes memory result) {
+    function executeRequest(bytes32 guid) external payable {
+        // Check slippage if minAmountOut is set
+        uint256 minAmountOut = minAmountOutByGuid[guid];
+        if (minAmountOut > 0) {
+            uint256 resultValue = finalizeSharesByGuid[guid];
+            if (resultValue < minAmountOut) {
+                revert IBridgeFacet.SlippageExceeded(resultValue, minAmountOut);
+            }
+        }
         finalized[guid] = true;
-        result = abi.encode(finalizeSharesByGuid[guid]);
     }
 
     function setFinalizeShares(bytes32 guid, uint256 shares) external {
@@ -112,13 +123,29 @@ contract MockVaultFacet {
         return lastGuid;
     }
 
+    function setOracleAccountingEnabled(bool v) external {
+        oracleAccountingEnabled = v;
+    }
+
+    function oraclesCrossChainAccounting() external view returns (bool) {
+        return oracleAccountingEnabled;
+    }
+
     // ERC20-like minimal stubs for share token behavior
     function approve(address spender, uint256 amount) external returns (bool) {
         allowance[msg.sender][spender] = amount;
         return true;
     }
 
-    function transfer(address, /*to*/ uint256 /*amount*/ ) external pure returns (bool) {
+    function transfer(
+        address,
+        /*to*/
+        uint256 /*amount*/
+    )
+        external
+        pure
+        returns (bool)
+    {
         return true;
     }
 
@@ -134,5 +161,7 @@ contract MockVaultFacet {
         _paused = false;
     }
 
-    // Unused stubs pruned
+    function getFinalizationResult(bytes32 guid) external view returns (uint256) {
+        return finalizeSharesByGuid[guid];
+    }
 }

@@ -6,7 +6,10 @@ import {console} from "forge-std/console.sol";
 
 // LayerZero Interfaces
 import {
-    IOFT, SendParam, MessagingFee, OFTReceipt
+    IOFT,
+    SendParam,
+    MessagingFee,
+    OFTReceipt
 } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {
@@ -231,7 +234,7 @@ contract MockVaultsRegistry {
 contract MockLzComposer {
     mapping(bytes32 => bool) public completedDeposits;
 
-    function completeDeposit(bytes32 guid) external {
+    function sendDepositShares(bytes32 guid) external {
         completedDeposits[guid] = true;
     }
 
@@ -261,7 +264,7 @@ contract MockVault {
         isHub = _isHub;
     }
 
-    function finalizeRequest(bytes32 guid) external {
+    function executeRequest(bytes32 guid) external {
         finalizedRequests[guid] = true;
     }
 

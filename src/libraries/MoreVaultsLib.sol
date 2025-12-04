@@ -110,8 +110,7 @@ library MoreVaultsLib {
         MINT,
         WITHDRAW,
         REDEEM,
-        MULTI_ASSETS_DEPOSIT,
-        SET_FEE
+        MULTI_ASSETS_DEPOSIT
     }
 
     struct CrossChainRequestInfo {
@@ -122,6 +121,8 @@ library MoreVaultsLib {
         bool fulfilled;
         bool finalized;
         uint256 totalAssets;
+        uint256 finalizationResult;
+        uint256 minAmountOut; // Minimum expected result amount for slippage check (0 = check not required)
     }
 
     struct MoreVaultsStorage {
@@ -174,6 +175,7 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
+        mapping(address => uint256) userHighWaterMarkPerShare;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -596,17 +598,16 @@ library MoreVaultsLib {
                 ds.facetFunctionSelectors[lastFacetAddress].facetAddressPosition = facetAddressPosition;
             }
             ds.facetAddresses.pop();
-            delete ds
-                .facetFunctionSelectors[_facetAddress]
-                .facetAddressPosition;
+            delete ds.facetFunctionSelectors[_facetAddress].facetAddressPosition;
             address factory = ds.factory;
             IVaultsFactory(factory).unlink(_facetAddress);
 
-            (bool success, bytes memory result) = address(_facetAddress).delegatecall(
-                abi.encodeWithSelector(
-                    bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
-                )
-            );
+            (bool success, bytes memory result) = address(_facetAddress)
+                .delegatecall(
+                    abi.encodeWithSelector(
+                        bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
+                    )
+                );
             // revert if onFacetRemoval exists on facet and failed
             if (!success && result.length > 0) {
                 revert OnFacetRemovalFailed(_facetAddress, result);
@@ -672,13 +673,19 @@ library MoreVaultsLib {
         for (uint256 i; i < ds.facetsForAccounting.length;) {
             if (ds.facetsForAccounting[i] == selector) {
                 if (!_isReplacing) {
-                    (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
-                    if (!success) {
-                        revert AccountingFailed(selector);
-                    }
-                    uint256 decodedAmount = abi.decode(result, (uint256));
-                    if (decodedAmount > 10e4) {
-                        revert FacetHasBalance(decodedAmount);
+                    // Skip balance check for accountingBridgeFacet - it reports remote spoke funds,
+                    // not local funds, and a failing oracle should not prevent disabling oracle accounting
+                    bytes4 accountingBridgeFacetSelector =
+                        bytes4(keccak256(abi.encodePacked("accountingBridgeFacet()")));
+                    if (selector != accountingBridgeFacetSelector) {
+                        (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
+                        if (!success) {
+                            revert AccountingFailed(selector);
+                        }
+                        uint256 decodedAmount = abi.decode(result, (uint256));
+                        if (decodedAmount > 10e4) {
+                            revert FacetHasBalance(decodedAmount);
+                        }
                     }
                 }
                 ds.facetsForAccounting[i] = ds.facetsForAccounting[ds.facetsForAccounting.length - 1];
@@ -729,9 +736,8 @@ library MoreVaultsLib {
 
         uint256 consumption;
         unchecked {
-            consumption = tokensHeldLength * gl.heldTokenAccountingGas
-                + stakingTokensLength * gl.stakingTokenAccountingGas
-                + ds.availableAssets.length * gl.availableTokenAccountingGas
+            consumption = tokensHeldLength * gl.heldTokenAccountingGas + stakingTokensLength
+                * gl.stakingTokenAccountingGas + ds.availableAssets.length * gl.availableTokenAccountingGas
                 + ds.facetsForAccounting.length * gl.facetAccountingGas + gl.nestedVaultsGas;
         }
 
@@ -740,13 +746,13 @@ library MoreVaultsLib {
         }
     }
 
-    function withdrawFromRequest(address _requester, uint256 _shares) internal returns (bool) {
+    function withdrawFromRequest(address _msgSender, address _requester, uint256 _shares) internal returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         WithdrawRequest storage request = ds.withdrawalRequests[_requester];
         // if withdrawal queue is disabled, request can be processed immediately
         if (!ds.isWithdrawalQueueEnabled) {
             // only allow for the shares owner to withdraw in this case
-            return msg.sender == _requester;
+            return _msgSender == _requester;
         }
 
         if (isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) && request.shares >= _shares) {

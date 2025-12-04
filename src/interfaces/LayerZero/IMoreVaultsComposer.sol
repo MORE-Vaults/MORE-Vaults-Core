@@ -79,7 +79,7 @@ interface IMoreVaultsComposer is IOAppComposer {
         uint32 srcEid
     ) external payable;
 
-    function completeDeposit(bytes32 guid) external;
+    function sendDepositShares(bytes32 guid) external;
 
     function refundDeposit(bytes32 guid) external payable;
 

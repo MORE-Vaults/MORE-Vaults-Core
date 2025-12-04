@@ -2,9 +2,6 @@
   "lib/LayerZero-v2": {
     "rev": "4645b5795185a196713263311f76a497a3267dcc"
   },
-  "lib/aave-v3-core": {
-    "rev": "782f51917056a53a2c228701058a6c3fb233684a"
-  },
   "lib/devtools": {
     "rev": "d48633e465493f5672a6bf1a5f0f9a20fc9e43ab"
   },

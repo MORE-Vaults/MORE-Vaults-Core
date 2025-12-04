@@ -27,6 +27,7 @@ import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {console} from "forge-std/console.sol";
+import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -421,7 +422,7 @@ contract VaultFacetTest is Test {
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-        vm.prank(user);
+        vm.startPrank(user);
         vm.expectRevert(
             abi.encodeWithSelector(
                 ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector,
@@ -431,6 +432,7 @@ contract VaultFacetTest is Test {
             )
         );
         VaultFacet(facet).mint(mintAmount, user);
+        vm.stopPrank();
     }
 
     function test_withdraw_ShouldBurnShares() public {
@@ -862,33 +864,52 @@ contract VaultFacetTest is Test {
             abi.encode(0, 1.1 * 10 ** 8, block.timestamp, block.timestamp, 0) // 10% price increase
         );
 
-        // Calculate expected fees
+        // Add interest to vault (price increase)
         uint256 totalInterest = 10 ether; // 10% of 100 ether
-        uint256 totalFee = (totalInterest * FEE) / FEE_BASIS_POINT; // 10% of interest
-        uint256 protocolFeeAmount = (totalFee * protocolFee) / FEE_BASIS_POINT; // 10% of fee
-        uint256 vaultFeeAmount = totalFee - protocolFeeAmount;
-
         MockERC20(asset).mint(facet, totalInterest);
+
+        // Get state before second deposit
+        uint256 userSharesBefore = IERC20(facet).balanceOf(user);
+        uint256 totalSupplyBefore = IERC20(facet).totalSupply();
+        uint256 totalAssetsBeforeInterest = 100 ether; // Initial deposit amount
 
         vm.prank(user);
         uint256 newShares = VaultFacet(facet).deposit(1, user);
 
-        // Check fee distribution
-        assertApproxEqAbs(
-            IERC20(facet).balanceOf(protocolFeeRecipient),
-            VaultFacet(facet).convertToShares(protocolFeeAmount),
-            10,
-            "Should distribute correct protocol fee"
+        // Get balances after deposit
+        uint256 protocolFeeBalance = IERC20(facet).balanceOf(protocolFeeRecipient);
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        uint256 totalFeeShares = protocolFeeBalance + vaultFeeBalance;
+
+        // Calculate expected fee based on user's profit above HWMpS
+        // HWMpS was set at price after first deposit: totalAssetsBeforeInterest / (totalSupplyBefore + 10^decimalsOffset)
+        // Current price after interest: (totalAssetsBeforeInterest + totalInterest) / (totalSupplyBefore + 10^decimalsOffset)
+        // User's profit = userSharesBefore * (currentPrice - HWMpS)
+        uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
+            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
         );
-        assertApproxEqAbs(
-            IERC20(facet).balanceOf(feeRecipient),
-            VaultFacet(facet).convertToShares(vaultFeeAmount),
-            10,
-            "Should distribute correct vault fee"
+        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest)
+        .mulDiv(10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
+
+        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor);
+
+        // Expected fee assets
+        uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
+        uint256 expectedProtocolFeeAssets = expectedFeeAssets.mulDiv(protocolFee, FEE_BASIS_POINT);
+        uint256 expectedVaultFeeAssets = expectedFeeAssets - expectedProtocolFeeAssets;
+
+        // Check fee distribution (using approximate comparison as fee shares calculation may have rounding)
+        assertGt(protocolFeeBalance, 0, "Should distribute protocol fee");
+        assertGt(vaultFeeBalance, 0, "Should distribute vault fee");
+        assertApproxEqRel(
+            protocolFeeBalance + vaultFeeBalance,
+            VaultFacet(facet).convertToShares(expectedFeeAssets),
+            1e15, // 0.1% tolerance
+            "Should distribute correct total fee"
         );
         assertApproxEqAbs(
             IERC20(facet).totalSupply(),
-            shares + newShares + VaultFacet(facet).convertToShares(totalFee),
+            shares + newShares + totalFeeShares,
             10,
             "Should increase total supply by fee amount"
         );
@@ -937,25 +958,47 @@ contract VaultFacetTest is Test {
             abi.encode(address(0), 0) // No protocol fee
         );
 
-        // Calculate expected fees
+        // Add interest to vault (price increase)
         uint256 totalInterest = 10 ether; // 10% of 100 ether
-        uint256 totalFee = (totalInterest * FEE) / FEE_BASIS_POINT; // 10% of interest
         MockERC20(asset).mint(facet, totalInterest);
+
+        // Get state before second deposit
+        uint256 userSharesBefore = IERC20(facet).balanceOf(user);
+        uint256 totalSupplyBefore = IERC20(facet).totalSupply();
+        uint256 totalAssetsBeforeInterest = depositAmount; // Initial deposit amount
 
         // Trigger interest accrual
         vm.prank(user);
         uint256 newShares = VaultFacet(facet).deposit(1, user);
 
-        // Check fee distribution
-        assertApproxEqAbs(
-            IERC20(facet).balanceOf(feeRecipient),
-            VaultFacet(facet).convertToShares(totalFee),
-            10,
-            "Should distribute all fees to vault fee recipient"
+        // Get fee balance after deposit
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Calculate expected fee based on user's profit above HWMpS
+        // HWMpS was set at price after first deposit: totalAssetsBeforeInterest / (totalSupplyBefore + 10^decimalsOffset)
+        // Current price after interest: (totalAssetsBeforeInterest + totalInterest) / (totalSupplyBefore + 10^decimalsOffset)
+        uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
+            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
+        );
+        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest)
+        .mulDiv(10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
+
+        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor);
+
+        // Expected fee assets
+        uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
+
+        // Check fee distribution (using approximate comparison as fee shares calculation may have rounding)
+        assertGt(vaultFeeBalance, 0, "Should distribute fees to vault fee recipient");
+        assertApproxEqRel(
+            vaultFeeBalance,
+            VaultFacet(facet).convertToShares(expectedFeeAssets),
+            1e15, // 0.1% tolerance
+            "Should distribute correct fee amount"
         );
         assertApproxEqAbs(
             IERC20(facet).totalSupply(),
-            depositAmount * 10 ** decimalsOffset + newShares + VaultFacet(facet).convertToShares(totalFee),
+            depositAmount * 10 ** decimalsOffset + newShares + vaultFeeBalance,
             10,
             "Should increase total supply by fee amount"
         );
@@ -1284,6 +1327,138 @@ contract VaultFacetTest is Test {
         );
         VaultFacet(facet).deposit(tokens, amounts, user2);
         vm.stopPrank();
+    }
+
+    // ============ Issue #40: Whitelist Consistency Tests ============
+
+    /**
+     * @notice Issue #40 - Whitelisted caller can deposit for non-whitelisted receiver
+     * @dev The whitelist controls who can deposit (caller), not who receives shares (receiver)
+     */
+    function test_deposit_WhitelistedCallerCanDepositForNonWhitelistedReceiver() public {
+        address alice = address(0xA11CE);
+        address bob = address(0xB0B);
+        uint256 aliceCap = 100 ether;
+        uint256 depositAmount = 50 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, alice, aliceCap);
+
+        MockERC20(asset).mint(alice, depositAmount);
+        vm.prank(alice);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        vm.startPrank(alice);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, bob);
+        vm.stopPrank();
+
+        assertGt(shares, 0, "Should have received shares");
+        assertEq(IERC20(facet).balanceOf(bob), shares, "Bob should have received the shares");
+
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        assertEq(aliceCapAfter, aliceCap - depositAmount, "Alice's cap should be deducted");
+    }
+
+    /**
+     * @notice Issue #40 - Whitelist cap deduction consistency
+     * @dev Both validation and deduction should use the caller (depositor) address
+     */
+    function test_deposit_WhitelistCapDeductedFromCaller() public {
+        address alice = address(0xA11CE);
+        address bob = address(0xB0B);
+        uint256 aliceCap = 100 ether;
+        uint256 bobCap = 200 ether;
+        uint256 depositAmount = 50 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, alice, aliceCap);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, bob, bobCap);
+
+        MockERC20(asset).mint(alice, depositAmount);
+        vm.prank(alice);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 aliceCapBefore = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        uint256 bobCapBefore = MoreVaultsStorageHelper.getDepositWhitelist(facet, bob);
+
+        vm.prank(alice);
+        VaultFacet(facet).deposit(depositAmount, bob);
+
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        uint256 bobCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, bob);
+
+        assertEq(aliceCapAfter, aliceCapBefore - depositAmount, "Alice's cap should be deducted (she's the depositor)");
+        assertEq(bobCapAfter, bobCapBefore, "Bob's cap should not change (he's just the receiver)");
+    }
+
+    /**
+     * @notice Issue #40 - Whitelisted caller can mint for non-whitelisted receiver
+     * @dev The whitelist controls who can deposit (caller), not who receives shares (receiver)
+     */
+    function test_mint_WhitelistedCallerCanMintForNonWhitelistedReceiver() public {
+        address alice = address(0xA11CE);
+        address bob = address(0xB0B);
+        uint256 aliceCap = 100 ether;
+        uint256 sharesToMint = 5000 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, alice, aliceCap);
+
+        MockERC20(asset).mint(alice, 100 ether);
+        vm.prank(alice);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        vm.startPrank(alice);
+        uint256 assets = VaultFacet(facet).mint(sharesToMint, bob);
+        vm.stopPrank();
+
+        assertGt(assets, 0, "Should have used some assets");
+        assertEq(IERC20(facet).balanceOf(bob), sharesToMint, "Bob should have received the shares");
+
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        assertEq(aliceCapAfter, aliceCap - assets, "Alice's cap should be deducted");
     }
 
     // ============ Withdrawal Fee Tests ============
@@ -1938,4 +2113,20 @@ contract VaultFacetTest is Test {
     //     assertEq(tokens.length, 1);
     //     assertEq(tokens[0], address(0x123));
     // }
+
+    // Issue #30: Assembly arithmetic lacks overflow protection
+    function test_accountingFacetOverflow() public {
+        MockERC20(asset).mint(facet, 1000 ether);
+
+        MaliciousAccountingFacet malicious = new MaliciousAccountingFacet();
+        bytes4 selector = MaliciousAccountingFacet.accountingMaliciousFacet.selector;
+
+        MoreVaultsStorageHelper.setSelectorToFacetAndPosition(facet, selector, address(malicious), 0);
+        MoreVaultsStorageHelper.addFacetForAccounting(facet, bytes32(selector));
+
+        vm.mockCall(facet, abi.encodeWithSelector(selector), abi.encode(type(uint256).max, true));
+
+        vm.expectRevert();
+        VaultFacet(facet).totalAssets();
+    }
 }

@@ -55,6 +55,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                 ++i;
             }
         }
+        sum = MoreVaultsLib.convertUsdToUnderlying(sum, Math.Rounding.Floor);
         return (sum, true);
     }
 
@@ -65,6 +66,11 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         MoreVaultsLib.removeFromFacetsForAccounting(
             ds, bytes4(keccak256(abi.encodePacked("accountingBridgeFacet()"))), isReplacing
         );
+    }
+
+    function oraclesCrossChainAccounting() external view returns (bool) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        return ds.oraclesCrossChainAccounting;
     }
 
     function setOraclesCrossChainAccounting(bool isTrue) external {
@@ -122,7 +128,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         IVaultsFactory factory = IVaultsFactory(ds.factory);
         (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(factory.localEid(), address(this));
-        IBridgeAdapter adapter = IBridgeAdapter(ds.crossChainAccountingManager);
+        IBridgeAdapter adapter = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager());
         MessagingFee memory fee = adapter.quoteReadFee(vaults, eids, extraOptions);
         return fee.nativeFee;
     }
@@ -130,8 +136,10 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     function initVaultActionRequest(
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
+        uint256 minAmountOut,
         bytes calldata extraOptions
     ) external payable whenNotPaused nonReentrant returns (bytes32 guid) {
+        MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         IVaultsFactory factory = IVaultsFactory(ds.factory);
         (uint32[] memory eids, address[] memory vaults) = factory.hubToSpokes(factory.localEid(), address(this));
@@ -139,7 +147,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             if (ds.oraclesCrossChainAccounting) {
                 revert AccountingViaOracles();
             }
-            guid = _createCrossChainRequest(ds, vaults, eids, actionType, actionCallData, extraOptions);
+            guid = _createCrossChainRequest(ds, vaults, eids, actionType, actionCallData, minAmountOut, extraOptions);
         }
     }
 
@@ -149,6 +157,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         uint32[] memory eids,
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
+        uint256 minAmountOut,
         bytes calldata extraOptions
     ) internal returns (bytes32 guid) {
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
@@ -158,36 +167,57 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             actionCallData: actionCallData,
             fulfilled: false,
             finalized: false,
-            totalAssets: IVaultFacet(address(this)).totalAssets()
+            totalAssets: IVaultFacet(address(this)).totalAssets(),
+            finalizationResult: 0,
+            minAmountOut: minAmountOut
         });
         MessagingFee memory fee =
-            IBridgeAdapter(ds.crossChainAccountingManager).quoteReadFee(vaults, eids, extraOptions);
+            IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager()).quoteReadFee(vaults, eids, extraOptions);
         if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (,,, uint256 value) = abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
             if (value + fee.nativeFee > msg.value) revert NotEnoughMsgValueProvided();
         }
 
-        guid = IBridgeAdapter(ds.crossChainAccountingManager).initiateCrossChainAccounting{value: msg.value}(
+        guid =
+        IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
+        .initiateCrossChainAccounting{value: msg.value}(
             vaults, eids, extraOptions, msg.sender
-        ).guid;
+        )
+        .guid;
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }
 
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (msg.sender != ds.crossChainAccountingManager) {
+        if (msg.sender != MoreVaultsLib._getCrossChainAccountingManager()) {
             revert OnlyCrossChainAccountingManager();
         }
         if (readSuccess) {
-            ds.guidToCrossChainRequestInfo[guid].totalAssets +=
-                MoreVaultsLib.convertUsdToUnderlying(sumOfSpokesUsdValue, Math.Rounding.Floor);
+            ds.guidToCrossChainRequestInfo[guid].totalAssets += MoreVaultsLib.convertUsdToUnderlying(
+                sumOfSpokesUsdValue, Math.Rounding.Floor
+            );
         }
         ds.guidToCrossChainRequestInfo[guid].fulfilled = readSuccess;
 
         emit AccountingInfoUpdated(guid, sumOfSpokesUsdValue, readSuccess);
     }
 
-    function finalizeRequest(bytes32 guid) external payable nonReentrant returns (bytes memory result) {
+    /**
+     * @dev Executes a cross-chain request action (deposit, mint, withdraw, etc.)
+     * @param guid Request number to execute
+     * @notice Can only be called by the cross-chain accounting manager
+     * @notice Requires the request to be fulfilled
+     * @notice Executes the action and performs slippage check
+     */
+    function executeRequest(bytes32 guid) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (msg.sender != MoreVaultsLib._getCrossChainAccountingManager()) {
+            revert OnlyCrossChainAccountingManager();
+        }
+        _executeRequest(guid);
+    }
+
+    function _executeRequest(bytes32 guid) internal returns (bytes memory result) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = ds.guidToCrossChainRequestInfo[guid];
         if (!ds.guidToCrossChainRequestInfo[guid].fulfilled) {
@@ -226,18 +256,28 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
             (success, result) =
                 address(this).call(abi.encodeWithSelector(IERC4626.redeem.selector, shares, receiver, owner));
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.SET_FEE) {
-            uint96 fee = abi.decode(requestInfo.actionCallData, (uint96));
-            (success,) = address(this).call(abi.encodeWithSelector(IVaultFacet.setFee.selector, fee));
         }
         if (!success) revert FinalizationCallFailed();
 
+        uint256 resultValue = 0;
+        resultValue = abi.decode(result, (uint256));
+
+        if (resultValue < requestInfo.minAmountOut) {
+            revert SlippageExceeded(resultValue, requestInfo.minAmountOut);
+        }
+
         ds.guidToCrossChainRequestInfo[guid].finalized = true;
+        ds.guidToCrossChainRequestInfo[guid].finalizationResult = resultValue;
         ds.finalizationGuid = 0;
     }
 
     function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.guidToCrossChainRequestInfo[guid];
+    }
+
+    function getFinalizationResult(bytes32 guid) external view returns (uint256 result) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        return ds.guidToCrossChainRequestInfo[guid].finalizationResult;
     }
 }

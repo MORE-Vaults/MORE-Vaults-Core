@@ -278,8 +278,9 @@ library MoreVaultsStorageHelper {
     }
 
     function getStakingsEntered(address contractAddress, bytes32 key) internal view returns (address[] memory) {
-        bytes32 mappingSlot =
-            keccak256(abi.encode(key, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + STAKING_ADDRESSES)));
+        bytes32 mappingSlot = keccak256(
+            abi.encode(key, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + STAKING_ADDRESSES))
+        );
 
         uint256 length = uint256(vm.load(contractAddress, mappingSlot));
         address[] memory stakings = new address[](length);
@@ -441,11 +442,7 @@ library MoreVaultsStorageHelper {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(lockedTokensToken))), bytes32(amount));
     }
 
-    function getFacetFunctionSelectors(address contractAddress, address facet)
-        internal
-        view
-        returns (bytes4[] memory)
-    {
+    function getFacetFunctionSelectors(address contractAddress, address facet) internal view returns (bytes4[] memory) {
         bytes32 mappingSlot = keccak256(
             abi.encode(facet, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + FACET_FUNCTION_SELECTORS))
         );
@@ -524,6 +521,10 @@ library MoreVaultsStorageHelper {
         );
     }
 
+    function getDepositWhitelist(address contractAddress, address depositor) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, DEPOSIT_WHITELIST, bytes32(uint256(uint160(depositor)))));
+    }
+
     function setIsNecessaryToCheckLock(address contractAddress, address token, bool isNecessaryToCheckLock) internal {
         setMappingValue(
             contractAddress,
@@ -595,8 +596,9 @@ library MoreVaultsStorageHelper {
     }
 
     function setStakingAddresses(address contractAddress, bytes32 key, address[] memory addresses) internal {
-        bytes32 mappingSlot =
-            keccak256(abi.encode(key, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + STAKING_ADDRESSES)));
+        bytes32 mappingSlot = keccak256(
+            abi.encode(key, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + STAKING_ADDRESSES))
+        );
 
         // EnumerableSet stores:
         // 1. _values (address[])
@@ -725,5 +727,32 @@ library MoreVaultsStorageHelper {
 
         // Get shares from second slot
         shares = uint256(vm.load(contractAddress, bytes32(uint256(key) + 1)));
+    }
+
+    // Functions for lockedTokens mapping (slot 17)
+    function getLockedTokens(address contractAddress, address token) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token)))));
+    }
+
+    function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
+        setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
+    }
+
+    // Functions for facetsForAccounting array (slot 3)
+    function addFacetForAccounting(address contractAddress, bytes32 selector) internal {
+        bytes32 slot = bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + FACETS_FOR_ACCOUNTING);
+
+        // Get current array length
+        uint256 length = uint256(vm.load(contractAddress, slot));
+
+        // Calculate slot for new element (keccak256(slot) + length)
+        bytes32 arraySlot = keccak256(abi.encode(slot));
+        bytes32 elementSlot = bytes32(uint256(arraySlot) + length);
+
+        // Store the selector at the new position
+        vm.store(contractAddress, elementSlot, selector);
+
+        // Increment array length
+        vm.store(contractAddress, slot, bytes32(length + 1));
     }
 }
