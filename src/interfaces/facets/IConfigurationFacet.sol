@@ -247,4 +247,8 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     /// @notice Get the cross chain accounting manager
     /// @return The cross chain accounting manager
     function getCrossChainAccountingManager() external view returns (address);
+
+    /// @notice Get the max slippage percent
+    /// @return The max slippage percent
+    function getMaxSlippagePercent() external view returns (uint256);
 }

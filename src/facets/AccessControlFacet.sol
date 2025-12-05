@@ -9,7 +9,7 @@ import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
 contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.AccessControlFacet");
+        return keccak256("MoreVaults.storage.initializable.AccessControlFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -17,17 +17,18 @@ contract AccessControlFacet is BaseFacetInitializer, IAccessControlFacet {
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     function initialize(bytes calldata data) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (address _owner, address _curator, address _guardian) = abi.decode(data, (address, address, address));
-
-        AccessControlLib.setVaultOwner(_owner);
-        AccessControlLib.setVaultCurator(_curator);
-        AccessControlLib.setVaultGuardian(_guardian);
+        if (AccessControlLib.vaultOwner() == address(0)) {
+            (address _owner, address _curator, address _guardian) = abi.decode(data, (address, address, address));
+            AccessControlLib.setVaultOwner(_owner);
+            AccessControlLib.setVaultCurator(_curator);
+            AccessControlLib.setVaultGuardian(_guardian);
+        }
 
         ds.supportedInterfaces[type(IAccessControlFacet).interfaceId] = true; // AccessControlFacet
     }

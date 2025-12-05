@@ -56,7 +56,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
      * @return bytes32 The storage slot identifier
      */
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.ERC4626Facet");
+        return keccak256("MoreVaults.storage.initializable.ERC4626FacetV1.0.1");
     }
 
     /**
@@ -72,7 +72,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
      * @return string The facet version
      */
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     /**

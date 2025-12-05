@@ -174,7 +174,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         _setFacetRestricted(_facet, true);
         for (uint256 i = 0; i < vaults.length;) {
             try IVaultFacet(vaults[i]).pause() {}
-            catch (bytes memory _err) {
+            catch (bytes memory) {
                 emit VaultFailedToPause(vaults[i]);
             }
             unchecked {
