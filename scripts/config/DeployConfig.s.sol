@@ -130,7 +130,7 @@ contract DeployConfig {
         );
 
         // selectors for configuration
-        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](30);
+        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](35);
         functionSelectorsConfigurationFacet[0] = ConfigurationFacet
             .setFeeRecipient
             .selector;
@@ -180,46 +180,61 @@ contract DeployConfig {
             .setCrossChainAccountingManager
             .selector;
         functionSelectorsConfigurationFacet[16] = ConfigurationFacet
-            .getWithdrawalFee
+            .setGasLimitForAccounting
             .selector;
         functionSelectorsConfigurationFacet[17] = ConfigurationFacet
-            .getWithdrawalQueueStatus
+            .getWithdrawalFee
             .selector;
         functionSelectorsConfigurationFacet[18] = ConfigurationFacet
-            .getDepositableAssets
+            .getWithdrawalQueueStatus
             .selector;
         functionSelectorsConfigurationFacet[19] = ConfigurationFacet
-            .isAssetAvailable
+            .getDepositableAssets
             .selector;
         functionSelectorsConfigurationFacet[20] = ConfigurationFacet
-            .isAssetDepositable
+            .isAssetAvailable
             .selector;
         functionSelectorsConfigurationFacet[21] = ConfigurationFacet
-            .isDepositWhitelistEnabled
+            .isAssetDepositable
             .selector;
         functionSelectorsConfigurationFacet[22] = ConfigurationFacet
-            .isHub
+            .isDepositWhitelistEnabled
             .selector;
         functionSelectorsConfigurationFacet[23] = ConfigurationFacet
-            .getAvailableAssets
+            .isHub
             .selector;
         functionSelectorsConfigurationFacet[24] = ConfigurationFacet
-            .fee
+            .getAvailableAssets
             .selector;
         functionSelectorsConfigurationFacet[25] = ConfigurationFacet
-            .feeRecipient
+            .fee
             .selector;
         functionSelectorsConfigurationFacet[26] = ConfigurationFacet
-            .depositCapacity
+            .feeRecipient
             .selector;
         functionSelectorsConfigurationFacet[27] = ConfigurationFacet
-            .timeLockPeriod
+            .depositCapacity
             .selector;
         functionSelectorsConfigurationFacet[28] = ConfigurationFacet
-            .getWithdrawalTimelock
+            .timeLockPeriod
             .selector;
         functionSelectorsConfigurationFacet[29] = ConfigurationFacet
+            .getWithdrawalTimelock
+            .selector;
+        functionSelectorsConfigurationFacet[30] = ConfigurationFacet
             .lockedTokensAmountOfAsset
+            .selector;
+        functionSelectorsConfigurationFacet[31] = ConfigurationFacet
+            .getStakingAddresses
+            .selector;
+        functionSelectorsConfigurationFacet[32] = ConfigurationFacet
+            .tokensHeld
+            .selector;
+        functionSelectorsConfigurationFacet[33] = ConfigurationFacet
+            .getCrossChainAccountingManager
+            .selector;
+        functionSelectorsConfigurationFacet[34] = ConfigurationFacet
+            .getMaxSlippagePercent
             .selector;
         bytes memory initDataConfigurationFacet = abi.encode(
             maxSlippagePercent
@@ -344,7 +359,7 @@ contract DeployConfig {
         bytes memory initDataERC7540Facet = abi.encode(facetSelectorERC7540);
 
         // selectors for bridge
-        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](6);
+        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](10);
         functionSelectorsBridgeFacet[0] = IBridgeFacet.executeBridging.selector;
         functionSelectorsBridgeFacet[1] = IBridgeFacet
             .initVaultActionRequest
@@ -352,11 +367,15 @@ contract DeployConfig {
         functionSelectorsBridgeFacet[2] = IBridgeFacet
             .updateAccountingInfoForRequest
             .selector;
-        functionSelectorsBridgeFacet[3] = IBridgeFacet.finalizeRequest.selector;
+        functionSelectorsBridgeFacet[3] = IBridgeFacet.executeRequest.selector;
         functionSelectorsBridgeFacet[4] = IBridgeFacet.getRequestInfo.selector;
         functionSelectorsBridgeFacet[5] = IBridgeFacet
             .setOraclesCrossChainAccounting
             .selector;
+        functionSelectorsBridgeFacet[6] = IBridgeFacet.accountingBridgeFacet.selector;
+        functionSelectorsBridgeFacet[7] = IBridgeFacet.quoteAccountingFee.selector;
+        functionSelectorsBridgeFacet[8] = IBridgeFacet.oraclesCrossChainAccounting.selector;
+        functionSelectorsBridgeFacet[9] = IBridgeFacet.getFinalizationResult.selector;
         bytes memory initDataBridgeFacet = abi.encode();
 
         IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](8);
