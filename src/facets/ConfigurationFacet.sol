@@ -12,7 +12,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.ConfigurationFacet");
+        return keccak256("MoreVaults.storage.initializable.ConfigurationFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -20,14 +20,16 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     function initialize(bytes calldata data) external initializerFacet {
-        uint256 maxSlippagePercent = abi.decode(data, (uint256));
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IConfigurationFacet).interfaceId] = true;
-        ds.maxSlippagePercent = maxSlippagePercent;
+        if (ds.maxSlippagePercent == 0) {
+            uint256 maxSlippagePercent = abi.decode(data, (uint256));
+            _setMaxSlippagePercent(maxSlippagePercent);
+        }
     }
 
     function onFacetRemoval(bool) external {
@@ -40,11 +42,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function setMaxSlippagePercent(uint256 _newPercent) external {
         AccessControlLib.validateDiamond(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (_newPercent > 2000) revert SlippageTooHigh();
-        ds.maxSlippagePercent = _newPercent;
-
-        emit MaxSlippagePercentSet(_newPercent);
+        _setMaxSlippagePercent(_newPercent);
     }
 
     /**
@@ -331,8 +329,21 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function getCrossChainAccountingManager() external view returns (address) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
         return MoreVaultsLib._getCrossChainAccountingManager();
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function getMaxSlippagePercent() external view returns (uint256) {
+        return MoreVaultsLib.moreVaultsStorage().maxSlippagePercent;
+    }
+
+    function _setMaxSlippagePercent(uint256 _newPercent) internal {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_newPercent > 2000) revert SlippageTooHigh();
+        ds.maxSlippagePercent = _newPercent;
+
+        emit MaxSlippagePercentSet(_newPercent);
     }
 }

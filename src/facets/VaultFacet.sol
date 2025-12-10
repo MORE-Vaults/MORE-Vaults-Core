@@ -13,7 +13,11 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {
     ERC4626Upgradeable,
-    SafeERC20
+    ERC20Upgradeable,
+    SafeERC20,
+    LowLevelCall, 
+    Memory,
+    IERC20Metadata
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
@@ -29,7 +33,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.MoreVaults");
+        return keccak256("MoreVaults.storage.initializable.VaultFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -37,22 +41,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
-    function initialize(bytes calldata data) external initializerFacet initializer {
-        (
-            string memory name,
-            string memory symbol,
-            address asset,
-            address feeRecipient,
-            uint96 fee,
-            uint256 depositCapacity
-        ) = abi.decode(data, (string, string, address, address, uint96, uint256));
-        if (asset == address(0) || feeRecipient == address(0) || fee > MoreVaultsLib.FEE_BASIS_POINT) {
-            revert InvalidParameters();
-        }
-
+    function initialize(bytes calldata data) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         // Facet interfaces
@@ -60,17 +52,32 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         ds.supportedInterfaces[type(IERC4626).interfaceId] = true; // ERC4626 base interface
         ds.supportedInterfaces[type(IVaultFacet).interfaceId] = true; // VaultFacet (extended ERC4626)
 
-        MoreVaultsLib._setFeeRecipient(feeRecipient);
-        MoreVaultsLib._setFee(fee);
-        MoreVaultsLib._setDepositCapacity(depositCapacity);
-        __ERC4626_init(IERC20(asset));
-        __ERC20_init(name, symbol);
-        MoreVaultsLib._addAvailableAsset(asset);
-        MoreVaultsLib._enableAssetToDeposit(asset);
+        if (super.asset() == address(0)) {
+            (
+                string memory name,
+                string memory symbol,
+                address asset,
+                address feeRecipient,
+                uint96 fee,
+                uint256 depositCapacity
+            ) = abi.decode(data, (string, string, address, address, uint96, uint256));
+            if (asset == address(0) || feeRecipient == address(0) || fee > MoreVaultsLib.FEE_BASIS_POINT) {
+                revert InvalidParameters();
+            }
+            MoreVaultsLib._setFeeRecipient(feeRecipient);
+            MoreVaultsLib._setFee(fee);
+            MoreVaultsLib._setDepositCapacity(depositCapacity);
+            _initERC4626Directly(IERC20(asset));
+            _initERC20Directly(name, symbol);
+            MoreVaultsLib._addAvailableAsset(asset);
+            MoreVaultsLib._enableAssetToDeposit(asset);
+        }
     }
 
     function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.supportedInterfaces[type(IERC20).interfaceId] = false;
+        ds.supportedInterfaces[type(IERC4626).interfaceId] = false;
         ds.supportedInterfaces[type(IVaultFacet).interfaceId] = false;
     }
 
@@ -610,9 +617,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     function setFee(uint96 _fee) external {
         AccessControlLib.validateDiamond(msg.sender);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        (uint256 newTotalAssets,) = _getInfoForAction(ds);
-
         MoreVaultsLib._setFee(_fee);
     }
 
@@ -1038,5 +1042,63 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting) {
             revert NotAnERC4626CompatibleVault();
         }
+    }
+
+    /**
+     * @dev Initializes ERC4626 storage directly, bypassing the onlyInitializing modifier
+     * @param asset_ Address of the underlying asset
+     */
+    function _initERC4626Directly(IERC20 asset_) private {
+        // Use the same storage location as in ERC4626Upgradeable
+        // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC4626")) - 1)) & ~bytes32(uint256(0xff))
+        bytes32 storageLocation = 0x0773e532dfede91f04b12a73d3d2acd361424f41f76b4fb79f090161e36b4e00;
+        
+        (bool success, uint8 assetDecimals) = _tryGetAssetDecimalsLocal(asset_);
+
+        ERC4626Upgradeable.ERC4626Storage storage $;
+        assembly {
+            $.slot := storageLocation
+        }
+
+        $._underlyingDecimals = success ? assetDecimals : 18;
+        $._asset = asset_;
+    }
+
+    /**
+     * @dev Attempts to get decimals from the asset
+     * @param asset_ Address of the asset
+     * @return ok Success of the operation
+     * @return assetDecimals Number of decimals of the asset
+     */
+    function _tryGetAssetDecimalsLocal(IERC20 asset_) private view returns (bool ok, uint8 assetDecimals) {
+        Memory.Pointer ptr = Memory.getFreeMemoryPointer();
+        (bool success, bytes32 returnedDecimals,) = LowLevelCall.staticcallReturn64Bytes(
+            address(asset_), abi.encodeCall(IERC20Metadata.decimals, ())
+        );
+        Memory.setFreeMemoryPointer(ptr);
+
+        return
+            (success && LowLevelCall.returnDataSize() >= 32 && uint256(returnedDecimals) <= type(uint8).max)
+                ? (true, uint8(uint256(returnedDecimals)))
+                : (false, 0);
+    }
+
+    /**
+     * @dev Initializes ERC20 storage directly, bypassing the onlyInitializing modifier
+     * @param name_ Token name
+     * @param symbol_ Token symbol
+     */
+    function _initERC20Directly(string memory name_, string memory symbol_) private {
+        // Use the same storage location as in ERC20Upgradeable
+        // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC20")) - 1)) & ~bytes32(uint256(0xff))
+        bytes32 storageLocation = 0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00;
+        
+        ERC20Upgradeable.ERC20Storage storage $;
+        assembly {
+            $.slot := storageLocation
+        }
+        
+        $._name = name_;
+        $._symbol = symbol_;
     }
 }

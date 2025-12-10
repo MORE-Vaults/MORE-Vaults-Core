@@ -11,8 +11,18 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract TestERC20 is ERC20 {
     uint8 private _decimals;
 
+    address private _owner;
+
     constructor(string memory name, string memory symbol, uint8 decimals_) ERC20(name, symbol) {
         _decimals = decimals_;
+    }
+
+    function setOwner(address owner) external {
+        _owner = owner;
+    }
+
+    function owner() external view returns (address) {
+        return _owner;
     }
 
     function decimals() public view virtual override returns (uint8) {
@@ -37,6 +47,7 @@ contract MoreVaultOftAdapterTest is Test {
     function setUp() public {
         endpoint = new MockEndpointV2(localEid);
         token = new TestERC20("Test Token", "TEST", 18);
+        token.setOwner(owner);
 
         vm.prank(owner);
         adapter = new MoreVaultOftAdapter(address(token), address(endpoint), owner);

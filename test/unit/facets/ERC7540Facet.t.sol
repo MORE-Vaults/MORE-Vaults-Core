@@ -386,7 +386,7 @@ contract ERC7540FacetTest is Test {
     }
 
     function test_facetVersion_ShouldReturnCorrectVersion() public view {
-        assertEq(facet.facetVersion(), "1.0.0", "Facet version should be correct");
+        assertEq(facet.facetVersion(), "1.0.1", "Facet version should be correct");
     }
 
     function test_initialize_ShouldSetCorrectValues() public view {

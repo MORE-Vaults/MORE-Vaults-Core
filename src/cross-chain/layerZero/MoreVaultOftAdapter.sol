@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
 import {OFTAdapter} from "@layerzerolabs/oft-evm/contracts/OFTAdapter.sol";
@@ -8,6 +8,9 @@ import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeE
 /// @notice OFTAdapter uses a deployed ERC-20 token and SafeERC20 to interact with the OFTCore contract.
 contract MoreVaultOftAdapter is OFTAdapter {
     using SafeERC20 for IERC20;
+
+    /// @notice Error thrown when the caller is not the owner of the inner token
+    error Unauthorized();
 
     /// @notice Event emitted when tokens are rescued
     event Rescued(address indexed token, address indexed to, uint256 amount);
@@ -35,7 +38,8 @@ contract MoreVaultOftAdapter is OFTAdapter {
      * @param _to The address to send the rescued tokens to
      * @param _amount The amount of tokens to rescue (use type(uint256).max to rescue all available balance)
      */
-    function rescue(address _token, address payable _to, uint256 _amount) external onlyOwner {
+    function rescue(address _token, address payable _to, uint256 _amount) external {
+        if (Ownable(address(innerToken)).owner() != msg.sender) revert Unauthorized();
         if (_to == address(0)) revert ZeroAddress();
 
         if (_token == address(0)) {

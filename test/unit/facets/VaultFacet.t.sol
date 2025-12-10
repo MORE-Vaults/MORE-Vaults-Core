@@ -1981,7 +1981,7 @@ contract VaultFacetTest is Test {
 
     function test_facetVersion_ShouldReturnVersion() public view {
         string memory version = VaultFacet(facet).facetVersion();
-        assertEq(version, "1.0.0");
+        assertEq(version, "1.0.1");
     }
 
     function test_onFacetRemoval_ShouldDisableInterface() public {

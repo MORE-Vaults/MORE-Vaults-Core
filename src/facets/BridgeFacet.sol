@@ -26,7 +26,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     event OracleCrossChainAccountingUpdated(bool indexed isTrue);
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.BridgeFacet");
+        return keccak256("MoreVaults.storage.initializable.BridgeFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -34,10 +34,10 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
-    function initialize(bytes calldata) external initializerFacet initializer {
+    function initialize(bytes calldata) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IBridgeFacet).interfaceId] = true; // IBridgeFacet interface
     }
@@ -210,7 +210,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
      * @notice Executes the action and performs slippage check
      */
     function executeRequest(bytes32 guid) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (msg.sender != MoreVaultsLib._getCrossChainAccountingManager()) {
             revert OnlyCrossChainAccountingManager();
         }
