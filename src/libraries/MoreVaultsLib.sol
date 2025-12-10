@@ -23,8 +23,6 @@ bytes32 constant BALANCE_OF_SELECTOR = 0x70a082310000000000000000000000000000000
 bytes32 constant TOTAL_ASSETS_SELECTOR = 0x01e1d11400000000000000000000000000000000000000000000000000000000;
 bytes32 constant TOTAL_ASSETS_RUN_FAILED = 0xb5a7047700000000000000000000000000000000000000000000000000000000;
 
-uint256 constant MAX_WITHDRAWAL_DELAY = 14 days;
-
 library MoreVaultsLib {
     error InitializationFunctionReverted(address _initializationContractAddress, bytes _calldata);
     error UnsupportedAsset(address);
@@ -176,6 +174,7 @@ library MoreVaultsLib {
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
         mapping(address => uint256) userHighWaterMarkPerShare;
+        uint32 maxWithdrawalDelay;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -764,8 +763,9 @@ library MoreVaultsLib {
     }
 
     function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
+        MoreVaultsStorage storage ds = moreVaultsStorage();
         uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
-        return block.timestamp >= _timelockEndsAt && block.timestamp - requestTimestamp <= MAX_WITHDRAWAL_DELAY;
+        return block.timestamp >= _timelockEndsAt && block.timestamp - _timelockEndsAt <= ds.maxWithdrawalDelay;
     }
 
     function factoryAddress() internal view returns (address) {

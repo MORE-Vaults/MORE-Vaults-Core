@@ -439,6 +439,7 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setWithdrawTimelock(facet, 110);
         assertEq(MoreVaultsStorageHelper.getWithdrawTimelock(facet), 110, "Should set correct timelock duration");
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
         assertEq(
             MoreVaultsStorageHelper.getIsWithdrawalQueueEnabled(facet),
             true,
@@ -518,6 +519,7 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setWithdrawTimelock(facet, 110);
         assertEq(MoreVaultsStorageHelper.getWithdrawTimelock(facet), 110, "Should set correct timelock duration");
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
         assertEq(
             MoreVaultsStorageHelper.getIsWithdrawalQueueEnabled(facet),
             true,
@@ -1499,6 +1501,7 @@ contract VaultFacetTest is Test {
         // Setup withdrawal queue
         vm.prank(owner);
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
 
         // Mock protocol fee info
         vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
@@ -1549,6 +1552,7 @@ contract VaultFacetTest is Test {
         // Setup withdrawal queue
         vm.prank(owner);
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
 
         // Mock protocol fee info
         vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
@@ -1863,7 +1867,7 @@ contract VaultFacetTest is Test {
         // Setup withdrawal queue
         vm.prank(owner);
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
-
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
         // Mock protocol fee info
         vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
         uint32[] memory eids = new uint32[](0);
@@ -1905,6 +1909,7 @@ contract VaultFacetTest is Test {
         // Setup withdrawal queue
         vm.prank(owner);
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
 
         // Mock protocol fee info
         vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));

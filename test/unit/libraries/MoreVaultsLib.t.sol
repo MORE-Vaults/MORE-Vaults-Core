@@ -596,6 +596,7 @@ contract MoreVaultsLibTest is Test {
         // Set withdrawal request
         ds.withdrawalRequests[requester].shares = shares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1; // Already passed
+        ds.maxWithdrawalDelay = 14 days;
 
         // When queue is enabled, msgSender doesn't matter - it checks the request
         bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);

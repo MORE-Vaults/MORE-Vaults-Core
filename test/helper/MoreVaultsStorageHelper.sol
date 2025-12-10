@@ -56,6 +56,8 @@ library MoreVaultsStorageHelper {
     uint256 constant FINALIZATION_GUID = 36;
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
     uint256 constant WITHDRAWAL_FEE = 37;
+    uint256 constant USER_HIGH_WATER_MARK_PER_SHARE = 38;
+    uint256 constant MAX_WITHDRAWAL_DELAY = 39;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -689,6 +691,14 @@ library MoreVaultsStorageHelper {
         bytes32 storedValue = getStorageValue(contractAddress, WITHDRAWAL_FEE);
         bytes32 mask = bytes32(uint256(type(uint96).max) << 8);
         return uint96(uint256((storedValue & mask) >> 8));
+    }
+
+    function setMaxWithdrawalDelay(address contractAddress, uint32 value) internal {
+        setStorageValue(contractAddress, MAX_WITHDRAWAL_DELAY, bytes32(uint256(value)));
+    }
+
+    function getMaxWithdrawalDelay(address contractAddress) internal view returns (uint32) {
+        return uint32(uint256(getStorageValue(contractAddress, MAX_WITHDRAWAL_DELAY)));
     }
 
     // Functions for WITHDRAW_TIMELOCK (slot 25)
