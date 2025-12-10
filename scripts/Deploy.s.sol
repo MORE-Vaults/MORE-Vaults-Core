@@ -22,6 +22,8 @@ import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transpa
 import {OracleRegistry} from "../src/registry/OracleRegistry.sol";
 import {IOracleRegistry, IAggregatorV2V3Interface} from "../src/interfaces/IOracleRegistry.sol";
 import {IAaveOracle} from "@aave-v3-core/contracts/interfaces/IAaveOracle.sol";
+import {OFTAdapterFactory} from "../src/factory/OFTAdapterFactory.sol";
+import {MoreVaultsComposer} from "../src/cross-chain/layerZero/MoreVaultsComposer.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {console} from "forge-std/console.sol";
 
@@ -35,10 +37,13 @@ import {console} from "forge-std/console.sol";
 // forge script scripts/Deploy.s.sol:DeployScript --chain-id 1 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key {API_KEY}
 
 // sepolia testnet deployment script
-// forge script scripts/Deploy.s.sol:DeployScript --chain-id 11155111 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key {API_KEY}
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 11155111 --rpc-url https://eth-sepolia.g.alchemy.com/v2/FBUmQwWnyZ5v8QJq8oqJE -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
 
 // bnb testnet deployment script
 // forge script scripts/Deploy.s.sol:DeployScript --chain-id 97 --rpc-url {YOUR_RPC_URL} -vv --slow --broadcast --verify --verifier etherscan --verifier-url 'https://api.etherscan.io/v2/api?chainid=97' --etherscan-api-key {API_KEY}
+
+// arbitrum sepolia testnet deployment script
+// forge script scripts/Deploy.s.sol:DeployScript --chain-id 42161 --rpc-url https://arb-sepolia.g.alchemy.com/v2/FBUmQwWnyZ5v8QJq8oqJE -vv --slow --broadcast --verify --verifier etherscan --etherscan-api-key SAWW4TJWRUS434R1J29QKXUG8XBTBVTAP1
 
 contract DeployScript is Script {
     DeployConfig config;
@@ -50,6 +55,7 @@ contract DeployScript is Script {
     uint256 public constant LZ_READ_CHANNEL = 1;
 
     address lzEndpoint;
+    uint32 localEid;
 
     // FLOW MAINNET
     // address constant USDF = address(0x2aaBea2058b5aC2D339b163C6Ab6f2b6d53aabED);
@@ -69,14 +75,19 @@ contract DeployScript is Script {
     // address constant USDT = address(0xdAC17F958D2ee523a2206206994597C13D831ec7);
 
     // SEPOLIA TESTNET
+    // address constant USDF = address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766);
+
+    // ARBITRUM SEPOLIA TESTNET
     address constant USDF = address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766);
+
     address PROTOCOL_OWNER;
     bool IS_HUB;
 
     // BNB TESTNET
     address MockUSDC = address(0xB360f59C348e471B4D73238cf30A3801Aad6beeb);
     address MockOracle = address(0x62F7A4c832eB0AcD93B8917C4a3303b1D09D1125);
-
+// 0x000000000000000000000000C19419653441fEcc486B3F1f013f2392e01915D5
+// 0x000000000000000000000000e17EeA6Df1A59A1b7745541A5D1B94e822D00766
     function test_skip() public pure {}
 
     function setUp() public {
@@ -105,6 +116,7 @@ contract DeployScript is Script {
         lzEndpoint = vm.envAddress("LZ_ENDPOINT");
         PROTOCOL_OWNER = vm.envAddress("PROTOCOL_OWNER");
         IS_HUB = vm.envBool("IS_HUB");
+        localEid = uint32(vm.envUint("LOCAL_EID"));
     }
 
     function run() public {
@@ -115,7 +127,7 @@ contract DeployScript is Script {
         DiamondCutFacet diamondCut = DiamondCutFacet(
             CREATE3.deployDeterministic(
                 type(DiamondCutFacet).creationCode,
-                keccak256(abi.encode("diamondCutFacetCrossChainTest2"))
+                keccak256(abi.encode("diamondCutFacetCrossChainTest5"))
             )
         );
 
@@ -124,49 +136,49 @@ contract DeployScript is Script {
             DiamondLoupeFacet diamondLoupe = DiamondLoupeFacet(
                 CREATE3.deployDeterministic(
                     type(DiamondLoupeFacet).creationCode,
-                    keccak256(abi.encode("diamondLoupeCrossChainTest2"))
+                    keccak256(abi.encode("diamondLoupeCrossChainTest5"))
                 )
             );
             AccessControlFacet accessControl = AccessControlFacet(
                 CREATE3.deployDeterministic(
                     type(AccessControlFacet).creationCode,
-                    keccak256(abi.encode("accessControlCrossChainTest2"))
+                    keccak256(abi.encode("accessControlCrossChainTest5"))
                 )
             );
             ConfigurationFacet configuration = ConfigurationFacet(
                 CREATE3.deployDeterministic(
                     type(ConfigurationFacet).creationCode,
-                    keccak256(abi.encode("configurationCrossChainTest2"))
+                    keccak256(abi.encode("configurationCrossChainTest5"))
                 )
             );
             MulticallFacet multicall = MulticallFacet(
                 CREATE3.deployDeterministic(
                     type(MulticallFacet).creationCode,
-                    keccak256(abi.encode("multicallCrossChainTest2"))
+                    keccak256(abi.encode("multicallCrossChainTest5"))
                 )
             );
             VaultFacet vault = VaultFacet(
                 CREATE3.deployDeterministic(
                     type(VaultFacet).creationCode,
-                    keccak256(abi.encode("vaultCrossChainTest2"))
+                    keccak256(abi.encode("vaultCrossChainTest5"))
                 )
             );
             ERC4626Facet erc4626 = ERC4626Facet(
                 CREATE3.deployDeterministic(
                     type(ERC4626Facet).creationCode,
-                    keccak256(abi.encode("erc4626CrossChainTest2"))
+                    keccak256(abi.encode("erc4626CrossChainTest5"))
                 )
             );
             ERC7540Facet erc7540 = ERC7540Facet(
                 CREATE3.deployDeterministic(
                     type(ERC7540Facet).creationCode,
-                    keccak256(abi.encode("erc7540CrossChainTest2"))
+                    keccak256(abi.encode("erc7540CrossChainTest5"))
                 )
             );
             BridgeFacet bridge = BridgeFacet(
                 CREATE3.deployDeterministic(
                     type(BridgeFacet).creationCode,
-                    keccak256(abi.encode("bridgeCrossChainTest2"))
+                    keccak256(abi.encode("bridgeCrossChainTest5"))
                 )
             );
 
@@ -317,11 +329,11 @@ contract DeployScript is Script {
         //     }
         // }
 
-        // SEPOLIA TESTNET
+        // ARBITRUM SEPOLIA TESTNET
         address[] memory assets = new address[](1);
-        assets[0] = USDF;
+        assets[0] = address(0xe17EeA6Df1A59A1b7745541A5D1B94e822D00766); // USDF OFT
         address[] memory sources = new address[](1);
-        sources[0] = address(0x8A28ff02DDf0677A1f94ae05E52BEA48E273884e);
+        sources[0] = address(0xeFa945739700803b8f10398Ed4f19168Be9bFC92); // USDC Aggregator
         uint96[] memory confidence = new uint96[](1);
         confidence[0] = 4 hours;
         IOracleRegistry.OracleInfo[]
@@ -330,6 +342,20 @@ contract DeployScript is Script {
             aggregator: IAggregatorV2V3Interface(sources[0]),
             stalenessThreshold: confidence[0]
         });
+
+        // // SEPOLIA TESTNET
+        // address[] memory assets = new address[](1);
+        // assets[0] = USDF;
+        // address[] memory sources = new address[](1);
+        // sources[0] = address(0x8A28ff02DDf0677A1f94ae05E52BEA48E273884e);
+        // uint96[] memory confidence = new uint96[](1);
+        // confidence[0] = 4 hours;
+        // IOracleRegistry.OracleInfo[]
+        //     memory infos = new IOracleRegistry.OracleInfo[](1);
+        // infos[0] = IOracleRegistry.OracleInfo({
+        //     aggregator: IAggregatorV2V3Interface(sources[0]),
+        //     stalenessThreshold: confidence[0]
+        // });
 
         // // BNB TESTNET
         // address[] memory assets = new address[](1);
@@ -350,7 +376,7 @@ contract DeployScript is Script {
             CREATE3.deployDeterministic(
                 type(OracleRegistry).creationCode,
                 keccak256(
-                    abi.encode("oracleRegistryImplementationCrossChainTest2")
+                    abi.encode("oracleRegistryImplementationCrossChainTest5")
                 )
             )
         );
@@ -372,7 +398,7 @@ contract DeployScript is Script {
                             )
                         )
                     ),
-                    keccak256(abi.encode("oracleRegistryCrossChainTest2"))
+                    keccak256(abi.encode("oracleRegistryCrossChainTest5"))
                 )
             )
         );
@@ -405,7 +431,7 @@ contract DeployScript is Script {
         // Deploy registry
         address registryImplementation = CREATE3.deployDeterministic(
             type(VaultsRegistry).creationCode,
-            keccak256(abi.encode("registryImplementationCrossChainTest2"))
+            keccak256(abi.encode("registryImplementationCrossChainTest5"))
         );
         registry = VaultsRegistry(
             address(
@@ -423,7 +449,7 @@ contract DeployScript is Script {
                             )
                         )
                     ),
-                    keccak256(abi.encode("registryCrossChainTest2"))
+                    keccak256(abi.encode("registryCrossChainTest5"))
                 )
             )
         );
@@ -462,7 +488,7 @@ contract DeployScript is Script {
                 1
             );
             functionSelectorsAccessControlFacet[0] = AccessControlFacet
-                .setMoreVaultsRegistry
+                .moreVaultsRegistry
                 .selector;
             registry.addFacet(
                 address(diamondCut),
@@ -484,13 +510,66 @@ contract DeployScript is Script {
         }
         console.log("Facets added to registry");
 
+        address oftAdapterFactory = CREATE3.deployDeterministic(
+             abi.encodePacked(
+                        type(OFTAdapterFactory).creationCode,
+                        abi.encode(
+                            lzEndpoint,
+                            PROTOCOL_OWNER
+                        )
+                    ),
+            keccak256(abi.encode("oftAdapterFactoryCrossChainTest5"))
+        );
+         vm.writeFile(
+            ".env.deployments",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env.deployments"),
+                    "OFT_ADAPTER_FACTORY=",
+                    vm.toString(address(oftAdapterFactory)),
+                    "\n"
+                )
+            )
+        );
+        vm.writeFile(
+            ".env",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env"),
+                    "OFT_ADAPTER_FACTORY=",
+                    vm.toString(address(oftAdapterFactory)),
+                    "\n"
+                )
+            )
+        );
+
+        address MoreVaultsComposerImplementation = CREATE3.deployDeterministic(
+            type(MoreVaultsComposer).creationCode,
+            keccak256(abi.encode("MoreVaultsComposerImplementationCrossChainTest5"))
+        );
+        vm.writeFile(
+            ".env.deployments",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env.deployments"),
+                    "MORE_VAULTS_COMPOSER_IMPLEMENTATION=",
+                    vm.toString(address(MoreVaultsComposerImplementation)),
+                    "\n"
+                )
+            )
+        );
+
         // Deploy factory
         address factoryImplementation = address(
             CREATE3.deployDeterministic(
-                type(VaultsFactory).creationCode,
-                keccak256(abi.encode("factoryImplementationCrossChainTest2"))
+                abi.encodePacked(type(VaultsFactory).creationCode,
+                 abi.encode(
+                            lzEndpoint
+                )),
+                keccak256(abi.encode("factoryImplementationCrossChainTest5"))
             )
         );
+        console.log(localEid);
         factory = VaultsFactory(
             address(
                 CREATE3.deployDeterministic(
@@ -506,12 +585,15 @@ contract DeployScript is Script {
                                 address(diamondCut),
                                 address(facetAddresses.accessControl),
                                 config.wrappedNative(),
-                                address(1),
-                                1 minutes
+                                localEid,
+                                1 minutes,
+                                lzAdapter,
+                                MoreVaultsComposerImplementation,
+                                oftAdapterFactory
                             )
                         )
                     ),
-                    keccak256(abi.encode("factoryCrossChainTest2"))
+                    keccak256(abi.encode("factoryCrossChainTest5"))
                 )
             )
         );
@@ -550,15 +632,39 @@ contract DeployScript is Script {
                         lzEndpoint,
                         PROTOCOL_OWNER,
                         LZ_READ_CHANNEL,
-                        address(0),
                         address(factory),
                         address(registry)
                     )
                 ),
-                keccak256(abi.encode("lzAdapterCrossChainTest2"))
+                keccak256(abi.encode("lzAdapterCrossChainTest5"))
             )
         );
         console.log("Lz adapter deployed at:", address(lzAdapter));
+
+        vm.writeFile(
+            ".env.deployments",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env.deployments"),
+                    "LZ_ADAPTER=",
+                    vm.toString(address(lzAdapter)),
+                    "\n"
+                )
+            )
+        );
+        vm.writeFile(
+            ".env",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env"),
+                    "LZ_ADAPTER=",
+                    vm.toString(address(lzAdapter)),
+                    "\n"
+                )
+            )
+        );
+
+        factory.setLzAdapter(address(lzAdapter));
 
         // Deploy vault
         bytes memory accessControlFacetInitData = abi.encode(

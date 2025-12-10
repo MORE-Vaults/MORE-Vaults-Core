@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.28;
 
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -6,7 +6,7 @@ import {ERC4626, IERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {IOFT, SendParam, MessagingFee} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {IOFT, SendParam, MessagingFee, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
@@ -132,12 +132,18 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         bytes calldata _message, // expected to contain a composeMessage = abi.encode(SendParam hopSendParam,uint256 minMsgValue)
         address, /*_executor*/
         bytes calldata /*_extraData*/
-    ) external payable virtual override {
+    )
+        external
+        payable
+        virtual
+        override
+    {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
-        if (!LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)) {
-            if (IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())) {
-                revert InvalidComposeCaller(_composeSender);
-            }
+        if (
+            !LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)
+                || !IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())
+        ) {
+            revert InvalidComposeCaller(_composeSender);
         }
 
         bytes32 composeFrom = _message.composeFrom();
@@ -191,7 +197,12 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (IVaultFacet(address(VAULT)).paused()) {
             revert VaultIsPaused();
         }
-        if (VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT))) {
+        // Check if this is a cross-chain vault and oracle accounting is disabled
+        // If oracle accounting is enabled, use sync path even for cross-chain vaults
+        bool isCrossChainVault = VAULT_FACTORY.isCrossChainVault(uint32(VAULT_EID), address(VAULT));
+        bool useAsyncFlow = isCrossChainVault && !IBridgeFacet(address(VAULT)).oraclesCrossChainAccounting();
+
+        if (useAsyncFlow) {
             _initDeposit(_composeFrom, IOFT(_oftIn).token(), _oftIn, _amount, sendParam, tx.origin, _srcEid);
         } else {
             _depositAndSend(_composeFrom, IOFT(_oftIn).token(), _amount, sendParam, tx.origin);
@@ -199,25 +210,32 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     }
 
     /**
-     * @notice Completes an async deposit operation
+     * @notice Sends deposit shares after successful request execution
      * @param _guid The unique identifier of the pending deposit
-     * @dev This function should be called when the async deposit operation is completed
+     * @dev This function is called after the request action has been executed successfully
+     * @dev Retrieves the execution result (shares) and sends them to the destination
      */
-    function completeDeposit(bytes32 _guid) external virtual nonReentrant {
+    function sendDepositShares(bytes32 _guid) external virtual nonReentrant {
         if (msg.sender != address(VAULT) && msg.sender != address(VAULT_FACTORY.lzAdapter())) {
             revert OnlyVaultOrLzAdapter(msg.sender);
         }
 
         PendingDeposit memory deposit = pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
-        uint256 shares = _deposit(_guid, deposit.tokenAddress);
+
+        // Request action already executed in executeRequest
+        // Slippage check was already performed in _executeRequest
+        // Get execution result (number of shares)
+        uint256 shares = IBridgeFacet(address(VAULT)).getFinalizationResult(_guid);
         deposit.sendParam.amountLD = shares;
         deposit.sendParam.minAmountLD = 0;
 
         delete pendingDeposits[_guid];
 
-        _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
-        emit Deposited(deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, shares);
+        uint256 amountSentLD = _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
+        emit Deposited(
+            deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, amountSentLD
+        );
     }
 
     function refundDeposit(bytes32 _guid) external payable virtual nonReentrant {
@@ -229,15 +247,29 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
         delete pendingDeposits[_guid];
 
+        // Decrease approve for vault by deposit amount (supports parallel deposits)
+        // If request execution didn't occur, approve wasn't used and should be decreased
+        // If request execution occurred, approve was already automatically decreased via safeTransferFrom
+        uint256 currentAllowance = IERC20(deposit.tokenAddress).allowance(address(this), address(VAULT));
+        if (currentAllowance >= deposit.assetAmount) {
+            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), deposit.assetAmount);
+        } else if (currentAllowance > 0) {
+            // If approve is less than expected (partially used), decrease by available amount
+            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), currentAllowance);
+        }
+
         // cross-chain refund back to origin
         SendParam memory refundSendParam;
         refundSendParam.dstEid = deposit.srcEid;
         refundSendParam.to = deposit.depositor;
         refundSendParam.amountLD = deposit.assetAmount;
 
+        // Combine stored msgValue with additional msg.value to handle fee volatility
+        uint256 totalMsgValue = deposit.msgValue + msg.value;
+
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, deposit.assetAmount);
-        IOFT(deposit.tokenAddress).send{value: deposit.msgValue}(
-            refundSendParam, MessagingFee(deposit.msgValue, 0), deposit.refundAddress
+        IOFT(deposit.oftAddress).send{value: totalMsgValue}(
+            refundSendParam, MessagingFee(totalMsgValue, 0), deposit.refundAddress
         );
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, 0);
         emit Refunded(_guid);
@@ -299,8 +331,8 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         _sendParam.amountLD = shareAmount;
         _sendParam.minAmountLD = 0;
 
-        _send(SHARE_OFT, _sendParam, _refundAddress, msg.value);
-        emit Deposited(_depositor, _sendParam.to, _sendParam.dstEid, _assetAmount, shareAmount);
+        uint256 amountSentLD = _send(SHARE_OFT, _sendParam, _refundAddress, msg.value);
+        emit Deposited(_depositor, _sendParam.to, _sendParam.dstEid, _assetAmount, amountSentLD);
     }
 
     function initDeposit(
@@ -345,6 +377,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (IOFT(_oftAddress).token() != _tokenAddress) {
             revert NotATokenOfOFT();
         }
+
+        // Increase approve BEFORE creating request so it's available for request execution
+        // Use safeIncreaseAllowance to support parallel deposits
+        // Request execution occurs in executeRequest and calls deposit,
+        // which takes tokens via safeTransferFrom using approve
+        IERC20(_tokenAddress).safeIncreaseAllowance(address(VAULT), _assetAmount);
+
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
         if (_tokenAddress == IERC4626(VAULT).asset()) {
@@ -358,8 +397,10 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             assets[0] = _assetAmount;
             actionCallData = abi.encode(tokens, assets, address(this));
         }
-        bytes32 guid =
-            IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(actionType, actionCallData, "");
+        // Pass minAmountOut for slippage check in _executeRequest
+        bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
+            actionType, actionCallData, _sendParam.minAmountLD, ""
+        );
         pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,
@@ -373,33 +414,27 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     }
 
     /**
-     * @dev Internal function to deposit assets into the vault
-     * @param _guid The unique identifier of the pending deposit
-     * @param _tokenAddress The address of the token to deposit
-     * @return shareAmount The number of shares received from the vault deposit
-     * @notice This function is expected to be overridden by the inheriting contract to implement custom/nonERC4626 deposit logic
-     */
-    function _deposit(bytes32 _guid, address _tokenAddress) internal virtual returns (uint256 shareAmount) {
-        IERC20(_tokenAddress).forceApprove(address(VAULT), pendingDeposits[_guid].assetAmount);
-        shareAmount = abi.decode(IBridgeFacet(address(VAULT)).finalizeRequest(_guid), (uint256));
-        IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
-    }
-
-    /**
      * @dev Internal function that handles token transfer to the recipient
      * @dev If the destination eid is the same as the current eid, it transfers the tokens directly to the recipient
      * @dev If the destination eid is different, it sends a LayerZero cross-chain transaction
      * @param _oft The OFT contract address to use for sending
      * @param _sendParam The parameters for the send operation
      * @param _refundAddress Address to receive excess payment of the LZ fees
+     * @return amountSentLD The amount actually sent (after LayerZero normalization for cross-chain, equal to amountLD for local)
      */
-    function _send(address _oft, SendParam memory _sendParam, address _refundAddress, uint256 _msgValue) internal {
+    function _send(address _oft, SendParam memory _sendParam, address _refundAddress, uint256 _msgValue)
+        internal
+        returns (uint256 amountSentLD)
+    {
         if (_sendParam.dstEid == VAULT_EID) {
             if (msg.value > 0) revert NoMsgValueExpected();
             IERC20(SHARE_ERC20).safeTransfer(_sendParam.to.bytes32ToAddress(), _sendParam.amountLD);
+            return _sendParam.amountLD;
         } else {
-            // crosschain send
-            IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
+            // crosschain send - LayerZero normalizes the amount, so we get the actual sent amount from the receipt
+            (, OFTReceipt memory oftReceipt) =
+                IOFT(_oft).send{value: _msgValue}(_sendParam, MessagingFee(_msgValue, 0), _refundAddress);
+            return oftReceipt.amountSentLD;
         }
     }
 

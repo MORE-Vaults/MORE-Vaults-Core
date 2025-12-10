@@ -2,7 +2,10 @@
 pragma solidity ^0.8.19;
 
 import {
-    IOFT, SendParam, MessagingFee, OFTReceipt
+    IOFT,
+    SendParam,
+    MessagingFee,
+    OFTReceipt
 } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
 import {
     MessagingReceipt,

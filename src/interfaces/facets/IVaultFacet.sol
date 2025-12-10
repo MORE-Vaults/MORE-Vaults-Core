@@ -11,11 +11,32 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     error ArraysLengthsDontMatch(uint256, uint256);
     error WithdrawFailed(string);
     error VaultDebtIsGreaterThanAssets();
+    error NotAnERC4626CompatibleVault();
+    error WithdrawSchedulerInvalidTimestamp(uint256 timestamp);
+    error CantCoverWithdrawRequests(uint256, uint256);
+    error InvalidSharesAmount();
+    error InvalidAssetsAmount();
+    error CantProcessWithdrawRequest();
+    error VaultIsUsingRestrictedFacet(address);
+    error WithdrawalQueueDisabled();
+    error NotAHub();
+    error InvalidActionType();
+    error OnlyCrossChainAccountingManager();
+    error SyncActionsDisabledInThisVault();
+    error RequestWasntFulfilled();
+    error RequestWithdrawDisabled();
+    error ZeroAddress();
 
     /// @dev Events
     event Deposit(address indexed sender, address indexed owner, address[] tokens, uint256[] assets, uint256 shares);
 
     event AccrueInterest(uint256 newTotalAssets, uint256 interestAccrued);
+
+    event WithdrawRequestCreated(address requester, uint256 sharesAmount, uint256 endsAt);
+
+    event WithdrawRequestFulfilled(address requester, address receiver, uint256 sharesAmount, uint256 assetAmount);
+
+    event WithdrawRequestDeleted(address requester);
 
     /// @notice Pauses all vault operations
     function pause() external;

@@ -56,7 +56,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
      * @return bytes32 The storage slot identifier
      */
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.ERC4626Facet");
+        return keccak256("MoreVaults.storage.initializable.ERC4626FacetV1.0.1");
     }
 
     /**
@@ -72,7 +72,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
      * @return string The facet version
      */
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     /**
@@ -226,7 +226,9 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         address vault,
         uint256 amount,
         bytes calldata data // data for async action execution
-    ) external {
+    )
+        external
+    {
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.validateAddressWhitelisted(vault);
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
@@ -276,7 +278,13 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
                 uint256 assetsUnlocked = IERC4626(vault).convertToAssets(balances.sharesAfter - balances.sharesBefore);
                 ds.lockedTokens[balances.asset] -= assetsUnlocked;
             } else {
-                delete ds.lockedTokens[vault];
+                // Withdrawal cancel: shares returned, unlock only this request's shares
+                uint256 sharesReturned = balances.sharesAfter - balances.sharesBefore;
+                if (ds.lockedTokens[vault] >= sharesReturned) {
+                    ds.lockedTokens[vault] -= sharesReturned;
+                } else {
+                    ds.lockedTokens[vault] = 0;
+                }
             }
             return;
         }
@@ -288,24 +296,24 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
                 ds.lockedTokens[vault] -= sharesUnlocked;
                 MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
             } else {
-                delete ds.lockedTokens[balances.asset];
+                // Deposit cancel: assets returned, unlock only this request's assets
+                uint256 assetsReturned = balances.assetsAfter - balances.assetsBefore;
+                if (ds.lockedTokens[balances.asset] >= assetsReturned) {
+                    ds.lockedTokens[balances.asset] -= assetsReturned;
+                } else {
+                    ds.lockedTokens[balances.asset] = 0;
+                }
             }
             return;
         }
         // Cases for request without locks
         if (
-            (
-                balances.sharesAfter == balances.sharesBefore // request was created without locks
-                    && balances.assetsAfter == balances.assetsBefore
-            )
-                || (
-                    balances.sharesAfter > balances.sharesBefore // withdrawal request was finalized without locks
-                        && balances.assetsAfter < balances.assetsBefore
-                )
-                || (
-                    balances.sharesAfter < balances.sharesBefore // deposit request was finalized without locks
-                        && balances.assetsAfter > balances.assetsBefore
-                )
+            (balances.sharesAfter == balances.sharesBefore // request was created without locks
+                    && balances.assetsAfter == balances.assetsBefore)
+                || (balances.sharesAfter > balances.sharesBefore // withdrawal request was finalized without locks
+                    && balances.assetsAfter < balances.assetsBefore)
+                || (balances.sharesAfter < balances.sharesBefore // deposit request was finalized without locks
+                    && balances.assetsAfter > balances.assetsBefore)
         ) {
             return;
         } else {

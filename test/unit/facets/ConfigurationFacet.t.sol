@@ -63,7 +63,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_initialize_shouldSetCorrectValues() public {
-        facet.initialize(abi.encode(10_000));
+        facet.initialize(abi.encode(2000));
         assertEq(
             MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IConfigurationFacet).interfaceId),
             true,
@@ -76,7 +76,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_facetVersion_ShouldReturnCorrectVersion() public view {
-        assertEq(facet.facetVersion(), "1.0.0", "Facet version should be correct");
+        assertEq(facet.facetVersion(), "1.0.1", "Facet version should be correct");
     }
 
     function test_onFacetRemoval_ShouldDisableInterface() public {

@@ -14,6 +14,7 @@ contract MockOracleRegistry is IOracleRegistry {
 
     mapping(bytes32 => uint256) public spokeValues;
     mapping(bytes32 => OracleInfo) public spokeInfos;
+    mapping(bytes32 => bool) public spokeShouldRevert;
 
     function setAssetPrice(address asset, uint256 price) external {
         prices[asset] = price;
@@ -25,6 +26,10 @@ contract MockOracleRegistry is IOracleRegistry {
 
     function setSpokeOracleInfo(address hub, uint32 eid, OracleInfo calldata info) external {
         spokeInfos[keccak256(abi.encode(hub, eid))] = info;
+    }
+
+    function setSpokeShouldRevert(address hub, uint32 eid, bool shouldRevert) external {
+        spokeShouldRevert[keccak256(abi.encode(hub, eid))] = shouldRevert;
     }
 
     function getAssetPrice(address asset) external view override returns (uint256) {
@@ -43,7 +48,11 @@ contract MockOracleRegistry is IOracleRegistry {
     }
 
     function getSpokeValue(address hub, uint32 chainId) external view override returns (uint256) {
-        return spokeValues[keccak256(abi.encode(hub, chainId))];
+        bytes32 key = keccak256(abi.encode(hub, chainId));
+        if (spokeShouldRevert[key]) {
+            revert("Oracle failed");
+        }
+        return spokeValues[key];
     }
 
     function getSpokeOracleInfo(address hub, uint32 chainId) external view override returns (OracleInfo memory) {

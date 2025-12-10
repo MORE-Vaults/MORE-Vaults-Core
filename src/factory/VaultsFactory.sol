@@ -13,8 +13,9 @@ import {
     Origin,
     MessagingFee
 } from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
-import {OAppOptionsType3Upgradeable} from
-    "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
+import {
+    OAppOptionsType3Upgradeable
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
@@ -39,10 +40,14 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     error MaxFinalizationTimeNotExceeded();
     /// @dev Thrown when hub cannot initiate cross-chain link
     error HubCannotInitiateLink();
+    /// @dev Thrown when links are initiated from non-hub chain
+    error OnlyHub();
     /// @dev Thrown when facet is restricted
     error RestrictedFacet(address);
     /// @dev Thrown when hub owner and spoke owner do not match
     error OwnersMismatch(address hubOwner, address spokeOwner);
+    /// @dev Thrown when trying to register a second spoke from the same chain
+    error SpokeAlreadyExistsForChain(uint32 hubEid, address hubVault, uint32 spokeEid);
     /// @dev Thrown on unknown message type
     error UnknownMsgType();
 
@@ -169,7 +174,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         _setFacetRestricted(_facet, true);
         for (uint256 i = 0; i < vaults.length;) {
             try IVaultFacet(vaults[i]).pause() {}
-            catch (bytes memory _err) {
+            catch (bytes memory) {
                 emit VaultFailedToPause(vaults[i]);
             }
             unchecked {
@@ -328,8 +333,9 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
 
         bytes memory options = combineOptions(_hubEid, MSG_TYPE_REGISTER_SPOKE, _options);
         MessagingFee memory fee = _quote(_hubEid, payload, options, false);
-        // exact native payment for single message
-        require(msg.value == fee.nativeFee, "LZ: invalid fee");
+        if (msg.value < fee.nativeFee) {
+            revert NotEnoughNative(msg.value);
+        }
         _lzSend(_hubEid, payload, options, fee, msg.sender);
         emit CrossChainLinkRequested(_hubEid, msg.sender, _spokeVault, _hubVault);
     }
@@ -340,7 +346,10 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         bytes calldata _message,
         address, /* _executor */
         bytes calldata /* _extraData */
-    ) internal override {
+    )
+        internal
+        override
+    {
         // OAppReceiver already validated endpoint and peer
         (uint16 msgType, bytes memory rest) = abi.decode(_message, (uint16, bytes));
         if (msgType == MSG_TYPE_REGISTER_SPOKE) {
@@ -387,7 +396,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
             revert NotAnOwnerOfVault(msg.sender);
         }
         if (!IConfigurationFacet(_hubVault).isHub()) {
-            revert HubCannotInitiateLink();
+            revert OnlyHub();
         }
 
         // build snapshot as packed keys
@@ -395,7 +404,9 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         bytes memory payload = abi.encode(MSG_TYPE_BOOTSTRAP, abi.encode(localEid, _hubVault, spokes));
         bytes memory options = combineOptions(_dstEid, MSG_TYPE_BOOTSTRAP, _options);
         MessagingFee memory fee = _quote(_dstEid, payload, options, false);
-        require(msg.value == fee.nativeFee, "LZ: invalid fee");
+        if (msg.value < fee.nativeFee) {
+            revert NotEnoughNative(msg.value);
+        }
         _lzSend(_dstEid, payload, options, fee, msg.sender);
     }
 
@@ -412,7 +423,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
             revert NotAnOwnerOfVault(msg.sender);
         }
         if (!IConfigurationFacet(_hubVault).isHub()) {
-            revert HubCannotInitiateLink();
+            revert OnlyHub();
         }
 
         bytes memory payload =
@@ -436,7 +447,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     function _payNative(uint256 _nativeFee) internal override returns (uint256) {
         // Check if it is multi send or not.
         if (_multiSendFee == 0) {
-            if (msg.value != _nativeFee) revert NotEnoughNative(msg.value);
+            if (msg.value < _nativeFee) revert NotEnoughNative(msg.value);
             return _nativeFee;
         }
         if (_multiSendFee < _nativeFee) revert NotEnoughNative(_multiSendFee);
@@ -491,12 +502,12 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     /**
      * @inheritdoc IVaultsFactory
      */
-    function hubToSpokes(uint32 _chainId, address _hubVault)
+    function hubToSpokes(uint32 __eid, address _hubVault)
         external
         view
         returns (uint32[] memory eids, address[] memory vaults)
     {
-        bytes32[] memory values = _hubToSpokesSet[_chainId][_hubVault].values();
+        bytes32[] memory values = _hubToSpokesSet[__eid][_hubVault].values();
         eids = new uint32[](values.length);
         vaults = new address[](values.length);
         for (uint256 i = 0; i < values.length; i++) {
@@ -520,15 +531,15 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     /**
      * @inheritdoc IVaultsFactory
      */
-    function isCrossChainVault(uint32 _chainId, address _vault) external view returns (bool) {
-        return _hubToSpokesSet[_chainId][_vault].length() > 0;
+    function isCrossChainVault(uint32 __eid, address _vault) external view returns (bool) {
+        return _hubToSpokesSet[__eid][_vault].length() > 0;
     }
 
     /**
      * @inheritdoc IVaultsFactory
      */
-    function spokeToHub(uint32 _chainId, address _spokeVault) external view returns (uint32 eid, address vault) {
-        bytes32 value = _spokeToHub[_chainId][_spokeVault];
+    function spokeToHub(uint32 __eid, address _spokeVault) external view returns (uint32 eid, address vault) {
+        bytes32 value = _spokeToHub[__eid][_spokeVault];
         if (value == bytes32(0)) return (0, address(0));
         (eid, vault) = _decodeSpokeKey(value);
     }
@@ -625,6 +636,19 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     }
 
     function _updateConnections(uint32 _hubEid, address _hubVault, uint32 _spokeEid, address _spokeVault) internal {
+        // Check if a spoke from the same chain already exists for this hub vault
+        EnumerableSet.Bytes32Set storage spokesSet = _hubToSpokesSet[_hubEid][_hubVault];
+        uint256 length = spokesSet.length();
+        for (uint256 i = 0; i < length;) {
+            (uint32 existingSpokeEid,) = _decodeSpokeKey(spokesSet.at(i));
+            if (existingSpokeEid == _spokeEid) {
+                revert SpokeAlreadyExistsForChain(_hubEid, _hubVault, _spokeEid);
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
         if (_spokeToHub[_spokeEid][_spokeVault] == bytes32(0)) {
             _spokeToHub[_spokeEid][_spokeVault] = _encodeSpokeKey(_hubEid, _hubVault);
         }

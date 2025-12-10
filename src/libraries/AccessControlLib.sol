@@ -5,6 +5,7 @@ import {IDiamondCut} from "../interfaces/facets/IDiamondCut.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
+import {IBridgeFacet} from "../interfaces/facets/IBridgeFacet.sol";
 
 /**
  * @title AccessControlLib
