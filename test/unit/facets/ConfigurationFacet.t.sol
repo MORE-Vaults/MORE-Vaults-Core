@@ -604,4 +604,94 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
         assertTrue(facet.getWithdrawalQueueStatus());
     }
+
+    // ==================== MaxWithdrawalDelay Tests ====================
+
+    function test_setMaxWithdrawalDelay_ShouldUpdateDelay() public {
+        vm.startPrank(address(facet));
+
+        uint32 newDelay = 14 days;
+        facet.setMaxWithdrawalDelay(newDelay);
+
+        assertEq(facet.getMaxWithdrawalDelay(), newDelay, "Max withdrawal delay should be updated");
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldEmitEvent() public {
+        vm.startPrank(address(facet));
+
+        uint32 newDelay = 7 days;
+        vm.expectEmit(true, true, true, true);
+        emit IConfigurationFacet.MaxWithdrawalDelaySet(newDelay);
+        facet.setMaxWithdrawalDelay(newDelay);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenUnauthorized() public {
+        vm.startPrank(unauthorized);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setMaxWithdrawalDelay(14 days);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenCalledByOwnerDirectly() public {
+        vm.startPrank(owner);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setMaxWithdrawalDelay(14 days);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenCalledByCurator() public {
+        vm.startPrank(curator);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setMaxWithdrawalDelay(14 days);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldAllowZeroDelay() public {
+        vm.startPrank(address(facet));
+
+        facet.setMaxWithdrawalDelay(0);
+
+        assertEq(facet.getMaxWithdrawalDelay(), 0, "Max withdrawal delay should be zero");
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldAllowMaxUint32() public {
+        vm.startPrank(address(facet));
+
+        uint32 maxValue = type(uint32).max;
+        facet.setMaxWithdrawalDelay(maxValue);
+
+        assertEq(facet.getMaxWithdrawalDelay(), maxValue, "Max withdrawal delay should be max uint32");
+        vm.stopPrank();
+    }
+
+    function test_getMaxWithdrawalDelay_ShouldReturnZeroByDefault() public view {
+        assertEq(facet.getMaxWithdrawalDelay(), 0, "Default max withdrawal delay should be zero");
+    }
+
+    function test_getMaxWithdrawalDelay_ShouldReturnCorrectValueAfterSet() public {
+        vm.startPrank(address(facet));
+
+        facet.setMaxWithdrawalDelay(21 days);
+        assertEq(facet.getMaxWithdrawalDelay(), 21 days, "Should return 21 days");
+
+        facet.setMaxWithdrawalDelay(1 days);
+        assertEq(facet.getMaxWithdrawalDelay(), 1 days, "Should return 1 day after update");
+
+        vm.stopPrank();
+    }
+
+    function test_getMaxWithdrawalDelay_ShouldReturnValueSetByHelper() public {
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(address(facet), 30 days);
+        assertEq(facet.getMaxWithdrawalDelay(), 30 days, "Should return value set by helper");
+    }
 }
