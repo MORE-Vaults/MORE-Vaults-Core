@@ -702,4 +702,125 @@ contract MoreVaultsLibTest is Test {
 
         assertEq(MoreVaultsLib._getCrossChainAccountingManager(), defaultManager, "Should return default manager");
     }
+
+    // ==================== MaxWithdrawalDelay Tests ====================
+
+    function test_withdrawFromRequest_ShouldRejectWhenMaxDelayExceeded() public {
+        address requester = address(0x123);
+        uint256 shares = 100e18;
+
+        // Warp to a future time so we have room to go back
+        vm.warp(block.timestamp + 30 days);
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.isWithdrawalQueueEnabled = true;
+        ds.witdrawTimelock = 1 days;
+        ds.maxWithdrawalDelay = 14 days;
+
+        // Set withdrawal request - timelock ended 15 days ago (exceeds maxWithdrawalDelay)
+        ds.withdrawalRequests[requester].shares = shares;
+        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 15 days;
+
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+
+        assertFalse(result, "Should reject withdrawal when max delay exceeded");
+    }
+
+    function test_withdrawFromRequest_ShouldAllowAtExactMaxDelay() public {
+        address requester = address(0x123);
+        uint256 shares = 100e18;
+
+        // Warp to a future time so we have room to go back
+        vm.warp(block.timestamp + 30 days);
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.isWithdrawalQueueEnabled = true;
+        ds.witdrawTimelock = 1 days;
+        ds.maxWithdrawalDelay = 14 days;
+
+        // Set withdrawal request - timelock ended exactly 14 days ago
+        ds.withdrawalRequests[requester].shares = shares;
+        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 14 days;
+
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+
+        assertTrue(result, "Should allow withdrawal at exact max delay");
+    }
+
+    function test_withdrawFromRequest_ShouldRejectWhenMaxDelayIsZero() public {
+        address requester = address(0x123);
+        uint256 shares = 100e18;
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.isWithdrawalQueueEnabled = true;
+        ds.witdrawTimelock = 1 days;
+        ds.maxWithdrawalDelay = 0; // Zero delay - requests expire immediately
+
+        // Set withdrawal request - timelock just ended
+        ds.withdrawalRequests[requester].shares = shares;
+        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp;
+
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+
+        assertTrue(result, "Should allow withdrawal exactly when timelock ends with zero delay");
+
+        // Now try 1 second later - should fail
+        vm.warp(block.timestamp + 1);
+        ds.withdrawalRequests[requester].shares = shares; // Reset shares
+
+        result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+
+        assertFalse(result, "Should reject withdrawal after timelock with zero delay");
+    }
+
+    function test_withdrawFromRequest_ShouldRejectWhenTimelockNotEnded() public {
+        address requester = address(0x123);
+        uint256 shares = 100e18;
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.isWithdrawalQueueEnabled = true;
+        ds.witdrawTimelock = 1 days;
+        ds.maxWithdrawalDelay = 14 days;
+
+        // Set withdrawal request - timelock ends in the future
+        ds.withdrawalRequests[requester].shares = shares;
+        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp + 1 hours;
+
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+
+        assertFalse(result, "Should reject withdrawal when timelock not ended");
+    }
+
+    function test_withdrawFromRequest_ShouldAllowPartialWithdrawal() public {
+        address requester = address(0x123);
+        uint256 totalShares = 100e18;
+        uint256 withdrawShares = 30e18;
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.isWithdrawalQueueEnabled = true;
+        ds.witdrawTimelock = 1 days;
+        ds.maxWithdrawalDelay = 14 days;
+
+        ds.withdrawalRequests[requester].shares = totalShares;
+        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1;
+
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, withdrawShares);
+
+        assertTrue(result, "Should allow partial withdrawal");
+        assertEq(ds.withdrawalRequests[requester].shares, totalShares - withdrawShares, "Should deduct partial shares");
+    }
+
+    function test_withdrawFromRequest_WithQueueDisabled_ShouldIgnoreMaxDelay() public {
+        address owner = address(0x123);
+        uint256 shares = 100e18;
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.isWithdrawalQueueEnabled = false; // Queue disabled
+        ds.maxWithdrawalDelay = 0; // Even with zero delay
+
+        // When queue is disabled, maxWithdrawalDelay should be ignored
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, owner, shares);
+
+        assertTrue(result, "Should allow withdrawal when queue disabled regardless of maxDelay");
+    }
 }
