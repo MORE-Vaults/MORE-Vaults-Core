@@ -754,7 +754,7 @@ library MoreVaultsLib {
             return _msgSender == _requester;
         }
 
-        if (isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) && request.shares >= _shares) {
+        if (isWithdrawableRequest(request.timelockEndsAt) && request.shares >= _shares) {
             request.shares -= _shares;
             return true;
         }
@@ -762,10 +762,10 @@ library MoreVaultsLib {
         return false;
     }
 
-    function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
+    function isWithdrawableRequest(uint256 _timelockEndsAt) internal view returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
-        return block.timestamp >= _timelockEndsAt && block.timestamp - _timelockEndsAt <= ds.maxWithdrawalDelay;
+        uint256 maxWithdrawalDelay = ds.maxWithdrawalDelay < 1 days ? 1 days : ds.maxWithdrawalDelay;
+        return block.timestamp >= _timelockEndsAt && block.timestamp - _timelockEndsAt <= maxWithdrawalDelay;
     }
 
     function factoryAddress() internal view returns (address) {

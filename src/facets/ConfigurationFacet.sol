@@ -178,6 +178,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function setMaxWithdrawalDelay(uint32 _delay) external {
         AccessControlLib.validateDiamond(msg.sender);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_delay < 1 days) revert InvalidMaxWithdrawalDelay();
         ds.maxWithdrawalDelay = _delay;
         emit MaxWithdrawalDelaySet(_delay);
     }
@@ -228,7 +229,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function getMaxWithdrawalDelay() external view returns (uint32) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        return ds.maxWithdrawalDelay;
+        return ds.maxWithdrawalDelay < 1 days ? 1 days : ds.maxWithdrawalDelay;
     }
 
     /**

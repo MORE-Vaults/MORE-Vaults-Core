@@ -655,12 +655,11 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_setMaxWithdrawalDelay_ShouldAllowZeroDelay() public {
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenZeroDelay() public {
         vm.startPrank(address(facet));
 
+        vm.expectRevert(IConfigurationFacet.InvalidMaxWithdrawalDelay.selector);
         facet.setMaxWithdrawalDelay(0);
-
-        assertEq(facet.getMaxWithdrawalDelay(), 0, "Max withdrawal delay should be zero");
         vm.stopPrank();
     }
 
@@ -674,8 +673,8 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
-    function test_getMaxWithdrawalDelay_ShouldReturnZeroByDefault() public view {
-        assertEq(facet.getMaxWithdrawalDelay(), 0, "Default max withdrawal delay should be zero");
+    function test_getMaxWithdrawalDelay_ShouldReturnOneDayByDefault() public view {
+        assertEq(facet.getMaxWithdrawalDelay(), 1 days, "Default max withdrawal delay should be one day");
     }
 
     function test_getMaxWithdrawalDelay_ShouldReturnCorrectValueAfterSet() public {

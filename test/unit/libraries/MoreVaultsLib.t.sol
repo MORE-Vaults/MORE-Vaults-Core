@@ -747,32 +747,6 @@ contract MoreVaultsLibTest is Test {
         assertTrue(result, "Should allow withdrawal at exact max delay");
     }
 
-    function test_withdrawFromRequest_ShouldRejectWhenMaxDelayIsZero() public {
-        address requester = address(0x123);
-        uint256 shares = 100e18;
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = true;
-        ds.witdrawTimelock = 1 days;
-        ds.maxWithdrawalDelay = 0; // Zero delay - requests expire immediately
-
-        // Set withdrawal request - timelock just ended
-        ds.withdrawalRequests[requester].shares = shares;
-        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp;
-
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
-
-        assertTrue(result, "Should allow withdrawal exactly when timelock ends with zero delay");
-
-        // Now try 1 second later - should fail
-        vm.warp(block.timestamp + 1);
-        ds.withdrawalRequests[requester].shares = shares; // Reset shares
-
-        result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
-
-        assertFalse(result, "Should reject withdrawal after timelock with zero delay");
-    }
-
     function test_withdrawFromRequest_ShouldRejectWhenTimelockNotEnded() public {
         address requester = address(0x123);
         uint256 shares = 100e18;
