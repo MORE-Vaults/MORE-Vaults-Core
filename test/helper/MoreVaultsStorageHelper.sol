@@ -765,4 +765,20 @@ library MoreVaultsStorageHelper {
         // Increment array length
         vm.store(contractAddress, slot, bytes32(length + 1));
     }
+
+    // Functions for USER_HIGH_WATER_MARK_PER_SHARE (slot 38) - mapping(address => uint256)
+    function setUserHighWaterMarkPerShare(address contractAddress, address user, uint256 value) internal {
+        setMappingValue(
+            contractAddress, USER_HIGH_WATER_MARK_PER_SHARE, bytes32(uint256(uint160(user))), bytes32(value)
+        );
+    }
+
+    function getUserHighWaterMarkPerShare(address contractAddress, address user) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, USER_HIGH_WATER_MARK_PER_SHARE, bytes32(uint256(uint160(user)))));
+    }
+
+    // Function for lastTotalAssets (for compatibility)
+    function getLastTotalAssets(address contractAddress) internal view returns (uint256) {
+        return uint256(getStorageValue(contractAddress, LAST_TOTAL_ASSETS));
+    }
 }
