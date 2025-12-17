@@ -264,12 +264,18 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         // Case when upon deposit request assets will be transferred to the vault, but shares will not be minted back until request is executed
         if (balances.sharesAfter == balances.sharesBefore && balances.assetsAfter < balances.assetsBefore) {
-            ds.lockedTokens[balances.asset] += balances.assetsBefore - balances.assetsAfter;
+            // Only allow one pending deposit request per vault/asset
+            if (ds.lockedAssetsPerVault[vault][balances.asset] > 0) revert PendingOperationExists();
+            uint256 assetsLocked = balances.assetsBefore - balances.assetsAfter;
+            ds.lockedAssetsPerVault[vault][balances.asset] = assetsLocked;
             return;
         }
         // Case when upon withdrawal request shares will be transferred to the vault, but assets will not be transferred back until request is executed
         if (balances.sharesAfter < balances.sharesBefore && balances.assetsAfter == balances.assetsBefore) {
-            ds.lockedTokens[vault] += balances.sharesBefore - balances.sharesAfter;
+            // Only allow one pending redeem request per vault
+            if (ds.lockedSharesPerVault[vault] > 0) revert PendingOperationExists();
+            uint256 sharesLocked = balances.sharesBefore - balances.sharesAfter;
+            ds.lockedSharesPerVault[vault] = sharesLocked;
             return;
         }
 
@@ -278,16 +284,11 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         if (balances.sharesBefore < balances.sharesAfter && balances.assetsAfter == balances.assetsBefore) {
             // If total supply increased, it means that deposit request was executed, otherwise withdrawal request was cancelled
             if (balances.totalSupplyAfter > balances.totalSupplyBefore) {
-                uint256 assetsUnlocked = IERC4626(vault).convertToAssets(balances.sharesAfter - balances.sharesBefore);
-                ds.lockedTokens[balances.asset] -= assetsUnlocked;
+                // Deposit finalization: clear locked assets
+                ds.lockedAssetsPerVault[vault][balances.asset] = 0;
             } else {
-                // Withdrawal cancel: shares returned, unlock only this request's shares
-                uint256 sharesReturned = balances.sharesAfter - balances.sharesBefore;
-                if (ds.lockedTokens[vault] >= sharesReturned) {
-                    ds.lockedTokens[vault] -= sharesReturned;
-                } else {
-                    ds.lockedTokens[vault] = 0;
-                }
+                // Withdrawal cancel: shares returned, clear locked shares
+                ds.lockedSharesPerVault[vault] = 0;
             }
             return;
         }
@@ -295,17 +296,12 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         if (balances.sharesAfter == balances.sharesBefore && balances.assetsBefore < balances.assetsAfter) {
             // If total supply decreased, it means that withdrawal request was executed, otherwise deposit request was cancelled
             if (balances.totalSupplyBefore > balances.totalSupplyAfter) {
-                uint256 sharesUnlocked = IERC4626(vault).convertToShares(balances.assetsAfter - balances.assetsBefore);
-                ds.lockedTokens[vault] -= sharesUnlocked;
+                // Withdrawal finalization: clear locked shares
+                ds.lockedSharesPerVault[vault] = 0;
                 MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC4626_ID], vault);
             } else {
-                // Deposit cancel: assets returned, unlock only this request's assets
-                uint256 assetsReturned = balances.assetsAfter - balances.assetsBefore;
-                if (ds.lockedTokens[balances.asset] >= assetsReturned) {
-                    ds.lockedTokens[balances.asset] -= assetsReturned;
-                } else {
-                    ds.lockedTokens[balances.asset] = 0;
-                }
+                // Deposit cancel: assets returned, clear locked assets
+                ds.lockedAssetsPerVault[vault][balances.asset] = 0;
             }
             return;
         }
