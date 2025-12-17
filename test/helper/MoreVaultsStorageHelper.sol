@@ -59,6 +59,8 @@ library MoreVaultsStorageHelper {
     uint256 constant USER_HIGH_WATER_MARK_PER_SHARE = 38;
     uint256 constant NATIVE_PENDING = 39;
     uint256 constant MAX_WITHDRAWAL_DELAY = 40;
+    uint256 constant LOCKED_ASSETS_PER_VAULT = 41;
+    uint256 constant LOCKED_SHARES_PER_VAULT = 42; 
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -748,12 +750,6 @@ library MoreVaultsStorageHelper {
     function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
     }
-
-    // New storage positions for lockedAssetsPerVault and lockedSharesPerVault
-    // These are added at the END of the struct to preserve existing storage layout
-    // After maxWithdrawalDelay (slot 39)
-    uint256 constant LOCKED_ASSETS_PER_VAULT = 40; // After maxWithdrawalDelay (slot 39)
-    uint256 constant LOCKED_SHARES_PER_VAULT = 41; // After lockedAssetsPerVault (slot 40)
 
     // Functions for lockedAssetsPerVault mapping (vault => asset => uint256)
     function getLockedAssetsPerVault(address contractAddress, address vault, address asset) internal view returns (uint256) {
