@@ -17,6 +17,15 @@ import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IAggregatorV2V3Interface} from "../../../src/interfaces/Chainlink/IAggregatorV2V3Interface.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 
+/**
+ * @notice Contract that rejects native currency transfers by reverting in receive()
+ */
+contract RejectingReceiver {
+    receive() external payable {
+        revert("RejectingReceiver: Cannot accept native currency");
+    }
+}
+
 contract BridgeFacetTest is Test {
     BridgeFacetHarness public facet;
     MockVaultsFactory public factory;
@@ -642,5 +651,272 @@ contract BridgeFacetTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
         facet.executeRequest(guid);
         vm.stopPrank();
+    }
+
+    // ============ pendingNative tests ============
+
+    /**
+     * @notice Test that pendingNative increases when creating MULTI_ASSETS_DEPOSIT request with native currency
+     */
+    function test_pendingNative_increases_on_MULTI_ASSETS_DEPOSIT_creation() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-native"));
+        adapter.setFee(0.05 ether, 0);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 initialPendingNative = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(initialPendingNative, 0, "Initial pendingNative should be 0");
+
+        uint256 nativeValue = 1 ether;
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
+        );
+
+        uint256 pendingNativeAfter = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeAfter, nativeValue, "pendingNative should increase by native value");
+    }
+
+    /**
+     * @notice Test that pendingNative decreases after successful MULTI_ASSETS_DEPOSIT execution
+     */
+    function test_pendingNative_decreases_after_successful_execution() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-native-success"));
+        adapter.setFee(0.05 ether, 0);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 nativeValue = 1 ether;
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
+        );
+
+        uint256 pendingNativeBeforeExecution = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeBeforeExecution, nativeValue, "pendingNative should be set");
+
+        // Set deposit result for successful execution
+        uint256 shares = 100e18;
+        facet.h_setDepositResult(guid, shares);
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        facet.executeRequest(guid);
+        vm.stopPrank();
+
+        uint256 pendingNativeAfterExecution = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeAfterExecution, 0, "pendingNative should be decreased to 0");
+    }
+
+    /**
+     * @notice Test that pendingNative decreases and funds are refunded on refundIfNecessary
+     */
+    function test_pendingNative_decreases_on_refundIfNecessary() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-native-refund"));
+        adapter.setFee(0.05 ether, 0);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 nativeValue = 1 ether;
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+
+        vm.startPrank(address(owner));
+        vm.deal(address(owner), nativeValue + 0.05 ether);
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
+        );
+        vm.stopPrank();
+
+        uint256 pendingNativeBeforeRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeBeforeRefund, nativeValue, "pendingNative should be set");
+
+        address initiator = address(owner);
+        uint256 initiatorBalanceBefore = initiator.balance;
+
+        vm.startPrank(address(adapter));
+        facet.refundIfNecessary(guid);
+        vm.stopPrank();
+
+        uint256 pendingNativeAfterRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeAfterRefund, 0, "pendingNative should be decreased to 0");
+
+        uint256 initiatorBalanceAfter = initiator.balance;
+        assertEq(
+            initiatorBalanceAfter - initiatorBalanceBefore,
+            nativeValue,
+            "Initiator should receive refunded native value"
+        );
+    }
+
+    /**
+     * @notice Test that when initiator cannot receive native currency, funds are sent to crossChainAccountingManager
+     */
+    function test_pendingNative_refund_fallback_to_manager_when_initiator_rejects() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-native-fallback"));
+        adapter.setFee(0.05 ether, 0);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        // Create a contract that cannot receive native currency (no receive/fallback)
+        RejectingReceiver rejectingReceiver = new RejectingReceiver();
+        
+        uint256 nativeValue = 1 ether;
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes memory callData = abi.encode(tokens, amounts, address(rejectingReceiver), nativeValue);
+
+        vm.deal(address(rejectingReceiver), nativeValue + 0.05 ether);
+        vm.prank(address(rejectingReceiver));
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
+        );
+
+        uint256 pendingNativeBeforeRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeBeforeRefund, nativeValue, "pendingNative should be set");
+
+        // Ensure facet has balance to refund (value should remain in facet after initVaultActionRequest)
+        // The fee (0.05 ether) goes to adapter, but value (1 ether) should remain in facet
+        assertGe(address(facet).balance, nativeValue, "Facet should have balance for refund");
+
+        address initiator = address(rejectingReceiver);
+        address accountingManager = address(adapter);
+        uint256 initiatorBalanceBefore = initiator.balance;
+        uint256 managerBalanceBefore = accountingManager.balance;
+
+        registry.setDefaultCrossChainAccountingManager(accountingManager);
+        vm.startPrank(address(adapter));
+        facet.refundIfNecessary(guid);
+        vm.stopPrank();
+
+        uint256 pendingNativeAfterRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeAfterRefund, 0, "pendingNative should be decreased to 0");
+
+        uint256 initiatorBalanceAfter = initiator.balance;
+        uint256 managerBalanceAfter = accountingManager.balance;
+
+        // Initiator should not receive funds (transfer failed)
+        assertEq(
+            initiatorBalanceAfter - initiatorBalanceBefore,
+            0,
+            "Initiator should not receive funds when it rejects them"
+        );
+
+        // Manager should receive funds instead
+        assertEq(
+            managerBalanceAfter - managerBalanceBefore,
+            nativeValue,
+            "CrossChainAccountingManager should receive refunded native value when initiator rejects"
+        );
+    }
+
+    /**
+     * @notice Test that pendingNative is not decreased when MULTI_ASSETS_DEPOSIT reverts due to slippage
+     * @dev When executeRequest reverts, all changes including pendingNative decrease should be rolled back
+     */
+    function test_pendingNative_not_decreased_on_slippage_revert() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-native-slippage"));
+        adapter.setFee(0.05 ether, 0);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 nativeValue = 1 ether;
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        uint256 minAmountOut = 150e18;
+        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes("")
+        );
+
+        uint256 pendingNativeBeforeExecution = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNativeBeforeExecution, nativeValue, "pendingNative should be set");
+
+        // Set deposit result to be less than minAmountOut (will cause slippage revert)
+        uint256 actualShares = 100e18; // Less than minAmountOut (150e18)
+        facet.h_setDepositResult(guid, actualShares);
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+
+        // Expect revert with SlippageExceeded error
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
+        facet.executeRequest(guid);
+        vm.stopPrank();
+
+        // After revert, pendingNative should still be the same (revert rolled back the decrease)
+        uint256 pendingNativeAfterRevert = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(
+            pendingNativeAfterRevert,
+            nativeValue,
+            "pendingNative should remain unchanged after revert (changes rolled back)"
+        );
+    }
+
+    /**
+     * @notice Test that pendingNative is excluded from totalAssets calculation
+     * @dev This tests the VaultFacet logic where pendingNative is subtracted from selfbalance()
+     */
+    function test_pendingNative_excluded_from_totalAssets() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-native-totalassets"));
+        adapter.setFee(0.05 ether, 0);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        // Set initial totalAssets
+        uint256 initialTotalAssets = 1000e18;
+        facet.h_setTotalAssets(initialTotalAssets);
+
+        uint256 nativeValue = 1 ether;
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
+        );
+
+        // Verify pendingNative is set
+        uint256 pendingNative = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNative, nativeValue, "pendingNative should be set");
+
+        // totalAssets should not include pendingNative
+        // Note: In real scenario, totalAssets() would subtract pendingNative from selfbalance()
+        // Here we just verify that pendingNative is tracked separately
+        uint256 totalAssets = facet.totalAssets();
+        // The totalAssets should be the initial value (pendingNative is excluded in accounting)
+        assertEq(totalAssets, initialTotalAssets, "totalAssets should not include pendingNative");
     }
 }

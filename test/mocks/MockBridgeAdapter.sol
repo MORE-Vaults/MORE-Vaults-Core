@@ -86,4 +86,6 @@ contract MockBridgeAdapter is IBridgeAdapter {
         address[] memory a;
         return a;
     }
+
+    receive() external payable {}
 }

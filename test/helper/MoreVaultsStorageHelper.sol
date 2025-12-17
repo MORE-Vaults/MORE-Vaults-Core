@@ -57,7 +57,8 @@ library MoreVaultsStorageHelper {
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
     uint256 constant WITHDRAWAL_FEE = 37;
     uint256 constant USER_HIGH_WATER_MARK_PER_SHARE = 38;
-    uint256 constant MAX_WITHDRAWAL_DELAY = 39;
+    uint256 constant NATIVE_PENDING = 39;
+    uint256 constant MAX_WITHDRAWAL_DELAY = 40;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -780,5 +781,14 @@ library MoreVaultsStorageHelper {
     // Function for lastTotalAssets (for compatibility)
     function getLastTotalAssets(address contractAddress) internal view returns (uint256) {
         return uint256(getStorageValue(contractAddress, LAST_TOTAL_ASSETS));
+    }
+
+    // Functions for pendingNative (slot 39) - uint256
+    function setPendingNative(address contractAddress, uint256 value) internal {
+        setStorageValue(contractAddress, NATIVE_PENDING, bytes32(value));
+    }
+
+    function getPendingNative(address contractAddress) internal view returns (uint256) {
+        return uint256(getStorageValue(contractAddress, NATIVE_PENDING));
     }
 }

@@ -135,6 +135,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         bool _allowFailure
     ) private view returns (uint256 _totalAssets, bool success) {
         success = true;
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        uint256 pendingNative = ds.pendingNative;
         assembly {
             mstore(_freePtr, BALANCE_OF_SELECTOR)
         }
@@ -167,10 +169,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 toConvert := add(toConvert, sload(slot))
                 // if the asset is the wrapped native, add the native balance
                 if eq(_wrappedNative, asset) {
-                    // if the vault processes native deposits, make sure to exclude msg.value
+                    // if the vault processes native deposits, make sure to exclude msg.value and pendingNative
                     switch iszero(_isNativeDeposit)
-                    case 1 { toConvert := add(toConvert, selfbalance()) }
-                    default { toConvert := add(toConvert, sub(selfbalance(), callvalue())) }
+                    case 1 { toConvert := add(toConvert, sub(selfbalance(), pendingNative)) }
+                    default { toConvert := add(toConvert, sub(sub(selfbalance(), callvalue()), pendingNative)) }
                 }
             }
             if (!success) {

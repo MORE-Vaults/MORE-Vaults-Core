@@ -103,6 +103,13 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function executeRequest(bytes32 guid) external;
 
     /**
+     * @dev Refunds the request if necessary
+     * @param guid Request number to refund
+     * @notice Can only be called by the cross-chain accounting manager
+     */
+    function refundIfNecessary(bytes32 guid) external;
+
+    /**
      *
      **
      * @dev Returns the request info for a given guid

@@ -177,7 +177,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @return The current max withdrawal delay
      */
     function getMaxWithdrawalDelay() external view returns (uint32);
-    
+
     /**
      * @notice Gets list of depositable assets
      * @return Array of depositable asset addresses

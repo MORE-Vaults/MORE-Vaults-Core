@@ -174,6 +174,7 @@ library MoreVaultsLib {
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
         mapping(address => uint256) userHighWaterMarkPerShare;
+        uint256 pendingNative;
         uint32 maxWithdrawalDelay;
     }
 
@@ -334,10 +335,10 @@ library MoreVaultsLib {
         emit DepositCapacitySet(previousCapacity, capacity);
     }
 
-    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) internal {
+    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata underlyingAssetCaps) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         for (uint256 i; i < depositors.length;) {
-            ds.depositWhitelist[depositors[i]] = undelyingAssetCaps[i];
+            ds.depositWhitelist[depositors[i]] = underlyingAssetCaps[i];
             unchecked {
                 ++i;
             }

@@ -362,6 +362,10 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
             }
         }
 
+        if (!readSuccess || !executionSuccess) {
+            IBridgeFacet(info.vault).refundIfNecessary(_guid);
+        }
+
         // Step 3: Call composer callback to handle the result
         if (info.initiator == vaultsFactory.vaultComposer(info.vault)) {
             _callbackToComposer(info.initiator, _guid, readSuccess && executionSuccess);
@@ -550,4 +554,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
 
         emit TrustedOFTUpdated(oft, trusted);
     }
+
+    receive() external payable {}
 }

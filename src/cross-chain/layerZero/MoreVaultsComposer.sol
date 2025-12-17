@@ -132,7 +132,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
         if (
-            !LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)
+            !LzAdapter(payable(VAULT_FACTORY.lzAdapter())).isTrustedOFT(_composeSender)
                 || !IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())
         ) {
             revert InvalidComposeCaller(_composeSender);

@@ -160,6 +160,18 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         uint256 minAmountOut,
         bytes calldata extraOptions
     ) internal returns (bytes32 guid) {
+        MessagingFee memory fee = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
+            .quoteReadFee(vaults, eids, extraOptions);
+        uint256 value;
+        uint256 totalAssets;
+        if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+            (,,, value) = abi.decode(actionCallData, (address[], uint256[], address, uint256));
+            ds.pendingNative += value;
+            if (value + fee.nativeFee > msg.value) {
+                revert NotEnoughMsgValueProvided();
+            }
+        }
+
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
             timestamp: uint64(block.timestamp),
@@ -171,16 +183,10 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             finalizationResult: 0,
             minAmountOut: minAmountOut
         });
-        MessagingFee memory fee =
-            IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager()).quoteReadFee(vaults, eids, extraOptions);
-        if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (,,, uint256 value) = abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
-            if (value + fee.nativeFee > msg.value) revert NotEnoughMsgValueProvided();
-        }
 
         guid =
         IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
-        .initiateCrossChainAccounting{value: msg.value}(
+        .initiateCrossChainAccounting{value: msg.value - value}(
             vaults, eids, extraOptions, msg.sender
         )
         .guid;
@@ -216,6 +222,27 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         _executeRequest(guid);
     }
 
+    /**
+     * @inheritdoc IBridgeFacet
+     */
+    function refundIfNecessary(bytes32 guid) external {
+        address crossChainAccountingManager = MoreVaultsLib._getCrossChainAccountingManager();
+        if (msg.sender != crossChainAccountingManager) {
+            revert OnlyCrossChainAccountingManager();
+        }
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        MoreVaultsLib.CrossChainRequestInfo storage requestInfo = ds.guidToCrossChainRequestInfo[guid];
+        if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+            (address[] memory tokens, uint256[] memory assets, address receiver, uint256 value) =
+                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
+            ds.pendingNative -= value;
+            (bool success, ) = requestInfo.initiator.call{value: value}("");
+            if (!success) {
+                crossChainAccountingManager.call{value: value}("");
+            } 
+        }
+    }
+
     function _executeRequest(bytes32 guid) internal returns (bytes memory result) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = ds.guidToCrossChainRequestInfo[guid];
@@ -242,6 +269,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                     bytes4(keccak256("deposit(address[],uint256[],address)")), tokens, assets, receiver
                 )
             );
+            ds.pendingNative -= value;
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
             (uint256 shares, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
             (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.mint.selector, shares, receiver));
