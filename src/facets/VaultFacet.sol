@@ -740,15 +740,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     /**
-     * @notice Accrue the interest of the vault (legacy version without user parameter)
-     * @dev Calculate the interest of the vault and mint the fee shares
-     * @param _totalAssets The total assets of the vault
-     */
-    function _accrueInterest(uint256 _totalAssets) internal {
-        _accrueInterest(_totalAssets, address(0));
-    }
-
-    /**
      * @notice Calculate fee shares for a specific user based on their High-Water Mark per Share
      * @dev Calculate the fee shares for a user's position only if current price per share exceeds their HWMpS
      * @param _totalAssets The total assets of the vault
@@ -763,10 +754,12 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             return 0;
         }
 
-        // Calculate current price per share (with decimals offset)
-        uint256 currentPricePerShare =
-            _totalAssets.mulDiv(10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor);
-
+        // Calculate current price per share (using same formula as _convertToAssets)
+        uint256 currentPricePerShare = (10 ** decimals()).mulDiv(
+            _totalAssets + 1,
+            totalSupply_ + 10 ** _decimalsOffset(),
+            Math.Rounding.Floor
+        );
         // Get user's High-Water Mark per Share
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
 
@@ -782,9 +775,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // Calculate profit above HWMpS for this user
-        uint256 userAssetsAtHWM = userShares.mulDiv(userHWMpS, 10 ** _decimalsOffset(), Math.Rounding.Floor);
+        uint256 userAssetsAtHWM = userShares.mulDiv(userHWMpS, 10 ** decimals(), Math.Rounding.Floor);
         uint256 userCurrentAssets =
-            userShares.mulDiv(currentPricePerShare, 10 ** _decimalsOffset(), Math.Rounding.Floor);
+            userShares.mulDiv(currentPricePerShare, 10 ** decimals(), Math.Rounding.Floor);
         uint256 userProfit = userCurrentAssets > userAssetsAtHWM ? userCurrentAssets - userAssetsAtHWM : 0;
 
         if (userProfit == 0) {
@@ -869,15 +862,19 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function _updateUserHWMpS(uint256 _totalAssets, address _user) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
-        uint256 totalSupply_ = totalSupply();
-        if (totalSupply_ == 0) {
+        if (balanceOf(_user) == 0) {
+            ds.userHighWaterMarkPerShare[_user] = 0;
             return;
         }
 
-        // Calculate current price per share (with decimals offset)
-        uint256 currentPricePerShare =
-            _totalAssets.mulDiv(10 ** _decimalsOffset(), totalSupply_ + 10 ** _decimalsOffset(), Math.Rounding.Floor);
+        // Calculate current price per share (using same formula as _convertToAssets)
+        // Price per share = (totalAssets + 1) / (totalSupply + 10^decimalsOffset)
+        uint256 totalSupply_ = totalSupply();
+        uint256 currentPricePerShare = (10 ** decimals()).mulDiv(
+            _totalAssets + 1,
+            totalSupply_ + 10 ** _decimalsOffset(),
+            Math.Rounding.Floor
+        );
 
         // Update HWMpS if current price is higher
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
@@ -1102,5 +1099,50 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         
         $._name = name_;
         $._symbol = symbol_;
+    }
+
+    function _update(address from, address to, uint256 value) internal virtual override {
+        if (from == address(0) || to == address(0)) {
+            super._update(from, to, value);
+            return;
+        }
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        // Get receiver's balance BEFORE transfer
+        uint256 balanceOfReceiverBefore = balanceOf(to);
+        
+        // Get sender's and receiver's HWMpS
+        uint256 fromHWMpS = ds.userHighWaterMarkPerShare[from];
+        uint256 toHWMpS = ds.userHighWaterMarkPerShare[to];
+
+        // Execute standard transfer
+        super._update(from, to, value);
+
+        // Get balances AFTER transfer
+        uint256 balanceOfSenderAfter = balanceOf(from);
+        uint256 balanceOfReceiverAfter = balanceOf(to);
+
+        // If sender's balance is now 0, reset their HWMpS to 0
+        if (balanceOfSenderAfter == 0) {
+            ds.userHighWaterMarkPerShare[from] = 0;
+        }
+
+        // If receiver had no tokens before transfer, set HWMpS equal to sender's HWMpS
+        if (balanceOfReceiverBefore == 0) {
+            ds.userHighWaterMarkPerShare[to] = fromHWMpS;
+            return;
+        }
+
+        // Calculate weighted average HWMpS
+        // Formula: new_HWMpS = (old_balance * old_HWMpS + transferred_tokens * sender_HWMpS) / new_balance
+        // If few tokens transferred - changes slightly, if many - more significantly
+        // HWMpS is already stored with decimals offset, so the formula simplifies
+        // HWMpS can decrease when receiving tokens with lower HWMpS
+        uint256 weightedSum = balanceOfReceiverBefore * toHWMpS + value * fromHWMpS;
+        uint256 newHWMpS = weightedSum / balanceOfReceiverAfter;
+
+        // Update receiver's HWMpS to the weighted average (can be lower than current HWMpS)
+        ds.userHighWaterMarkPerShare[to] = newHWMpS;
     }
 }

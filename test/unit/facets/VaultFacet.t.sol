@@ -26,7 +26,6 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
-import {console} from "forge-std/console.sol";
 import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
 
 contract VaultFacetTest is Test {
@@ -887,13 +886,12 @@ contract VaultFacetTest is Test {
         // HWMpS was set at price after first deposit: totalAssetsBeforeInterest / (totalSupplyBefore + 10^decimalsOffset)
         // Current price after interest: (totalAssetsBeforeInterest + totalInterest) / (totalSupplyBefore + 10^decimalsOffset)
         // User's profit = userSharesBefore * (currentPrice - HWMpS)
-        uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
-            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
+        uint256 hwmPrice = (10 ** IVaultFacet(facet).decimals()).mulDiv(
+            totalAssetsBeforeInterest + 1, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
         );
-        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest)
-        .mulDiv(10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
+        uint256 currentPrice = (10 ** IVaultFacet(facet).decimals()).mulDiv((totalAssetsBeforeInterest + totalInterest + 1), totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
 
-        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor);
+        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** IVaultFacet(facet).decimals(), Math.Rounding.Floor);
 
         // Expected fee assets
         uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
@@ -977,19 +975,15 @@ contract VaultFacetTest is Test {
         uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
 
         // Calculate expected fee based on user's profit above HWMpS
-        // HWMpS was set at price after first deposit: totalAssetsBeforeInterest / (totalSupplyBefore + 10^decimalsOffset)
-        // Current price after interest: (totalAssetsBeforeInterest + totalInterest) / (totalSupplyBefore + 10^decimalsOffset)
-        uint256 hwmPrice = totalAssetsBeforeInterest.mulDiv(
-            10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
+        uint256 hwmPrice = (10 ** IVaultFacet(facet).decimals()).mulDiv(
+            totalAssetsBeforeInterest + 1, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor
         );
-        uint256 currentPrice = (totalAssetsBeforeInterest + totalInterest)
-        .mulDiv(10 ** decimalsOffset, totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
+        uint256 currentPrice = (10 ** IVaultFacet(facet).decimals()).mulDiv((totalAssetsBeforeInterest + totalInterest + 1), totalSupplyBefore + 10 ** decimalsOffset, Math.Rounding.Floor);
 
-        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** decimalsOffset, Math.Rounding.Floor);
+        uint256 userProfit = userSharesBefore.mulDiv(currentPrice - hwmPrice, 10 ** IVaultFacet(facet).decimals(), Math.Rounding.Floor);
 
         // Expected fee assets
         uint256 expectedFeeAssets = userProfit.mulDiv(FEE, FEE_BASIS_POINT);
-
         // Check fee distribution (using approximate comparison as fee shares calculation may have rounding)
         assertGt(vaultFeeBalance, 0, "Should distribute fees to vault fee recipient");
         assertApproxEqRel(
@@ -1210,11 +1204,11 @@ contract VaultFacetTest is Test {
 
     function test_deposit_ShouldRevertWhenDepositWhitelistIsExceeded() public {
         address[] memory depositors = new address[](1);
-        address user2 = address(114);
-        depositors[0] = user2;
+        address testUser2 = address(114);
+        depositors[0] = testUser2;
         uint256[] memory undelyingAssetCaps = new uint256[](1);
         undelyingAssetCaps[0] = 10 ether;
-        MoreVaultsStorageHelper.setDepositWhitelist(facet, user2, 10 ether);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser2, 10 ether);
         MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
         // Mock oracle calls for price increase
         vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
@@ -1227,28 +1221,28 @@ contract VaultFacetTest is Test {
         );
         vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
         vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
-        vm.startPrank(user2);
-        MockERC20(asset).mint(user2, 100 ether);
+        vm.startPrank(testUser2);
+        MockERC20(asset).mint(testUser2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
         vm.expectRevert(
-            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user2, 100 ether, 10 ether)
+            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, testUser2, 100 ether, 10 ether)
         );
 
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-        VaultFacet(facet).deposit(100 ether, user2);
+        VaultFacet(facet).deposit(100 ether, testUser2);
         vm.stopPrank();
     }
 
     function test_mint_ShouldRevertWhenDepositWhitelistIsExceeded() public {
         address[] memory depositors = new address[](1);
-        address user2 = address(114);
-        depositors[0] = user2;
+        address testUser2 = address(114);
+        depositors[0] = testUser2;
         uint256[] memory undelyingAssetCaps = new uint256[](1);
         undelyingAssetCaps[0] = 10 ether;
-        MoreVaultsStorageHelper.setDepositWhitelist(facet, user2, 10 ether);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser2, 10 ether);
         MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
         // Mock oracle calls for price increase
         vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
@@ -1265,30 +1259,30 @@ contract VaultFacetTest is Test {
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-        vm.startPrank(user2);
-        MockERC20(asset).mint(user2, 100 ether);
+        vm.startPrank(testUser2);
+        MockERC20(asset).mint(testUser2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
         vm.expectRevert(
-            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user2, 100 ether, 10 ether)
+            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, testUser2, 100 ether, 10 ether)
         );
-        VaultFacet(facet).mint(10_000 ether, user2);
+        VaultFacet(facet).mint(10_000 ether, testUser2);
         vm.stopPrank();
     }
 
     function test_multiAssetDeposit_ShouldRevertWhenDeposit_WhitelistIsExceeded() public {
         address[] memory depositors = new address[](1);
-        address user2 = address(114);
-        depositors[0] = user2;
+        address testUser2 = address(114);
+        depositors[0] = testUser2;
         uint256[] memory undelyingAssetCaps = new uint256[](1);
         undelyingAssetCaps[0] = 10 ether;
-        MoreVaultsStorageHelper.setDepositWhitelist(facet, user2, 10 ether);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser2, 10 ether);
         MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
         MockERC20 mockAsset2 = new MockERC20("Test Asset 2", "TA2");
         address asset2 = address(mockAsset2);
         uint256 depositAmount = 100 ether;
         uint256 depositAmount2 = 200 ether;
 
-        MockERC20(asset2).mint(user2, depositAmount2);
+        MockERC20(asset2).mint(testUser2, depositAmount2);
         vm.prank(user);
         IERC20(asset2).approve(facet, type(uint256).max);
 
@@ -1321,13 +1315,13 @@ contract VaultFacetTest is Test {
         uint32[] memory eids = new uint32[](0);
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
-        vm.startPrank(user2);
-        MockERC20(asset).mint(user2, 100 ether);
+        vm.startPrank(testUser2);
+        MockERC20(asset).mint(testUser2, 100 ether);
         IERC20(asset).approve(facet, type(uint256).max);
         vm.expectRevert(
-            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user2, 300 ether, 10 ether)
+            abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, testUser2, 300 ether, 10 ether)
         );
-        VaultFacet(facet).deposit(tokens, amounts, user2);
+        VaultFacet(facet).deposit(tokens, amounts, testUser2);
         vm.stopPrank();
     }
 
@@ -1590,8 +1584,6 @@ contract VaultFacetTest is Test {
         // Calculate expected fee (10% of assets)
         uint256 expectedFee = (assets * withdrawalFee) / 10000;
         uint256 expectedNetAmount = assets - expectedFee;
-        console.log("expectedFee", expectedFee);
-        console.log("expectedNetAmount", expectedNetAmount);
 
         assertEq(userBalanceAfter - userBalanceBefore, expectedNetAmount);
         assertGt(feeRecipientBalanceAfter, feeRecipientBalanceBefore);
@@ -2133,5 +2125,299 @@ contract VaultFacetTest is Test {
 
         vm.expectRevert();
         VaultFacet(facet).totalAssets();
+    }
+
+    // ============ Tests for High-Water Mark per Share (HWMpS) ============
+
+    address public user2 = address(2);
+    address public user3 = address(3);
+
+    /**
+     * @notice Helper function to calculate price per share (with decimals offset)
+     * Use same formula as _convertToAssets: (1 share) * (totalAssets + 1) / (totalSupply + 10^decimalsOffset)
+     */
+    function _calculatePricePerShare(uint256 totalAssets, uint256 totalSupply) internal view returns (uint256) {
+        if (totalSupply == 0) return 0;
+        // Use same formula as _convertToAssets: (1 share) * (totalAssets + 1) / (totalSupply + 10^decimalsOffset)
+        return (10 ** IVaultFacet(facet).decimals()).mulDiv(totalAssets + 1, totalSupply + 10 ** decimalsOffset, Math.Rounding.Floor);
+    }
+
+    /**
+     * @notice Helper function to get current HWMpS
+     */
+    function _getHWMpS(address userAddress) internal view returns (uint256) {
+        return MoreVaultsStorageHelper.getUserHighWaterMarkPerShare(facet, userAddress);
+    }
+
+    /**
+     * @notice Test that HWMpS is set to current price per share on first deposit
+     */
+    function test_updateUserHWMpS_FirstDeposit_SetsHWMpSToCurrentPrice() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 depositAmount = 1000 ether;
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 totalAssets = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply = IERC20(facet).totalSupply();
+        uint256 expectedPricePerShare = _calculatePricePerShare(totalAssets, totalSupply);
+
+        uint256 userHWMpS = _getHWMpS(user);
+        assertEq(userHWMpS, expectedPricePerShare, "HWMpS should equal current price per share");
+    }
+
+    /**
+     * @notice Test that HWMpS increases when price per share increases
+     */
+    function test_updateUserHWMpS_PriceIncrease_UpdatesHWMpS() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 initialHWMpS = _getHWMpS(user);
+
+        // Simulate price increase by minting more assets to vault (simulating yield)
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Another deposit should update HWMpS
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 newTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 newTotalSupply = IERC20(facet).totalSupply();
+        uint256 newPricePerShare = _calculatePricePerShare(newTotalAssets, newTotalSupply);
+
+        uint256 finalHWMpS = _getHWMpS(user);
+        assertGt(finalHWMpS, initialHWMpS, "HWMpS should increase");
+        assertEq(finalHWMpS, newPricePerShare, "HWMpS should equal new price per share");
+    }
+
+    /**
+     * @notice Test that HWMpS is reset to 0 when user balance becomes 0
+     */
+    function test_updateUserHWMpS_ZeroBalance_ResetsHWMpSToZero() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit
+        uint256 depositAmount = 1000 ether;
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 hwmBefore = _getHWMpS(user);
+        assertGt(hwmBefore, 0, "HWMpS should be set");
+
+        // Withdraw all
+        uint256 shares = IERC20(facet).balanceOf(user);
+        vm.prank(user);
+        IVaultFacet(facet).redeem(shares, user, user);
+
+        uint256 hwmAfter = _getHWMpS(user);
+        assertEq(hwmAfter, 0, "HWMpS should be reset to 0");
+    }
+
+    /**
+     * @notice Test that new receiver gets sender's HWMpS when receiving tokens
+     */
+    function test_update_NewReceiver_GetsSenderHWMpS() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Setup user1
+        vm.prank(user);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        // User1 deposits
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 senderHWMpS = _getHWMpS(user);
+
+        // Transfer to user2 (who has no tokens)
+        vm.startPrank(user);
+        IERC20(facet).transfer(user2, IERC20(facet).balanceOf(user) / 2);
+        vm.stopPrank();
+
+        uint256 receiverHWMpS = _getHWMpS(user2);
+        assertEq(receiverHWMpS, senderHWMpS, "Receiver should get sender's HWMpS");
+    }
+
+    /**
+     * @notice Test weighted average HWMpS calculation when receiver already has tokens
+     */
+    function test_update_ExistingReceiver_CalculatesWeightedAverage() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Setup user2
+        MockERC20(asset).mint(user2, 10000 ether);
+        vm.prank(user2);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        // User1 deposits
+        uint256 depositAmount1 = 1000 ether;
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount1, user);
+        uint256 user1HWMpS = _getHWMpS(user);
+
+        // User2 deposits
+        uint256 depositAmount2 = 1000 ether;
+        vm.prank(user2);
+        IVaultFacet(facet).deposit(depositAmount2, user2);
+        uint256 user2HWMpS = _getHWMpS(user2);
+
+        // Get balances before transfer
+        uint256 user2BalanceBefore = IERC20(facet).balanceOf(user2);
+        uint256 transferShares = IERC20(facet).balanceOf(user) / 2;
+
+        // Transfer from user1 to user2
+        vm.prank(user);
+        IERC20(facet).transfer(user2, transferShares);
+
+        // Calculate expected weighted average
+        uint256 user2BalanceAfter = IERC20(facet).balanceOf(user2);
+        uint256 expectedHWMpS = (user2BalanceBefore * user2HWMpS + transferShares * user1HWMpS) / user2BalanceAfter;
+
+        uint256 finalHWMpS = _getHWMpS(user2);
+        assertEq(finalHWMpS, expectedHWMpS, "HWMpS should be weighted average");
+    }
+
+    /**
+     * @notice Test that HWMpS can decrease when receiving tokens with lower HWMpS
+     */
+    function test_update_ReceivingLowerHWMpS_CanDecreaseHWMpS() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Setup user2
+        MockERC20(asset).mint(user2, 10000 ether);
+        vm.prank(user2);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        // User1 deposits early (gets lower HWMpS)
+        uint256 depositAmount1 = 1000 ether;
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount1, user);
+        uint256 user1HWMpS = _getHWMpS(user);
+
+        // Simulate price increase
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // User2 deposits later (gets higher HWMpS)
+        uint256 depositAmount2 = 1000 ether;
+        vm.prank(user2);
+        IVaultFacet(facet).deposit(depositAmount2, user2);
+        uint256 user2HWMpS = _getHWMpS(user2);
+
+        assertGt(user2HWMpS, user1HWMpS, "User2 should have higher HWMpS");
+
+        // Transfer from user1 (lower HWMpS) to user2 (higher HWMpS)
+        uint256 user2BalanceBefore = IERC20(facet).balanceOf(user2);
+        uint256 transferShares = IERC20(facet).balanceOf(user) / 2;
+
+        vm.prank(user);
+        IERC20(facet).transfer(user2, transferShares);
+
+        uint256 finalHWMpS = _getHWMpS(user2);
+        assertLt(finalHWMpS, user2HWMpS, "HWMpS should decrease");
+        assertGt(finalHWMpS, user1HWMpS, "HWMpS should be between sender and receiver");
+    }
+
+    /**
+     * @notice Test that sender's HWMpS is reset to 0 when balance becomes 0
+     */
+    function test_update_SenderBalanceZero_ResetsHWMpSToZero() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Setup user2
+        MockERC20(asset).mint(user2, 10000 ether);
+        vm.prank(user2);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        // User1 deposits
+        uint256 depositAmount = 1000 ether;
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 hwmBefore = _getHWMpS(user);
+        assertGt(hwmBefore, 0, "HWMpS should be set");
+
+        // Transfer all tokens
+        uint256 balance = IERC20(facet).balanceOf(user);
+        vm.prank(user);
+        IERC20(facet).transfer(user2, balance);
+
+        uint256 hwmAfter = _getHWMpS(user);
+        assertEq(hwmAfter, 0, "HWMpS should be reset to 0");
+    }
+
+    /**
+     * @notice Test that HWMpS updates correctly after fee accrual
+     */
+    function test_updateUserHWMpS_AfterFeeAccrual_UpdatesCorrectly() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 initialHWMpS = _getHWMpS(user);
+        uint256 initialTotalSupply = IERC20(facet).totalSupply();
+
+        // Simulate yield by minting assets to vault
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Another deposit should accrue fees and update HWMpS
+        vm.prank(user);
+        uint256 newShares = IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+
+        uint256 finalHWMpS = _getHWMpS(user);
+
+        // Verify fee shares were minted (totalSupply increased more than just deposit)
+        assertGt(finalTotalSupply, initialTotalSupply + newShares, "Fee shares should be minted");
+        
+        // HWMpS should equal current price per share
+        assertEq(finalHWMpS, finalPricePerShare, "HWMpS should equal current price per share after fee accrual");
     }
 }
