@@ -54,6 +54,14 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
         return 1;
     }
 
+    function pendingDeposits(bytes32 guid) external view returns (PendingDeposit memory pendingDeposit) {
+        return pendingDeposit;
+    }
+
+    function totalNativePending() external view returns (uint256) {
+        return 0;
+    }
+
     // Required functions from IOAppComposer
     function lzCompose(
         address _from,
@@ -101,6 +109,10 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
     }
 
     function refundDeposit(bytes32 guid) external payable {
+        // Mock implementation
+    }
+
+    function rescue(address _token, address payable _to, uint256 _amount) external {
         // Mock implementation
     }
 

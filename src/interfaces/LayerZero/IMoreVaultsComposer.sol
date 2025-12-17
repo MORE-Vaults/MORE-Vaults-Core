@@ -12,6 +12,7 @@ interface IMoreVaultsComposer is IOAppComposer {
     event Refunded(bytes32 indexed guid); // 0xfe509803
 
     event Deposited(bytes32 sender, bytes32 recipient, uint32 dstEid, uint256 assetAmt, uint256 shareAmt); // 0xa53b96f2
+    event Rescued(address indexed _token, address indexed _to, uint256 indexed amountToRescue);
 
     /// ========================== Error Messages =====================================
     error ShareOFTNotAdapter(address shareOFT); // 0xfc1514ae
@@ -32,6 +33,22 @@ interface IMoreVaultsComposer is IOAppComposer {
     error SlippageExceeded(uint256 amountLD, uint256 minAmountLD); // 0x71c4efed
     error AlreadyInitialized(); // custom
     error VaultIsPaused();
+    error Unauthorized();
+    error ZeroAddress();
+    error InsufficientBalance();
+    error NativeTransferFailed();
+
+    /// @dev Structure to store pending async deposit information
+    struct PendingDeposit {
+        bytes32 depositor;
+        address tokenAddress;
+        address oftAddress;
+        uint256 assetAmount;
+        address refundAddress;
+        uint256 msgValue;
+        uint32 srcEid;
+        SendParam sendParam;
+    }
 
     /// ========================== GLOBAL VARIABLE FUNCTIONS =====================================
     function VAULT() external view returns (IVaultFacet);
@@ -47,6 +64,19 @@ interface IMoreVaultsComposer is IOAppComposer {
     /// ========================== Proxy OFT (deposit-only) =====================================
 
     function initialize(address _vault, address _shareOFT, address _vaultFactory) external;
+
+    /**
+     * @notice Returns the pending deposit info for the given guid
+     * @param guid The guid of the pending deposit
+     * @return The pending deposit info
+     */
+    function pendingDeposits(bytes32 guid) external view returns (PendingDeposit memory);
+
+    /**
+     * @notice Returns the total native pending amount (native currency locked in the composer to facilitate the async flow)
+     * @return The total native pending amount
+     */
+    function totalNativePending() external view returns (uint256);
 
     /**
      * @notice Quotes the send operation for the given OFT and SendParam
@@ -83,6 +113,5 @@ interface IMoreVaultsComposer is IOAppComposer {
 
     function refundDeposit(bytes32 guid) external payable;
 
-    /// ========================== Receive =====================================
-    receive() external payable;
+    function rescue(address _token, address payable _to, uint256 _amount) external;
 }
