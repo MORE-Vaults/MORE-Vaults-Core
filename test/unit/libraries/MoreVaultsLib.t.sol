@@ -529,11 +529,11 @@ contract MoreVaultsLibTest is Test {
 
         // Create storage arrays using helper
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.depositWhitelist[depositor1] = cap1;
-        ds.depositWhitelist[depositor2] = cap2;
+        ds.availableToDeposit[depositor1] = cap1;
+        ds.availableToDeposit[depositor2] = cap2;
 
-        assertEq(ds.depositWhitelist[depositor1], cap1, "First depositor cap should be set");
-        assertEq(ds.depositWhitelist[depositor2], cap2, "Second depositor cap should be set");
+        assertEq(ds.availableToDeposit[depositor1], cap1, "First depositor cap should be set");
+        assertEq(ds.availableToDeposit[depositor2], cap2, "Second depositor cap should be set");
     }
 
     // Tests for withdrawal request functions

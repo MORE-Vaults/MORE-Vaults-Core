@@ -525,7 +525,7 @@ contract ConfigurationFacetTest is Test {
         facet.setDepositWhitelist(depositors, undelyingAssetCaps);
         vm.stopPrank();
 
-        assertEq(facet.getDepositWhitelist(address(1)), 10 ether);
+        assertEq(facet.getAvailableToDeposit(address(1)), 10 ether);
     }
 
     function test_setDepositWhitelist_ShouldRevertWhenUnauthorized() public {
@@ -550,6 +550,121 @@ contract ConfigurationFacetTest is Test {
         vm.expectRevert(IConfigurationFacet.ArraysLengthsMismatch.selector);
         facet.setDepositWhitelist(depositors, undelyingAssetCaps);
         vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that new user gets both availableToDeposit and initialDepositCapPerUser set to the same value
+     */
+    function test_setDepositWhitelist_NewUser_SetsBothValuesEqual() public {
+        address newUser = address(0x100);
+        uint256 cap = 100 ether;
+
+        vm.startPrank(owner);
+        address[] memory depositors = new address[](1);
+        depositors[0] = newUser;
+        uint256[] memory caps = new uint256[](1);
+        caps[0] = cap;
+        facet.setDepositWhitelist(depositors, caps);
+        vm.stopPrank();
+
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), newUser),
+            cap,
+            "availableToDeposit should be set to cap"
+        );
+        assertEq(
+            MoreVaultsStorageHelper.getInitialDepositCapPerUser(address(facet), newUser),
+            cap,
+            "initialDepositCapPerUser should be set to cap"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit is preserved when new initialDepositCapPerUser is higher
+     */
+    function test_setDepositWhitelist_ExistingUser_PreservesAvailableToDepositWhenNewCapIsHigher() public {
+        address existingUser = address(0x200);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 50 ether; // User has used 50 ether
+        uint256 newCap = 150 ether; // New cap is higher
+
+        // Set up initial state: user already exists with initialCap and has used some of it
+        vm.startPrank(owner);
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        facet.setDepositWhitelist(depositors1, caps1);
+        vm.stopPrank();
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsStorageHelper.setDepositWhitelist(address(facet), existingUser, currentAvailableToDeposit);
+
+        // Update initialDepositCapPerUser to a higher value
+        vm.startPrank(owner);
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        facet.setDepositWhitelist(depositors2, caps2);
+        vm.stopPrank();
+
+        // availableToDeposit should be preserved
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), existingUser),
+            currentAvailableToDeposit,
+            "availableToDeposit should be preserved"
+        );
+        // initialDepositCapPerUser should be updated
+        assertEq(
+            MoreVaultsStorageHelper.getInitialDepositCapPerUser(address(facet), existingUser),
+            newCap,
+            "initialDepositCapPerUser should be updated"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit is capped when new initialDepositCapPerUser is lower
+     */
+    function test_setDepositWhitelist_ExistingUser_CapsAvailableToDepositWhenNewCapIsLower() public {
+        address existingUser = address(0x300);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 80 ether; // User has used 20 ether
+        uint256 newCap = 50 ether; // New cap is lower than current availableToDeposit
+
+        // Set up initial state: user already exists with initialCap and has used some of it
+        vm.startPrank(owner);
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        facet.setDepositWhitelist(depositors1, caps1);
+        vm.stopPrank();
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsStorageHelper.setDepositWhitelist(address(facet), existingUser, currentAvailableToDeposit);
+
+        // Update initialDepositCapPerUser to a lower value
+        vm.startPrank(owner);
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        facet.setDepositWhitelist(depositors2, caps2);
+        vm.stopPrank();
+
+        // availableToDeposit should be capped to newCap
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), existingUser),
+            newCap,
+            "availableToDeposit should be capped to newCap"
+        );
+        // initialDepositCapPerUser should be updated
+        assertEq(
+            MoreVaultsStorageHelper.getInitialDepositCapPerUser(address(facet), existingUser),
+            newCap,
+            "initialDepositCapPerUser should be updated"
+        );
     }
 
     function test_enableDepositWhitelist_ShouldEnableDepositWhitelist() public {

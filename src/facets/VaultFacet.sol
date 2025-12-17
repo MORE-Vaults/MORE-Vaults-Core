@@ -602,7 +602,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _validateCapacity(msgSender, newTotalAssets, totalConvertedAmount);
 
         shares = _convertToSharesWithTotals(totalConvertedAmount, totalSupply(), newTotalAssets, Math.Rounding.Floor);
-        _deposit(msgSender, receiver, tokens, assets, shares);
+        _deposit(msgSender, receiver, tokens, assets, shares, totalConvertedAmount);
 
         if (ds.isNativeDeposit) {
             ds.isNativeDeposit = false;
@@ -687,7 +687,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         address receiver,
         address[] calldata tokens,
         uint256[] calldata assets,
-        uint256 shares
+        uint256 shares,
+        uint256 totalConvertedAmount
     ) internal {
         for (uint256 i; i < assets.length;) {
             SafeERC20.safeTransferFrom(IERC20(tokens[i]), caller, address(this), assets[i]);
@@ -698,7 +699,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _mint(receiver, shares);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        _changeDepositCap(ds, caller, convertToAssets(shares), true);
+        _changeDepositCap(ds, caller, totalConvertedAmount, true);
 
         emit Deposit(caller, receiver, tokens, assets, shares);
     }
@@ -807,8 +808,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (ds.isWhitelistEnabled) {
-            if (ds.depositWhitelist[receiver] < newAssets) {
-                revert ERC4626ExceededMaxDeposit(receiver, newAssets, ds.depositWhitelist[receiver]);
+            if (ds.availableToDeposit[receiver] < newAssets) {
+                revert ERC4626ExceededMaxDeposit(receiver, newAssets, ds.availableToDeposit[receiver]);
             }
         }
 
@@ -825,6 +826,14 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
     }
 
+    /**
+     * @notice Changes the dynamic deposit limit for a user
+     * @dev On deposit decreases availableToDeposit, on withdrawal increases it, but not more than initialDepositCapPerUser
+     * @param ds Storage structure
+     * @param receiver User address
+     * @param assets Amount of assets
+     * @param isDecrease true on deposit (decrease limit), false on withdrawal (increase limit)
+     */
     function _changeDepositCap(
         MoreVaultsLib.MoreVaultsStorage storage ds,
         address receiver,
@@ -832,8 +841,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         bool isDecrease
     ) internal {
         if (ds.isWhitelistEnabled) {
-            ds.depositWhitelist[receiver] =
-                isDecrease ? ds.depositWhitelist[receiver] - assets : ds.depositWhitelist[receiver] + assets;
+            if (isDecrease) {
+                // On deposit, decrease the available limit
+                ds.availableToDeposit[receiver] =
+                    ds.availableToDeposit[receiver] - assets;
+            } else {
+                // On withdrawal, increase the available limit, but not more than initialDepositCapPerUser
+                uint256 sum = ds.availableToDeposit[receiver] + assets;
+                ds.availableToDeposit[receiver] =
+                    sum > ds.initialDepositCapPerUser[receiver] ? ds.initialDepositCapPerUser[receiver] : sum;
+            }
         }
     }
 
@@ -998,7 +1015,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         } else {
             uint256 maxToDeposit = ds.depositCapacity - assetsInVault;
             if (ds.isWhitelistEnabled) {
-                maxToDeposit = Math.min(maxToDeposit, ds.depositWhitelist[user]);
+                maxToDeposit = Math.min(maxToDeposit, ds.availableToDeposit[user]);
             }
             return maxToDeposit;
         }

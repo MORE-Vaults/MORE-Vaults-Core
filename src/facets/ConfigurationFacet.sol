@@ -291,8 +291,8 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function getDepositWhitelist(address depositor) external view returns (uint256) {
-        return MoreVaultsLib.moreVaultsStorage().depositWhitelist[depositor];
+    function getAvailableToDeposit(address depositor) external view returns (uint256) {
+        return MoreVaultsLib.moreVaultsStorage().availableToDeposit[depositor];
     }
 
     /**

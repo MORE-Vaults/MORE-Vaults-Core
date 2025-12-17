@@ -60,7 +60,8 @@ library MoreVaultsStorageHelper {
     uint256 constant NATIVE_PENDING = 39;
     uint256 constant MAX_WITHDRAWAL_DELAY = 40;
     uint256 constant LOCKED_ASSETS_PER_VAULT = 41;
-    uint256 constant LOCKED_SHARES_PER_VAULT = 42; 
+    uint256 constant LOCKED_SHARES_PER_VAULT = 42;
+    uint256 constant INITIAL_DEPOSIT_CAP_PER_USER = 43;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -526,8 +527,13 @@ library MoreVaultsStorageHelper {
         );
     }
 
-    function getDepositWhitelist(address contractAddress, address depositor) internal view returns (uint256) {
+    function getAvailableToDeposit(address contractAddress, address depositor) internal view returns (uint256) {
         return uint256(getMappingValue(contractAddress, DEPOSIT_WHITELIST, bytes32(uint256(uint160(depositor)))));
+    }
+
+    // Alias functions for better naming (availableToDeposit)
+    function setAvailableToDeposit(address contractAddress, address depositor, uint256 underlyingAssetCap) internal {
+        setDepositWhitelist(contractAddress, depositor, underlyingAssetCap);
     }
 
     function setIsNecessaryToCheckLock(address contractAddress, address token, bool isNecessaryToCheckLock) internal {
@@ -826,5 +832,16 @@ library MoreVaultsStorageHelper {
 
     function getPendingNative(address contractAddress) internal view returns (uint256) {
         return uint256(getStorageValue(contractAddress, NATIVE_PENDING));
+    }
+
+    // Functions for INITIAL_DEPOSIT_CAP_PER_USER (slot 43) - mapping(address => uint256)
+    function setInitialDepositCapPerUser(address contractAddress, address user, uint256 value) internal {
+        setMappingValue(
+            contractAddress, INITIAL_DEPOSIT_CAP_PER_USER, bytes32(uint256(uint160(user))), bytes32(value)
+        );
+    }
+
+    function getInitialDepositCapPerUser(address contractAddress, address user) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, INITIAL_DEPOSIT_CAP_PER_USER, bytes32(uint256(uint160(user)))));
     }
 }

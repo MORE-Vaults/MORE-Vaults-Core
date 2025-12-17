@@ -1365,7 +1365,7 @@ contract VaultFacetTest is Test {
         assertGt(shares, 0, "Should have received shares");
         assertEq(IERC20(facet).balanceOf(bob), shares, "Bob should have received the shares");
 
-        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, alice);
         assertEq(aliceCapAfter, aliceCap - depositAmount, "Alice's cap should be deducted");
     }
 
@@ -1402,14 +1402,14 @@ contract VaultFacetTest is Test {
         address[] memory vaults = new address[](0);
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-        uint256 aliceCapBefore = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
-        uint256 bobCapBefore = MoreVaultsStorageHelper.getDepositWhitelist(facet, bob);
+        uint256 aliceCapBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, alice);
+        uint256 bobCapBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, bob);
 
         vm.prank(alice);
         VaultFacet(facet).deposit(depositAmount, bob);
 
-        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
-        uint256 bobCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, bob);
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, alice);
+        uint256 bobCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, bob);
 
         assertEq(aliceCapAfter, aliceCapBefore - depositAmount, "Alice's cap should be deducted (she's the depositor)");
         assertEq(bobCapAfter, bobCapBefore, "Bob's cap should not change (he's just the receiver)");
@@ -1453,8 +1453,170 @@ contract VaultFacetTest is Test {
         assertGt(assets, 0, "Should have used some assets");
         assertEq(IERC20(facet).balanceOf(bob), sharesToMint, "Bob should have received the shares");
 
-        uint256 aliceCapAfter = MoreVaultsStorageHelper.getDepositWhitelist(facet, alice);
+        uint256 aliceCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, alice);
         assertEq(aliceCapAfter, aliceCap - assets, "Alice's cap should be deducted");
+    }
+
+    /**
+     * @notice Test that deposit decreases availableToDeposit correctly
+     */
+    function test_changeDepositCap_Deposit_DecreasesAvailableToDeposit() public {
+        address testUser = address(0xD000);
+        uint256 initialCap = 100 ether;
+        uint256 depositAmount = 30 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, initialCap);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, initialCap);
+
+        MockERC20(asset).mint(testUser, depositAmount);
+        vm.prank(testUser);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 availableToDepositBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, testUser);
+        assertEq(availableToDepositBefore, initialCap, "Initial availableToDeposit should be set correctly");
+
+        vm.prank(testUser);
+        VaultFacet(facet).deposit(depositAmount, testUser);
+
+        uint256 availableToDepositAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, testUser);
+        assertEq(
+            availableToDepositAfter,
+            initialCap - depositAmount,
+            "availableToDeposit should be decreased by depositAmount"
+        );
+    }
+
+    /**
+     * @notice Test that withdrawal increases availableToDeposit but not more than initialDepositCapPerUser
+     */
+    function test_changeDepositCap_Withdrawal_IncreasesAvailableToDepositUpToInitialCap() public {
+        address testUser = address(0xD001);
+        uint256 initialCap = 100 ether;
+        uint256 depositAmount = 50 ether;
+        uint256 withdrawAmount = 20 ether;
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, initialCap);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, initialCap);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false); // Disable withdrawal queue for direct withdraw
+
+        MockERC20(asset).mint(testUser, depositAmount);
+        vm.prank(testUser);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        vm.prank(testUser);
+        VaultFacet(facet).deposit(depositAmount, testUser);
+
+        uint256 availableToDepositAfterDeposit = MoreVaultsStorageHelper.getAvailableToDeposit(facet, testUser);
+        assertEq(
+            availableToDepositAfterDeposit,
+            initialCap - depositAmount,
+            "availableToDeposit should be decreased after deposit"
+        );
+
+        // Withdraw
+        vm.prank(testUser);
+        VaultFacet(facet).withdraw(withdrawAmount, testUser, testUser);
+
+        uint256 availableToDepositAfterWithdraw = MoreVaultsStorageHelper.getAvailableToDeposit(facet, testUser);
+        uint256 expectedAvailable = availableToDepositAfterDeposit + withdrawAmount;
+        assertEq(
+            availableToDepositAfterWithdraw,
+            expectedAvailable,
+            "availableToDeposit should be increased by withdrawAmount"
+        );
+        assertLe(
+            availableToDepositAfterWithdraw,
+            initialCap,
+            "availableToDeposit should not exceed initialDepositCapPerUser"
+        );
+    }
+
+    /**
+     * @notice Test that withdrawal caps availableToDeposit to initialDepositCapPerUser when sum exceeds it
+     */
+    function test_changeDepositCap_Withdrawal_CapsToInitialDepositCapPerUser() public {
+        address testUser = address(0xD002);
+        uint256 initialCap = 100 ether;
+        uint256 depositAmount = 50 ether;
+        uint256 withdrawAmount = 60 ether; // This would exceed initialCap if added
+
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, initialCap);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, initialCap);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false); // Disable withdrawal queue for direct withdraw
+
+        MockERC20(asset).mint(testUser, depositAmount);
+        vm.prank(testUser);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        vm.prank(testUser);
+        VaultFacet(facet).deposit(depositAmount, testUser);
+
+        uint256 availableToDepositAfterDeposit = MoreVaultsStorageHelper.getAvailableToDeposit(facet, testUser);
+        assertEq(
+            availableToDepositAfterDeposit,
+            initialCap - depositAmount,
+            "availableToDeposit should be decreased after deposit"
+        );
+        MockERC20(asset).mint(facet, depositAmount);
+
+        // Withdraw more than would fit in the cap
+        vm.prank(testUser);
+        VaultFacet(facet).withdraw(withdrawAmount, testUser, testUser);
+
+        uint256 availableToDepositAfterWithdraw = MoreVaultsStorageHelper.getAvailableToDeposit(facet, testUser);
+        // Should be capped to initialCap, not availableToDepositAfterDeposit + withdrawAmount
+        assertEq(
+            availableToDepositAfterWithdraw,
+            initialCap,
+            "availableToDeposit should be capped to initialDepositCapPerUser"
+        );
     }
 
     // ============ Withdrawal Fee Tests ============

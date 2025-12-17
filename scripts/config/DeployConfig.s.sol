@@ -148,7 +148,7 @@ contract DeployConfig {
             .disableDepositWhitelist
             .selector;
         functionSelectorsConfigurationFacet[6] = IConfigurationFacet
-            .getDepositWhitelist
+            .getAvailableToDeposit
             .selector;
         functionSelectorsConfigurationFacet[7] = IConfigurationFacet
             .addAvailableAsset

@@ -148,7 +148,7 @@ library MoreVaultsLib {
         mapping(uint256 => PendingActions) pendingActions;
         uint256 timeLockPeriod;
         mapping(bytes32 => EnumerableSet.AddressSet) stakingAddresses;
-        mapping(address => uint256) lockedTokens; // @deprecated - kept for storage compatibility
+        mapping(address => uint256) lockedTokens;
         address minter;
         bool isNativeDeposit;
         address[] beforeAccountingFacets;
@@ -162,7 +162,7 @@ library MoreVaultsLib {
         bool isMulticall;
         address factory;
         mapping(address => uint256) curvePoolLength;
-        mapping(address => uint256) depositWhitelist;
+        mapping(address => uint256) availableToDeposit;
         mapping(address => bool) isNecessaryToCheckLock;
         bool isWhitelistEnabled;
         address[] depositableAssets;
@@ -180,6 +180,7 @@ library MoreVaultsLib {
         mapping(address vault => mapping(address asset => uint256)) lockedAssetsPerVault;
         /// @dev Locked shares per external vault (for async redeem requests)
         mapping(address vault => uint256) lockedSharesPerVault;
+        mapping(address => uint256) initialDepositCapPerUser;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -342,7 +343,25 @@ library MoreVaultsLib {
     function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata underlyingAssetCaps) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         for (uint256 i; i < depositors.length;) {
-            ds.depositWhitelist[depositors[i]] = underlyingAssetCaps[i];
+            // Check if the user was added previously (by checking if initialDepositCapPerUser exists)
+            uint256 previousInitialCap = ds.initialDepositCapPerUser[depositors[i]];
+            
+            // Update initialDepositCapPerUser to the new value
+            ds.initialDepositCapPerUser[depositors[i]] = underlyingAssetCaps[i];
+            
+            // If the user already existed (initialDepositCapPerUser was set previously)
+            if (previousInitialCap > 0) {
+                // Preserve the current availableToDeposit value, but cap it to the new initialDepositCapPerUser
+                // if it exceeds the new limit
+                uint256 currentAvailableToDeposit = ds.availableToDeposit[depositors[i]];
+                if (currentAvailableToDeposit > underlyingAssetCaps[i]) {
+                    ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
+                }
+                // Otherwise, leave the current availableToDeposit value unchanged
+            } else {
+                // If the user is new, set both values to be equal
+                ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
+            }
             unchecked {
                 ++i;
             }

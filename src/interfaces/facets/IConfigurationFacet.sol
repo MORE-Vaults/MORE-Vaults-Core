@@ -60,7 +60,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function setDepositCapacity(uint256 capacity) external;
 
     /**
-     * @notice Sets deposit whitelist, callable by owner
+     * @notice Sets available to deposit amounts for users, callable by owner
      * @param depositors Array of depositors
      * @param undelyingAssetCaps Array of underlying asset caps
      */
@@ -77,14 +77,11 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function disableDepositWhitelist() external;
 
     /**
-     * @notice Disables deposit whitelist
-     */
-    /**
-     * @notice Gets deposit whitelist
+     * @notice Gets available to deposit amount for a depositor
      * @param depositor Depositor address
-     * @return Undelying asset cap
+     * @return Available amount to deposit
      */
-    function getDepositWhitelist(address depositor) external view returns (uint256);
+    function getAvailableToDeposit(address depositor) external view returns (uint256);
 
     /**
      * @notice Adds new available asset, callable by curator or owner
