@@ -740,13 +740,53 @@ library MoreVaultsStorageHelper {
         shares = uint256(vm.load(contractAddress, bytes32(uint256(key) + 1)));
     }
 
-    // Functions for lockedTokens mapping (slot 17)
+    // Functions for lockedTokens mapping (slot 17) - DEPRECATED
     function getLockedTokens(address contractAddress, address token) internal view returns (uint256) {
         return uint256(getMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token)))));
     }
 
     function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
+    }
+
+    // New storage positions for lockedAssetsPerVault and lockedSharesPerVault
+    // These are added at the END of the struct to preserve existing storage layout
+    // After maxWithdrawalDelay (slot 39)
+    uint256 constant LOCKED_ASSETS_PER_VAULT = 40; // After maxWithdrawalDelay (slot 39)
+    uint256 constant LOCKED_SHARES_PER_VAULT = 41; // After lockedAssetsPerVault (slot 40)
+
+    // Functions for lockedAssetsPerVault mapping (vault => asset => uint256)
+    function getLockedAssetsPerVault(address contractAddress, address vault, address asset) internal view returns (uint256) {
+        // First level: vault key
+        bytes32 firstLevelSlot = keccak256(
+            abi.encode(vault, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + LOCKED_ASSETS_PER_VAULT))
+        );
+        // Second level: asset key
+        bytes32 secondLevelSlot = keccak256(abi.encode(asset, firstLevelSlot));
+        return uint256(vm.load(contractAddress, secondLevelSlot));
+    }
+
+    function setLockedAssetsPerVault(address contractAddress, address vault, address asset, uint256 amount) internal {
+        bytes32 firstLevelSlot = keccak256(
+            abi.encode(vault, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + LOCKED_ASSETS_PER_VAULT))
+        );
+        bytes32 secondLevelSlot = keccak256(abi.encode(asset, firstLevelSlot));
+        vm.store(contractAddress, secondLevelSlot, bytes32(amount));
+    }
+
+    // Functions for lockedSharesPerVault mapping (vault => uint256)
+    function getLockedSharesPerVault(address contractAddress, address vault) internal view returns (uint256) {
+        bytes32 slot = keccak256(
+            abi.encode(vault, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + LOCKED_SHARES_PER_VAULT))
+        );
+        return uint256(vm.load(contractAddress, slot));
+    }
+
+    function setLockedSharesPerVault(address contractAddress, address vault, uint256 amount) internal {
+        bytes32 slot = keccak256(
+            abi.encode(vault, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + LOCKED_SHARES_PER_VAULT))
+        );
+        vm.store(contractAddress, slot, bytes32(amount));
     }
 
     // Functions for facetsForAccounting array (slot 3)

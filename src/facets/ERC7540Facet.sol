@@ -93,9 +93,12 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
                 continue;
             }
             address asset = IERC4626(vault).asset();
-            uint256 balance = IERC20(vault).balanceOf(address(this)) + ds.lockedTokens[vault];
-            uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
-            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
+            // Shares we hold + shares locked in pending redeem requests
+            uint256 sharesBalance = IERC20(vault).balanceOf(address(this)) + ds.lockedSharesPerVault[vault];
+            uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(sharesBalance);
+            // Add assets locked in pending deposit requests
+            uint256 lockedAssets = ds.lockedAssetsPerVault[vault][asset];
+            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying + lockedAssets, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
@@ -114,9 +117,12 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
         address asset = IERC4626(vault).asset();
 
+        // Only allow one pending deposit request per vault/asset
+        if (ds.lockedAssetsPerVault[vault][asset] > 0) revert PendingOperationExists();
+
         IERC20(asset).forceApprove(vault, assets);
         requestId = IERC7540(vault).requestDeposit(assets, address(this), address(this));
-        ds.lockedTokens[asset] += assets;
+        ds.lockedAssetsPerVault[vault][asset] = assets;
     }
 
     /**
@@ -129,6 +135,9 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        // Only allow one pending redeem request per vault
+        if (ds.lockedSharesPerVault[vault] > 0) revert PendingOperationExists();
+
         // Approve external share token if vault implements ERC-7575
         try IERC7575(vault).share() returns (address shareToken) {
             if (shareToken != address(0) && shareToken != vault) {
@@ -137,7 +146,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         } catch {}
 
         requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
-        ds.lockedTokens[vault] += shares;
+        ds.lockedSharesPerVault[vault] = shares;
     }
 
     /**
@@ -154,9 +163,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
-        if (ds.lockedTokens[asset] >= assets) {
-            ds.lockedTokens[asset] -= assets;
-        }
+        ds.lockedAssetsPerVault[vault][asset] = 0;
     }
 
     /**
@@ -173,9 +180,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
-        if (ds.lockedTokens[asset] >= assets) {
-            ds.lockedTokens[asset] -= assets;
-        }
+        ds.lockedAssetsPerVault[vault][asset] = 0;
     }
 
     /**
@@ -190,9 +195,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         shares = IERC7540(vault).withdraw(assets, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem
-        if (ds.lockedTokens[vault] >= shares) {
-            ds.lockedTokens[vault] -= shares;
-        }
+        ds.lockedSharesPerVault[vault] = 0;
 
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
     }
@@ -209,9 +212,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         assets = IERC7540(vault).redeem(shares, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem
-        if (ds.lockedTokens[vault] >= shares) {
-            ds.lockedTokens[vault] -= shares;
-        }
+        ds.lockedSharesPerVault[vault] = 0;
 
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
     }
