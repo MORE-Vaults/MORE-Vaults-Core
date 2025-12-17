@@ -749,10 +749,10 @@ library MoreVaultsStorageHelper {
     }
 
     // New storage positions for lockedAssetsPerVault and lockedSharesPerVault
-    // These are added after lockedTokens (slot 17) in the storage struct
-    // Each mapping takes one slot in struct layout
-    uint256 constant LOCKED_ASSETS_PER_VAULT = 18; // After lockedTokens (slot 17)
-    uint256 constant LOCKED_SHARES_PER_VAULT = 19; // After lockedAssetsPerVault (slot 18)
+    // These are added at the END of the struct to preserve existing storage layout
+    // After maxWithdrawalDelay (slot 39)
+    uint256 constant LOCKED_ASSETS_PER_VAULT = 40; // After maxWithdrawalDelay (slot 39)
+    uint256 constant LOCKED_SHARES_PER_VAULT = 41; // After lockedAssetsPerVault (slot 40)
 
     // Functions for lockedAssetsPerVault mapping (vault => asset => uint256)
     function getLockedAssetsPerVault(address contractAddress, address vault, address asset) internal view returns (uint256) {

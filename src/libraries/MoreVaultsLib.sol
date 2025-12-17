@@ -149,10 +149,6 @@ library MoreVaultsLib {
         uint256 timeLockPeriod;
         mapping(bytes32 => EnumerableSet.AddressSet) stakingAddresses;
         mapping(address => uint256) lockedTokens; // @deprecated - kept for storage compatibility
-        /// @dev Locked assets per external vault per asset (for async deposit requests)
-        mapping(address vault => mapping(address asset => uint256)) lockedAssetsPerVault;
-        /// @dev Locked shares per external vault (for async redeem requests)
-        mapping(address vault => uint256) lockedSharesPerVault;
         address minter;
         bool isNativeDeposit;
         address[] beforeAccountingFacets;
@@ -179,6 +175,10 @@ library MoreVaultsLib {
         uint96 withdrawalFee;
         mapping(address => uint256) userHighWaterMarkPerShare;
         uint32 maxWithdrawalDelay;
+        /// @dev Locked assets per external vault per asset (for async deposit requests)
+        mapping(address vault => mapping(address asset => uint256)) lockedAssetsPerVault;
+        /// @dev Locked shares per external vault (for async redeem requests)
+        mapping(address vault => uint256) lockedSharesPerVault;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
