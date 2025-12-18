@@ -603,11 +603,11 @@ contract ERC4626FacetTest is Test {
             abi.encode(true)
         );
 
-        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be greater than 0");
+        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be greater than 0");
 
         vm.stopPrank();
     }
@@ -631,11 +631,11 @@ contract ERC4626FacetTest is Test {
             abi.encode(true)
         );
 
-        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be greater than 0");
+        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be greater than 0");
 
         selector = MockAsyncERC4626WithLockOnWithdraw.withdrawFinalize.selector;
         vm.mockCall(
@@ -646,7 +646,7 @@ contract ERC4626FacetTest is Test {
         data = abi.encodeWithSelector(selector, MINT_SHARES);
 
         assertEq(
-            MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)),
+            MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)),
             MINT_SHARES,
             "Should be equal to mint shares"
         );
@@ -654,7 +654,7 @@ contract ERC4626FacetTest is Test {
         asset.mint(address(newVault), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
 
         vm.stopPrank();
     }
@@ -678,11 +678,11 @@ contract ERC4626FacetTest is Test {
             abi.encode(true)
         );
 
-        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be greater than 0");
+        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be greater than 0");
 
         selector = MockAsyncERC4626WithLockOnWithdraw.withdrawCancel.selector;
         vm.mockCall(
@@ -693,14 +693,14 @@ contract ERC4626FacetTest is Test {
         data = abi.encodeWithSelector(selector, MINT_SHARES);
 
         assertEq(
-            MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)),
+            MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)),
             MINT_SHARES,
             "Should be equal to mint shares"
         );
 
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
 
         vm.stopPrank();
     }

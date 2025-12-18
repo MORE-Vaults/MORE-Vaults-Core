@@ -814,8 +814,8 @@ contract ERC7540FacetTest is Test {
         uint256 asyncRedeemShares = 30e18;
         facet.erc7540RequestRedeem(address(vault), asyncRedeemShares);
 
-        // Verify locked tokens are tracked (using new mapping)
-        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault));
+        // Verify locked tokens are tracked (using new mapping, vault is the share token for standard ERC-4626)
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedShares, asyncRedeemShares, "Shares should be locked");
 
         // Accounting should still include the locked shares even though assets haven't been received yet
@@ -872,8 +872,8 @@ contract ERC7540FacetTest is Test {
         uint256 asyncRedeemShares = 30e18;
         facet.erc7540RequestRedeem(address(vault), asyncRedeemShares);
 
-        // Verify shares are locked (using new mapping)
-        uint256 lockedSharesBefore = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault));
+        // Verify shares are locked (using new mapping, vault is the share token for standard ERC-4626)
+        uint256 lockedSharesBefore = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedSharesBefore, asyncRedeemShares, "Shares should be locked after request");
 
         // Mint assets to vault to allow redeem
@@ -883,7 +883,7 @@ contract ERC7540FacetTest is Test {
         facet.erc7540Redeem(address(vault), asyncRedeemShares);
 
         // Verify shares are unlocked
-        uint256 lockedSharesAfter = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault));
+        uint256 lockedSharesAfter = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedSharesAfter, 0, "Shares should be unlocked after finalization");
 
         vm.stopPrank();
@@ -1299,8 +1299,8 @@ contract ERC7540FacetTest is Test {
         // Accounting should include locked tokens (they still have value)
         assertEq(accountingAfter, accountingBefore, "Accounting should remain same (locked tokens still counted)");
 
-        // Verify locked tokens are tracked (using new mapping)
-        uint256 lockedTokens = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault));
+        // Verify locked tokens are tracked (using new mapping, vault is the share token for standard ERC-4626)
+        uint256 lockedTokens = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedTokens, MINT_SHARES, "Locked tokens should be tracked");
 
         vm.stopPrank();

@@ -176,10 +176,10 @@ library MoreVaultsLib {
         mapping(address => uint256) userHighWaterMarkPerShare;
         uint256 pendingNative;
         uint32 maxWithdrawalDelay;
-        /// @dev Locked assets per external vault per asset (for async deposit requests)
-        mapping(address vault => mapping(address asset => uint256)) lockedAssetsPerVault;
-        /// @dev Locked shares per external vault (for async redeem requests)
-        mapping(address vault => uint256) lockedSharesPerVault;
+        /// @dev Locked tokens per external contract per token address
+        /// For deposits: lockedTokensPerContract[vault][asset] = amount
+        /// For redeems: lockedTokensPerContract[vault][shareToken] = shares
+        mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
         mapping(address => uint256) initialDepositCapPerUser;
     }
 
