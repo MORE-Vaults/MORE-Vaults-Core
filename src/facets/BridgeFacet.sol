@@ -280,10 +280,10 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
             (uint256 assets, address receiver, address owner) =
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
-            uint256 balanceBefore = IERC20(address(this)).balanceOf(requestInfo.initiator);
+            uint256 balanceBefore = IERC20(address(this)).balanceOf(owner);
             (success, result) =
                 address(this).call(abi.encodeWithSelector(IERC4626.withdraw.selector, assets, receiver, owner));
-            uint256 balanceAfter = IERC20(address(this)).balanceOf(requestInfo.initiator);
+            uint256 balanceAfter = IERC20(address(this)).balanceOf(owner);
             amountIn = balanceBefore - balanceAfter;
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
             (uint256 shares, address receiver, address owner) =

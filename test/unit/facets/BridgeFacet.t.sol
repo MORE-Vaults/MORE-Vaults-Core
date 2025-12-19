@@ -453,11 +453,13 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-withdraw"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(50), address(this), address(this));
-        address user = address(0x1111);
-        vm.startPrank(user);
+        address owner = address(0x1111);
+        bytes memory callData = abi.encode(uint256(50), address(this), owner);
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, 0, bytes(""));
-        facet.h_setInitiatorByGuid(guid, user);
+        facet.h_setInitiatorByGuid(guid, initiator);
+        facet.h_setOwnerByGuid(guid, owner);
         vm.stopPrank();
 
         // Set initial balance and amount to send in for withdraw
@@ -465,7 +467,7 @@ contract BridgeFacetTest is Test {
         // So we need to set initial balance for facet (as msg.sender)
         uint256 sharesToSpend = 50;
         uint256 initialBalance = 100;
-        facet.h_setBalance(address(facet), user, initialBalance); // Initial balance for facet
+        facet.h_setBalance(address(facet), owner, initialBalance); // Initial balance for facet
         facet.h_setAmountOfTokenToSendIn(guid, sharesToSpend);
         facet.h_setWithdrawResult(guid, 50); // Return value
 
@@ -689,17 +691,19 @@ contract BridgeFacetTest is Test {
 
         uint256 assets = 50e18;
         uint256 maxAmountIn = 40e18; // Expect at most 40 share tokens to be spent
-        bytes memory callData = abi.encode(assets, address(this), address(this));
-        address user = address(0x1111);
-        vm.startPrank(user);
+        address owner = address(0x1111);
+        bytes memory callData = abi.encode(assets, address(this), owner);
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
-        facet.h_setInitiatorByGuid(guid, user);
+        facet.h_setInitiatorByGuid(guid, initiator);
+        facet.h_setOwnerByGuid(guid, owner);
         vm.stopPrank();
 
         // Set amount of share tokens that will be spent (more than maxAmountIn)
         uint256 actualSharesSpent = 50e18; // More than maxAmountIn (40e18)
         uint256 initialBalance = 100e18;
-        facet.h_setBalance(address(facet), user, initialBalance);
+        facet.h_setBalance(address(facet), owner, initialBalance);
         facet.h_setAmountOfTokenToSendIn(guid, actualSharesSpent);
         facet.h_setWithdrawResult(guid, 50e18); // Return value
 
@@ -726,17 +730,19 @@ contract BridgeFacetTest is Test {
 
         uint256 assets = 50e18;
         uint256 maxAmountIn = 60e18; // Expect at most 60 share tokens to be spent
-        bytes memory callData = abi.encode(assets, address(this), address(this));
-        address user = address(0x1111);
-        vm.startPrank(user);
+        address owner = address(0x1111);
+        bytes memory callData = abi.encode(assets, address(this), owner);
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
-        facet.h_setInitiatorByGuid(guid, user);
+        facet.h_setInitiatorByGuid(guid, initiator);
+        facet.h_setOwnerByGuid(guid, owner);
         vm.stopPrank();
 
         // Set amount of share tokens that will be spent (less than maxAmountIn)
         uint256 actualSharesSpent = 50e18; // Less than maxAmountIn (60e18)
         uint256 initialBalance = 100e18;
-        facet.h_setBalance(address(facet), user, initialBalance);
+        facet.h_setBalance(address(facet), owner, initialBalance);
         facet.h_setAmountOfTokenToSendIn(guid, actualSharesSpent);
         facet.h_setWithdrawResult(guid, 50e18); // Return value
 

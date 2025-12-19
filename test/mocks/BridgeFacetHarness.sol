@@ -18,6 +18,7 @@ contract BridgeFacetHarness is BridgeFacet {
     mapping(bytes32 => uint256) public amountOfTokenToSendIn;
     mapping(address => uint256) private _balances; // Mock balance tracking
     mapping(bytes32 => address) public initiatorByGuid;
+    mapping(bytes32 => address) public ownerByGuid;
     
     // Expose internal calls for testing where needed
     function h_setTotalAssets(uint256 v) external {
@@ -45,6 +46,10 @@ contract BridgeFacetHarness is BridgeFacet {
 
     function h_setInitiatorByGuid(bytes32 guid, address initiator) external {
         initiatorByGuid[guid] = initiator;
+    }
+
+    function h_setOwnerByGuid(bytes32 guid, address owner) external {
+        ownerByGuid[guid] = owner;
     }
 
     function h_setWithdrawResult(bytes32 guid, uint256 result) external {
@@ -101,7 +106,7 @@ contract BridgeFacetHarness is BridgeFacet {
         // In real scenario, share tokens are burned/transferred from user
         // Here we simulate by reducing balance of address(this) (facet) since withdraw is called via address(this).call
         // The balance check in BridgeFacet checks balanceOf(address(this)) before and after
-        _balances[initiatorByGuid[guid]] -= amount;
+        _balances[ownerByGuid[guid]] -= amount;
         return withdrawResult[guid];
     }
     
