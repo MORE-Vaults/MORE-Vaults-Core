@@ -360,8 +360,9 @@ library MoreVaultsLib {
                 uint256 currentAvailableToDeposit = ds.availableToDeposit[depositors[i]];
                 if (currentAvailableToDeposit > underlyingAssetCaps[i]) {
                     ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
+                } else if (underlyingAssetCaps[i] > previousInitialCap) {
+                    ds.availableToDeposit[depositors[i]] += underlyingAssetCaps[i] - previousInitialCap;
                 }
-                // Otherwise, leave the current availableToDeposit value unchanged
             } else {
                 // If the user is new, set both values to be equal
                 ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];

@@ -46,6 +46,17 @@ contract MoreVaultsLibTest is Test {
         MoreVaultsStorageHelper.setVaultAsset(address(this), token1, 18);
     }
 
+    // Helper function to call _setDepositWhitelist with memory arrays
+    // Converts memory to calldata by calling external function
+    function _callSetDepositWhitelist(address[] memory depositors, uint256[] memory caps) internal {
+        this.setDepositWhitelistWrapper(depositors, caps);
+    }
+
+    // External function to receive calldata and call library
+    function setDepositWhitelistWrapper(address[] calldata depositors, uint256[] calldata caps) external {
+        MoreVaultsLib._setDepositWhitelist(depositors, caps);
+    }
+
     function test_validateAsset_ShouldNotRevertWhenAssetIsAvailable() public view {
         MoreVaultsLib.validateAssetAvailable(token1);
     }
@@ -534,6 +545,237 @@ contract MoreVaultsLibTest is Test {
 
         assertEq(ds.availableToDeposit[depositor1], cap1, "First depositor cap should be set");
         assertEq(ds.availableToDeposit[depositor2], cap2, "Second depositor cap should be set");
+    }
+
+    /**
+     * @notice Test that new user's availableToDeposit is set equal to initialDepositCapPerUser
+     */
+    function test_setDepositWhitelist_NewUser_SetsBothValuesEqual() public {
+        address newUser = address(0x300);
+        uint256 cap = 100 ether;
+
+        address[] memory depositors = new address[](1);
+        depositors[0] = newUser;
+        uint256[] memory caps = new uint256[](1);
+        caps[0] = cap;
+
+        _callSetDepositWhitelist(depositors, caps);
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        assertEq(
+            ds.availableToDeposit[newUser],
+            cap,
+            "availableToDeposit should be set to cap for new user"
+        );
+        assertEq(
+            ds.initialDepositCapPerUser[newUser],
+            cap,
+            "initialDepositCapPerUser should be set to cap for new user"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit increases when cap is increased
+     * @dev When newCap > previousInitialCap, availableToDeposit should increase by (newCap - previousInitialCap)
+     */
+    function test_setDepositWhitelist_ExistingUser_IncreasesAvailableToDepositWhenCapIncreased() public {
+        address existingUser = address(0x400);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 50 ether; // User has used 50 ether
+        uint256 newCap = 150 ether; // New cap is higher
+
+        // Set up initial state: user already exists with initialCap
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        _callSetDepositWhitelist(depositors1, caps1);
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
+
+        // Update initialDepositCapPerUser to a higher value
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        _callSetDepositWhitelist(depositors2, caps2);
+
+        // availableToDeposit should increase by (newCap - initialCap) = 50 ether
+        uint256 expectedAvailableToDeposit = currentAvailableToDeposit + (newCap - initialCap);
+        assertEq(
+            ds.availableToDeposit[existingUser],
+            expectedAvailableToDeposit,
+            "availableToDeposit should increase by the difference between new and old cap"
+        );
+        assertEq(
+            ds.initialDepositCapPerUser[existingUser],
+            newCap,
+            "initialDepositCapPerUser should be updated to new cap"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit increases correctly when cap is increased and user has full availableToDeposit
+     */
+    function test_setDepositWhitelist_ExistingUser_IncreasesAvailableToDepositWhenCapIncreasedAndFullAvailable() public {
+        address existingUser = address(0x500);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 100 ether; // User has full availableToDeposit (hasn't deposited)
+        uint256 newCap = 200 ether; // New cap is doubled
+
+        // Set up initial state: user already exists with initialCap
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        _callSetDepositWhitelist(depositors1, caps1);
+
+        // Manually set availableToDeposit to full value
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
+
+        // Update initialDepositCapPerUser to a higher value
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        _callSetDepositWhitelist(depositors2, caps2);
+
+        // availableToDeposit should increase by (newCap - initialCap) = 100 ether
+        uint256 expectedAvailableToDeposit = currentAvailableToDeposit + (newCap - initialCap);
+        assertEq(
+            ds.availableToDeposit[existingUser],
+            expectedAvailableToDeposit,
+            "availableToDeposit should increase by the difference between new and old cap"
+        );
+        assertEq(
+            ds.initialDepositCapPerUser[existingUser],
+            newCap,
+            "initialDepositCapPerUser should be updated to new cap"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit increases correctly when cap is increased and user has partially used availableToDeposit
+     */
+    function test_setDepositWhitelist_ExistingUser_IncreasesAvailableToDepositWhenCapIncreasedAndPartiallyUsed() public {
+        address existingUser = address(0x600);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 30 ether; // User has used 70 ether
+        uint256 newCap = 150 ether; // New cap is increased by 50 ether
+
+        // Set up initial state: user already exists with initialCap
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        _callSetDepositWhitelist(depositors1, caps1);
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
+
+        // Update initialDepositCapPerUser to a higher value
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        _callSetDepositWhitelist(depositors2, caps2);
+
+        // availableToDeposit should increase by (newCap - initialCap) = 50 ether
+        uint256 expectedAvailableToDeposit = currentAvailableToDeposit + (newCap - initialCap);
+        assertEq(
+            ds.availableToDeposit[existingUser],
+            expectedAvailableToDeposit,
+            "availableToDeposit should increase by the difference between new and old cap"
+        );
+        assertEq(
+            ds.initialDepositCapPerUser[existingUser],
+            newCap,
+            "initialDepositCapPerUser should be updated to new cap"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit is capped when new cap is lower than current availableToDeposit
+     */
+    function test_setDepositWhitelist_ExistingUser_CapsAvailableToDepositWhenNewCapIsLower() public {
+        address existingUser = address(0x700);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 80 ether; // User has used 20 ether
+        uint256 newCap = 50 ether; // New cap is lower than current availableToDeposit
+
+        // Set up initial state: user already exists with initialCap
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        _callSetDepositWhitelist(depositors1, caps1);
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
+
+        // Update initialDepositCapPerUser to a lower value
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        _callSetDepositWhitelist(depositors2, caps2);
+
+        // availableToDeposit should be capped to newCap
+        assertEq(
+            ds.availableToDeposit[existingUser],
+            newCap,
+            "availableToDeposit should be capped to new cap when new cap is lower"
+        );
+        assertEq(
+            ds.initialDepositCapPerUser[existingUser],
+            newCap,
+            "initialDepositCapPerUser should be updated to new cap"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit remains unchanged when new cap equals previous cap
+     */
+    function test_setDepositWhitelist_ExistingUser_NoChangeWhenCapUnchanged() public {
+        address existingUser = address(0x800);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 50 ether;
+        uint256 newCap = 100 ether; // Same as initial cap
+
+        // Set up initial state: user already exists with initialCap
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        _callSetDepositWhitelist(depositors1, caps1);
+
+        // Manually set availableToDeposit
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
+
+        // Update initialDepositCapPerUser to the same value
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        _callSetDepositWhitelist(depositors2, caps2);
+
+        // availableToDeposit should remain unchanged
+        assertEq(
+            ds.availableToDeposit[existingUser],
+            currentAvailableToDeposit,
+            "availableToDeposit should remain unchanged when cap is unchanged"
+        );
+        assertEq(
+            ds.initialDepositCapPerUser[existingUser],
+            newCap,
+            "initialDepositCapPerUser should be updated to new cap"
+        );
     }
 
     // Tests for withdrawal request functions

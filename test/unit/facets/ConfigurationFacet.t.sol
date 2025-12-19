@@ -582,7 +582,7 @@ contract ConfigurationFacetTest is Test {
     /**
      * @notice Test that existing user's availableToDeposit is preserved when new initialDepositCapPerUser is higher
      */
-    function test_setDepositWhitelist_ExistingUser_PreservesAvailableToDepositWhenNewCapIsHigher() public {
+    function test_setDepositWhitelist_ExistingUser_increasesAvailableToDepositWhenNewCapIsHigher() public {
         address existingUser = address(0x200);
         uint256 initialCap = 100 ether;
         uint256 currentAvailableToDeposit = 50 ether; // User has used 50 ether
@@ -612,8 +612,8 @@ contract ConfigurationFacetTest is Test {
         // availableToDeposit should be preserved
         assertEq(
             MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), existingUser),
-            currentAvailableToDeposit,
-            "availableToDeposit should be preserved"
+            currentAvailableToDeposit + (newCap - initialCap),
+            "availableToDeposit should be increased by the difference between new and old cap"
         );
         // initialDepositCapPerUser should be updated
         assertEq(
