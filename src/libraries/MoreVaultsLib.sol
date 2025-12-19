@@ -174,7 +174,6 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
-        mapping(address => uint256) userHighWaterMarkPerShare;
         uint256 pendingNative;
         uint32 maxWithdrawalDelay;
         /// @dev Locked tokens per external contract per token address
@@ -186,6 +185,7 @@ library MoreVaultsLib {
         uint256 globalFeeIndex;                              // Cumulative fee-per-share, always increases
         uint256 globalHWM;                                   // Vault's all-time high price per share
         mapping(address => uint256) userFeeIndexPaid;        // User's snapshot of globalFeeIndex
+        uint256 pendingFeeShares;                           // Pending fee shares not yet minted (for accurate totalSupply calculation)
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);

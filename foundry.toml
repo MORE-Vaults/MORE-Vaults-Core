@@ -7,7 +7,7 @@ viaIR = true
 fs_permissions = [{ access = "read-write", path = "./"}]
 allow_internal_expect_revert = true
 optimizer = true
-optimizer_runs = 2000
+optimizer_runs = 3000
 
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
@@ -25,6 +25,14 @@ remappings = [
 ]
 
 no_match_test = "test_skip"
+
+additional_compiler_profiles = [
+    { name = "vault_facet_profile", optimizer_runs = 2000, via_ir = true, optimizer = true }
+]
+
+compilation_restrictions = [
+    { paths = "src/facets/VaultFacet.sol", optimizer_runs = 2000 }
+]
 
 [rpc_endpoints]
 flow_testnet = "${FLOW_TESTNET_RPC_URL}"
