@@ -119,4 +119,11 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
      * @notice Clear a request
      */
     function clearRequest() external;
+
+    /**
+     * @notice Accrue interest fees for a specific user and update their High-Water Mark per Share
+     * @dev Calculates and mints fee shares based on the user's profit above their HWMpS, then updates HWMpS to current price
+     * @param _user The address of the user for which to accrue fees
+     */
+    function accrueFees(address _user) external;
 }

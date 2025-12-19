@@ -2858,4 +2858,322 @@ contract VaultFacetTest is Test {
         // Verify preview returns expected shares (no fee accrual for fee recipient with HWMpS == 0)
         assertEq(previewShares, expectedShares, "Preview should not include fee shares for fee recipient with HWMpS == 0");
     }
+
+    // ============ Tests for accrueFees function ============
+
+    /**
+     * @notice Test that accrueFees correctly accrues fees and updates HWMpS with protocol fee
+     */
+    function test_accrueFees_WithProtocolFee_AccruesFeesAndUpdatesHWMpS() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(protocolFeeRecipient, protocolFee));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 initialHWMpS = _getHWMpS(user);
+        uint256 initialTotalSupply = IERC20(facet).totalSupply();
+        uint256 initialProtocolFeeBalance = IERC20(facet).balanceOf(protocolFeeRecipient);
+        uint256 initialVaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Simulate yield by minting assets to vault (price increases)
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Call accrueFees
+        vm.prank(user);
+        IVaultFacet(facet).accrueFees(user);
+
+        // Verify fees were distributed
+        uint256 protocolFeeBalance = IERC20(facet).balanceOf(protocolFeeRecipient);
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        uint256 totalFeeShares = protocolFeeBalance + vaultFeeBalance;
+
+        assertGt(protocolFeeBalance, initialProtocolFeeBalance, "Should distribute protocol fee");
+        assertGt(vaultFeeBalance, initialVaultFeeBalance, "Should distribute vault fee");
+        assertGt(totalFeeShares, 0, "Should mint fee shares");
+
+        // Verify HWMpS was updated
+        uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+        uint256 finalHWMpS = _getHWMpS(user);
+
+        assertGt(finalHWMpS, initialHWMpS, "HWMpS should increase");
+        assertEq(finalHWMpS, finalPricePerShare, "HWMpS should equal current price per share");
+
+        // Verify total supply increased by fee shares
+        assertEq(finalTotalSupply, initialTotalSupply + totalFeeShares, "Total supply should increase by fee shares");
+    }
+
+    /**
+     * @notice Test that accrueFees correctly accrues fees and updates HWMpS without protocol fee
+     */
+    function test_accrueFees_WithoutProtocolFee_AccruesFeesAndUpdatesHWMpS() public {
+        // Mock protocol fee info (no protocol fee)
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 initialHWMpS = _getHWMpS(user);
+        uint256 initialTotalSupply = IERC20(facet).totalSupply();
+        uint256 initialVaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Simulate yield by minting assets to vault (price increases)
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Call accrueFees
+        vm.prank(user);
+        IVaultFacet(facet).accrueFees(user);
+
+        // Verify fees were distributed
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        assertGt(vaultFeeBalance, initialVaultFeeBalance, "Should distribute vault fee");
+
+        // Verify HWMpS was updated
+        uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+        uint256 finalHWMpS = _getHWMpS(user);
+
+        assertGt(finalHWMpS, initialHWMpS, "HWMpS should increase");
+        assertEq(finalHWMpS, finalPricePerShare, "HWMpS should equal current price per share");
+
+        // Verify total supply increased by fee shares
+        assertEq(finalTotalSupply, initialTotalSupply + vaultFeeBalance, "Total supply should increase by fee shares");
+    }
+
+    /**
+     * @notice Test that accrueFees does not accrue fees when price hasn't increased
+     */
+    function test_accrueFees_NoPriceIncrease_NoFeesAccrued() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 initialHWMpS = _getHWMpS(user);
+        uint256 initialTotalSupply = IERC20(facet).totalSupply();
+        uint256 initialVaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Don't add any yield - price stays the same
+
+        // Call accrueFees
+        vm.prank(user);
+        IVaultFacet(facet).accrueFees(user);
+
+        // Verify no fees were distributed
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        assertEq(vaultFeeBalance, initialVaultFeeBalance, "Should not distribute fees when price hasn't increased");
+
+        // Verify HWMpS hasn't changed (should remain the same since price didn't increase)
+        uint256 finalHWMpS = _getHWMpS(user);
+        assertEq(finalHWMpS, initialHWMpS, "HWMpS should remain the same");
+
+        // Verify total supply hasn't changed
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        assertEq(finalTotalSupply, initialTotalSupply, "Total supply should not change");
+    }
+
+    /**
+     * @notice Test that accrueFees does not accrue fees when fee is set to 0
+     */
+    function test_accrueFees_ZeroFee_NoFeesAccrued() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Set fee to 0
+        MoreVaultsStorageHelper.setFee(facet, 0);
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        uint256 initialHWMpS = _getHWMpS(user);
+        uint256 initialTotalSupply = IERC20(facet).totalSupply();
+        uint256 initialVaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Simulate yield by minting assets to vault (price increases)
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Call accrueFees
+        vm.prank(user);
+        IVaultFacet(facet).accrueFees(user);
+
+        // Verify no fees were distributed
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        assertEq(vaultFeeBalance, initialVaultFeeBalance, "Should not distribute fees when fee is 0");
+
+        // Verify HWMpS was still updated (even without fees)
+        uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+        uint256 finalHWMpS = _getHWMpS(user);
+
+        assertGt(finalHWMpS, initialHWMpS, "HWMpS should still increase");
+        assertEq(finalHWMpS, finalPricePerShare, "HWMpS should equal current price per share");
+
+        // Verify total supply hasn't changed (no fee shares minted)
+        assertEq(finalTotalSupply, initialTotalSupply, "Total supply should not change");
+    }
+
+    /**
+     * @notice Test that accrueFees resets HWMpS to 0 when user balance is 0
+     */
+    function test_accrueFees_ZeroBalance_ResetsHWMpSToZero() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // Verify HWMpS is set
+        uint256 hwmBefore = _getHWMpS(user);
+        assertGt(hwmBefore, 0, "HWMpS should be set");
+
+        // Withdraw all shares
+        uint256 shares = IERC20(facet).balanceOf(user);
+        vm.prank(user);
+        IVaultFacet(facet).redeem(shares, user, user);
+
+        // Verify balance is 0
+        assertEq(IERC20(facet).balanceOf(user), 0, "User balance should be 0");
+
+        // Call accrueFees
+        vm.prank(user);
+        IVaultFacet(facet).accrueFees(user);
+
+        // Verify HWMpS is reset to 0
+        uint256 hwmAfter = _getHWMpS(user);
+        assertEq(hwmAfter, 0, "HWMpS should be reset to 0 when balance is 0");
+    }
+
+    /**
+     * @notice Test that accrueFees works correctly for different users
+     */
+    function test_accrueFees_DifferentUsers_AccruesFeesIndependently() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Setup user2
+        MockERC20(asset).mint(user2, 10000 ether);
+        vm.prank(user2);
+        IERC20(asset).approve(facet, type(uint256).max);
+
+        // User1 deposits
+        uint256 depositAmount1 = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount1);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount1, user);
+
+        // User2 deposits
+        uint256 depositAmount2 = 1000 ether;
+        vm.prank(user2);
+        IVaultFacet(facet).deposit(depositAmount2, user2);
+
+        uint256 user1HWMpSBefore = _getHWMpS(user);
+        uint256 user2HWMpSBefore = _getHWMpS(user2);
+        uint256 initialTotalSupply = IERC20(facet).totalSupply();
+        uint256 initialVaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+
+        // Simulate yield by minting assets to vault (price increases)
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Call accrueFees for user1
+        vm.prank(user);
+        IVaultFacet(facet).accrueFees(user);
+
+        uint256 vaultFeeBalanceAfterUser1 = IERC20(facet).balanceOf(feeRecipient);
+        assertGt(vaultFeeBalanceAfterUser1, initialVaultFeeBalance, "Should accrue fees for user1");
+
+        uint256 user1HWMpSAfter = _getHWMpS(user);
+        assertGt(user1HWMpSAfter, user1HWMpSBefore, "User1 HWMpS should increase");
+
+        // Call accrueFees for user2
+        vm.prank(user2);
+        IVaultFacet(facet).accrueFees(user2);
+
+        uint256 vaultFeeBalanceAfterUser2 = IERC20(facet).balanceOf(feeRecipient);
+        assertGt(vaultFeeBalanceAfterUser2, vaultFeeBalanceAfterUser1, "Should accrue additional fees for user2");
+
+        uint256 user2HWMpSAfter = _getHWMpS(user2);
+        assertGt(user2HWMpSAfter, user2HWMpSBefore, "User2 HWMpS should increase");
+
+        // Verify both users' HWMpS are updated correctly
+        uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+
+        assertGt(user1HWMpSAfter, finalPricePerShare, "User1 HWMpS should be greater than current price per share");
+        assertEq(user2HWMpSAfter, finalPricePerShare, "User2 HWMpS should equal current price");
+    }
+
+    /**
+     * @notice Test that accrueFees can be called by anyone (public function)
+     */
+    function test_accrueFees_CanBeCalledByAnyone() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // Simulate yield
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Call accrueFees from a different address (not the user)
+        vm.prank(user2);
+        IVaultFacet(facet).accrueFees(user);
+
+        // Verify fees were accrued
+        uint256 vaultFeeBalance = IERC20(facet).balanceOf(feeRecipient);
+        assertGt(vaultFeeBalance, 0, "Should accrue fees even when called by different address");
+
+        // Verify HWMpS was updated
+        uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+        uint256 finalHWMpS = _getHWMpS(user);
+
+        assertEq(finalHWMpS, finalPricePerShare, "HWMpS should be updated");
+    }
 }

@@ -290,11 +290,15 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
             (success, result) =
                 address(this).call(abi.encodeWithSelector(IERC4626.redeem.selector, shares, receiver, owner));
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.ACCRUE_FEES) {
+            (address user) = abi.decode(requestInfo.actionCallData, (address));
+            (success, result) =
+                address(this).call(abi.encodeWithSelector(IVaultFacet.accrueFees.selector, user));
         }
         if (!success) revert FinalizationCallFailed();
 
         uint256 resultValue = abi.decode(result, (uint256));
-        if (requestInfo.amountLimit != 0) {
+        if (requestInfo.amountLimit != 0 && requestInfo.actionType != MoreVaultsLib.ActionType.ACCRUE_FEES) {
             if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW || requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
                 if (amountIn > requestInfo.amountLimit) {
                     revert SlippageExceeded(amountIn, requestInfo.amountLimit);

@@ -346,6 +346,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     /**
      * @inheritdoc IVaultFacet
      */
+    function accrueFees(address _user) public {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        (uint256 newTotalAssets,) = _getInfoForAction(ds);
+        _accrueInterest(newTotalAssets, _user);
+        _updateUserHWMpS(newTotalAssets, _user);
+    }
+
+    /**
+     * @inheritdoc IVaultFacet
+     */
     function clearRequest() public {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (!ds.isHub) {

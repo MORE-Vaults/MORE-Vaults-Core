@@ -108,7 +108,8 @@ library MoreVaultsLib {
         MINT,
         WITHDRAW,
         REDEEM,
-        MULTI_ASSETS_DEPOSIT
+        MULTI_ASSETS_DEPOSIT,
+        ACCRUE_FEES
     }
 
     struct CrossChainRequestInfo {

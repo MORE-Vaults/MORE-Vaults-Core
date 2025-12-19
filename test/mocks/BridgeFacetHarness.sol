@@ -15,6 +15,7 @@ contract BridgeFacetHarness is BridgeFacet {
     mapping(bytes32 => uint256) public mintResult;
     mapping(bytes32 => uint256) public withdrawResult;
     mapping(bytes32 => uint256) public redeemResult;
+    mapping(bytes32 => uint256) public accrueFeesResult;
     mapping(bytes32 => uint256) public amountOfTokenToSendIn;
     mapping(address => uint256) private _balances; // Mock balance tracking
     mapping(bytes32 => address) public initiatorByGuid;
@@ -58,6 +59,10 @@ contract BridgeFacetHarness is BridgeFacet {
 
     function h_setRedeemResult(bytes32 guid, uint256 result) external {
         redeemResult[guid] = result;
+    }
+
+    function h_setAccrueFeesResult(bytes32 guid, uint256 result) external {
+        accrueFeesResult[guid] = result;
     }
     
     function h_setAmountOfTokenToSendIn(bytes32 guid, uint256 amount) external {
@@ -118,6 +123,11 @@ contract BridgeFacetHarness is BridgeFacet {
     function redeem(uint256, address, address) external returns (uint256) {
         bytes32 guid = MoreVaultsLib.moreVaultsStorage().finalizationGuid;
         return redeemResult[guid];
+    }
+
+    function accrueFees(address) external returns (uint256) {
+        bytes32 guid = MoreVaultsLib.moreVaultsStorage().finalizationGuid;
+        return accrueFeesResult[guid];
     }
 
     function setFee(uint96) external {}
