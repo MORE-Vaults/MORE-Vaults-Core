@@ -17,8 +17,26 @@ contract MockAsset is ERC20 {
 
 contract MockVault is ERC4626 {
     uint256 public slippageBps; // Simulates price change between preview and execution
+    bool public whitelistEnabled;
+    bool public withdrawalQueueEnabled;
 
     constructor(address asset_) ERC4626(IERC20(asset_)) ERC20("Mock Vault", "vMOCK") {}
+
+    function setWhitelistEnabled(bool _enabled) external {
+        whitelistEnabled = _enabled;
+    }
+
+    function setWithdrawalQueueEnabled(bool _enabled) external {
+        withdrawalQueueEnabled = _enabled;
+    }
+
+    function isDepositWhitelistEnabled() external view returns (bool) {
+        return whitelistEnabled;
+    }
+
+    function getWithdrawalQueueStatus() external view returns (bool) {
+        return withdrawalQueueEnabled;
+    }
 
     function setSlippage(uint256 bps) external {
         slippageBps = bps;
@@ -238,6 +256,81 @@ contract ERC4626RouterTest is Test {
         vm.expectRevert(); // SlippageExceeded
         router.redeemWithSlippage(vault, redeemShares, minAssets, receiver, user);
         vm.stopPrank();
+    }
+
+    // ========== WHITELIST AND WITHDRAWAL QUEUE CHECKS ==========
+
+    function test_depositWithSlippage_RevertsWhenWhitelistEnabled() public {
+        vault.setWhitelistEnabled(true);
+
+        vm.prank(user);
+        vm.expectRevert(ERC4626Router.DepositWhitelistEnabled.selector);
+        router.depositWithSlippage(vault, 1000e18, 0, receiver);
+    }
+
+    function test_mintWithSlippage_RevertsWhenWhitelistEnabled() public {
+        vault.setWhitelistEnabled(true);
+
+        vm.prank(user);
+        vm.expectRevert(ERC4626Router.DepositWhitelistEnabled.selector);
+        router.mintWithSlippage(vault, 1000e18, type(uint256).max, receiver);
+    }
+
+    function test_withdrawWithSlippage_RevertsWhenWithdrawalQueueEnabled() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        vault.deposit(depositAssets, user);
+        vault.approve(address(router), type(uint256).max);
+        vm.stopPrank();
+
+        vault.setWithdrawalQueueEnabled(true);
+
+        vm.prank(user);
+        vm.expectRevert(ERC4626Router.WithdrawalQueueEnabled.selector);
+        router.withdrawWithSlippage(vault, 500e18, type(uint256).max, receiver, user);
+    }
+
+    function test_redeemWithSlippage_RevertsWhenWithdrawalQueueEnabled() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        uint256 shares = vault.deposit(depositAssets, user);
+        vault.approve(address(router), type(uint256).max);
+        vm.stopPrank();
+
+        vault.setWithdrawalQueueEnabled(true);
+
+        vm.prank(user);
+        vm.expectRevert(ERC4626Router.WithdrawalQueueEnabled.selector);
+        router.redeemWithSlippage(vault, shares, 0, receiver, user);
+    }
+
+    function test_depositWithSlippage_WorksWhenWhitelistDisabled() public {
+        vault.setWhitelistEnabled(false);
+
+        vm.prank(user);
+        uint256 shares = router.depositWithSlippage(vault, 1000e18, 0, receiver);
+
+        assertGt(shares, 0);
+    }
+
+    function test_withdrawWithSlippage_WorksWhenWithdrawalQueueDisabled() public {
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        uint256 userShares = vault.deposit(depositAssets, user);
+        vault.approve(address(router), type(uint256).max);
+        vm.stopPrank();
+
+        vault.setWithdrawalQueueEnabled(false);
+
+        vm.prank(user);
+        uint256 shares = router.withdrawWithSlippage(vault, 500e18, userShares, receiver, user);
+
+        assertGt(shares, 0);
     }
 
     // ========== EDGE CASES ==========
