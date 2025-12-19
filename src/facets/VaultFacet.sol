@@ -724,6 +724,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     function _accrueInterest(uint256 _totalAssets, address _user) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        // Update global fee index first (captures peaks for inactive users)
+        _updateGlobalFeeIndex(_totalAssets);
+
         uint256 feeShares;
         if (_user == address(0)) {
             revert ZeroAddress();
@@ -752,8 +755,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     /**
-     * @notice Calculate fee shares for a specific user based on their High-Water Mark per Share
-     * @dev Calculate the fee shares for a user's position only if current price per share exceeds their HWMpS
+     * @notice Calculate fee shares for a specific user based on global fee index
+     * @dev Uses Synthetix-style global index to capture fees even for inactive users
      * @param _totalAssets The total assets of the vault
      * @param _user The address of the user
      * @return feeShares The fee shares for this user's position
@@ -761,56 +764,35 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     function _accruedFeeSharesPerUser(uint256 _totalAssets, address _user) internal view returns (uint256 feeShares) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        uint256 totalSupply_ = totalSupply();
-        if (totalSupply_ == 0) {
-            return 0;
-        }
+        uint256 userShares = balanceOf(_user);
+        if (userShares == 0) return 0;
 
-        // Calculate current price per share (using same formula as _convertToAssets)
+        // Calculate fee debt from global index difference
+        uint256 feeIndexDiff = ds.globalFeeIndex - ds.userFeeIndexPaid[_user];
+
+        // Also check current price vs global HWM for pending (not yet indexed) fees
+        uint256 totalSupply_ = totalSupply();
+        if (totalSupply_ == 0) return 0;
+
         uint256 decimalsMultiplier = 10 ** decimals();
         uint256 currentPricePerShare = _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
-        // Get user's High-Water Mark per Share
-        uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
 
-        // If current price is not higher than HWMpS, no fee is accrued
-        if (currentPricePerShare <= userHWMpS) {
-            return 0;
+        // Add pending fees if price is above global HWM
+        if (currentPricePerShare > ds.globalHWM) {
+            uint256 pendingGain = currentPricePerShare - ds.globalHWM;
+            uint256 pendingFeePerShare = pendingGain.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
+            feeIndexDiff += pendingFeePerShare;
         }
 
-        // For fee recipients HWMpS won't be set automatically, if HWMpS is 0, no fee is accrued
-        if (userHWMpS == 0) {
-            return 0;
-        }
+        if (feeIndexDiff == 0) return 0;
 
-        // Calculate user's current position value
-        uint256 userShares = balanceOf(_user);
-        if (userShares == 0) {
-            return 0;
-        }
+        // Calculate fee assets: user's share of the cumulative fee index difference
+        uint256 feeAssets = userShares.mulDiv(feeIndexDiff, decimalsMultiplier, Math.Rounding.Floor);
 
-        // Calculate profit above HWMpS for this user
-        uint256 userAssetsAtHWM = userShares.mulDiv(userHWMpS, decimalsMultiplier, Math.Rounding.Floor);
-        uint256 userCurrentAssets = userShares.mulDiv(currentPricePerShare, decimalsMultiplier, Math.Rounding.Floor);
-        uint256 userProfit = userCurrentAssets > userAssetsAtHWM ? userCurrentAssets - userAssetsAtHWM : 0;
-
-        if (userProfit == 0) {
-            return 0;
-        }
-
-        uint96 fee = ds.fee;
-        if (fee == 0) {
-            return 0;
-        }
-
-        // Calculate fee assets for this user's profit
-        uint256 feeAssets = userProfit.mulDiv(fee, MoreVaultsLib.FEE_BASIS_POINT);
+        if (feeAssets == 0 || feeAssets >= _totalAssets) return 0;
 
         // Convert fee assets to fee shares
-        if (feeAssets >= _totalAssets) {
-            return 0;
-        }
-        feeShares =
-            feeAssets.mulDiv(totalSupply_ + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
+        feeShares = feeAssets.mulDiv(totalSupply_ + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
     }
 
     /**
@@ -893,6 +875,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (balanceOf(_user) == 0) {
             ds.userHighWaterMarkPerShare[_user] = 0;
+            ds.userFeeIndexPaid[_user] = 0;
             return;
         }
 
@@ -905,6 +888,31 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
         if (currentPricePerShare > userHWMpS) {
             ds.userHighWaterMarkPerShare[_user] = currentPricePerShare;
+        }
+
+        // Update user's fee index checkpoint
+        ds.userFeeIndexPaid[_user] = ds.globalFeeIndex;
+    }
+
+    /**
+     * @notice Update global fee index when price exceeds global HWM
+     * @dev Captures fee-per-share at peaks so inactive users still owe fees
+     * @param _totalAssets The total assets of the vault
+     */
+    function _updateGlobalFeeIndex(uint256 _totalAssets) internal {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        uint256 totalSupply_ = totalSupply();
+        if (totalSupply_ == 0) return;
+
+        uint256 decimalsMultiplier = 10 ** decimals();
+        uint256 currentPricePerShare = _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
+
+        if (currentPricePerShare > ds.globalHWM) {
+            uint256 gain = currentPricePerShare - ds.globalHWM;
+            uint256 feePerShare = gain.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
+            ds.globalFeeIndex += feePerShare;
+            ds.globalHWM = currentPricePerShare;
         }
     }
 
@@ -919,14 +927,17 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
     /**
      * @notice Helper function to get total assets and simulated total supply (with fee shares) for preview functions
+     * @dev Uses effective total supply for accurate pricing including global pending fees
      */
     function _getPreviewData() internal view returns (uint256 newTotalAssets, uint256 simTotalSupply) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         _validateERC4626Compatible(ds);
         newTotalAssets = totalAssets();
-        uint256 ts = totalSupply();
-        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
-        simTotalSupply = ts + feeShares;
+        // Use effective total supply which includes global pending fees estimate
+        simTotalSupply = _getEffectiveTotalSupply(newTotalAssets);
+        // Add user's specific pending fees on top
+        uint256 userFeeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
+        simTotalSupply += userFeeShares;
     }
 
     /**
@@ -938,6 +949,44 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             return amount.mulDiv(ds.withdrawalFee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
         }
         return 0;
+    }
+
+    /**
+     * @notice Calculate effective total supply including estimated pending global fees
+     * @dev Used for accurate price per share calculations (Problem 2 fix)
+     * @param _totalAssets The total assets of the vault
+     * @return effectiveSupply The total supply plus estimated pending fee shares
+     */
+    function _getEffectiveTotalSupply(uint256 _totalAssets) internal view returns (uint256 effectiveSupply) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        uint256 totalSupply_ = totalSupply();
+        if (totalSupply_ == 0) return 0;
+
+        uint256 decimalsMultiplier = 10 ** decimals();
+        uint256 currentPricePerShare = _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
+
+        // If price is at or below global HWM, no pending fees
+        if (currentPricePerShare <= ds.globalHWM) {
+            return totalSupply_;
+        }
+
+        // Estimate pending fee shares based on global HWM
+        uint256 pendingGain = currentPricePerShare - ds.globalHWM;
+        uint256 pendingFeePerShare = pendingGain.mulDiv(ds.fee, MoreVaultsLib.FEE_BASIS_POINT, Math.Rounding.Floor);
+        uint256 pendingFeeAssets = totalSupply_.mulDiv(pendingFeePerShare, decimalsMultiplier, Math.Rounding.Floor);
+
+        if (pendingFeeAssets == 0 || pendingFeeAssets >= _totalAssets) {
+            return totalSupply_;
+        }
+
+        uint256 pendingFeeShares = pendingFeeAssets.mulDiv(
+            totalSupply_ + 10 ** _decimalsOffset(),
+            _totalAssets - pendingFeeAssets,
+            Math.Rounding.Floor
+        );
+
+        return totalSupply_ + pendingFeeShares;
     }
 
     function previewDeposit(uint256 assets) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
@@ -1112,10 +1161,12 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Get receiver's balance BEFORE transfer
         uint256 balanceOfReceiverBefore = balanceOf(to);
-        
-        // Get sender's and receiver's HWMpS
+
+        // Get sender's and receiver's HWMpS and fee index
         uint256 fromHWMpS = ds.userHighWaterMarkPerShare[from];
         uint256 toHWMpS = ds.userHighWaterMarkPerShare[to];
+        uint256 fromFeeIndex = ds.userFeeIndexPaid[from];
+        uint256 toFeeIndex = ds.userFeeIndexPaid[to];
 
         // Execute standard transfer
         super._update(from, to, value);
@@ -1124,26 +1175,28 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 balanceOfSenderAfter = balanceOf(from);
         uint256 balanceOfReceiverAfter = balanceOf(to);
 
-        // If sender's balance is now 0, reset their HWMpS to 0
+        // If sender's balance is now 0, reset their state
         if (balanceOfSenderAfter == 0) {
             ds.userHighWaterMarkPerShare[from] = 0;
+            ds.userFeeIndexPaid[from] = 0;
         }
 
-        // If receiver had no tokens before transfer, set HWMpS equal to sender's HWMpS
+        // If receiver had no tokens before transfer, inherit sender's state
         if (balanceOfReceiverBefore == 0) {
             ds.userHighWaterMarkPerShare[to] = fromHWMpS;
+            ds.userFeeIndexPaid[to] = fromFeeIndex;
             return;
         }
 
         // Calculate weighted average HWMpS
         // Formula: new_HWMpS = (old_balance * old_HWMpS + transferred_tokens * sender_HWMpS) / new_balance
-        // If few tokens transferred - changes slightly, if many - more significantly
-        // HWMpS is already stored with decimals offset, so the formula simplifies
-        // HWMpS can decrease when receiving tokens with lower HWMpS
         uint256 weightedSum = balanceOfReceiverBefore * toHWMpS + value * fromHWMpS;
         uint256 newHWMpS = weightedSum / balanceOfReceiverAfter;
-
-        // Update receiver's HWMpS to the weighted average (can be lower than current HWMpS)
         ds.userHighWaterMarkPerShare[to] = newHWMpS;
+
+        // Calculate weighted average fee index
+        uint256 weightedFeeIndexSum = balanceOfReceiverBefore * toFeeIndex + value * fromFeeIndex;
+        uint256 newFeeIndex = weightedFeeIndexSum / balanceOfReceiverAfter;
+        ds.userFeeIndexPaid[to] = newFeeIndex;
     }
 }

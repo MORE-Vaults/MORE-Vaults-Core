@@ -182,6 +182,10 @@ library MoreVaultsLib {
         /// For redeems: lockedTokensPerContract[vault][shareToken] = shares
         mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
         mapping(address => uint256) initialDepositCapPerUser;
+        // Global fee index system for accurate fee tracking (Issue #34)
+        uint256 globalFeeIndex;                              // Cumulative fee-per-share, always increases
+        uint256 globalHWM;                                   // Vault's all-time high price per share
+        mapping(address => uint256) userFeeIndexPaid;        // User's snapshot of globalFeeIndex
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
