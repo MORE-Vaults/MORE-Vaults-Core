@@ -478,8 +478,26 @@ contract VaultFacetTest is Test {
 
         uint256 withdrawAmount = 50 ether;
         uint256 expectedShares = IVaultFacet(facet).convertToShares(withdrawAmount);
+        
+        // Get HWMpS before requestWithdraw
+        uint256 hwmBefore = _getHWMpS(user);
+        
+        // Get current price per share
+        uint256 totalAssetsBefore = IVaultFacet(facet).totalAssets();
+        uint256 totalSupplyBefore = IERC20(facet).totalSupply();
+        uint256 currentPricePerShare = _calculatePricePerShare(totalAssetsBefore, totalSupplyBefore);
+        
         vm.prank(user);
         VaultFacet(facet).requestWithdraw(withdrawAmount);
+        
+        // Verify HWMpS was updated if current price is higher
+        uint256 hwmAfter = _getHWMpS(user);
+        if (currentPricePerShare > hwmBefore) {
+            assertEq(hwmAfter, currentPricePerShare, "HWMpS should be updated to current price per share");
+        } else {
+            assertEq(hwmAfter, hwmBefore, "HWMpS should remain unchanged if price didn't increase");
+        }
+        
         (uint256 sharesRequest, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
         assertEq(sharesRequest, expectedShares, "Should request correct amount of shares");
         assertEq(timelockEndsAt, block.timestamp + 110, "Should set correct timelock end time");
@@ -1672,10 +1690,24 @@ contract VaultFacetTest is Test {
         VaultFacet(facet).deposit(depositAmount, user);
         vm.stopPrank();
 
+        // Get HWMpS and price before requestWithdraw
+        uint256 hwmBefore = _getHWMpS(user);
+        uint256 totalAssetsBefore = IVaultFacet(facet).totalAssets();
+        uint256 totalSupplyBefore = IERC20(facet).totalSupply();
+        uint256 currentPricePerShare = _calculatePricePerShare(totalAssetsBefore, totalSupplyBefore);
+
         // Request withdrawal
         uint256 withdrawAmount = 100 ether;
         vm.prank(user);
         VaultFacet(facet).requestWithdraw(withdrawAmount);
+
+        // Verify HWMpS was updated if current price is higher
+        uint256 hwmAfter = _getHWMpS(user);
+        if (currentPricePerShare > hwmBefore) {
+            assertEq(hwmAfter, currentPricePerShare, "HWMpS should be updated to current price per share");
+        } else {
+            assertEq(hwmAfter, hwmBefore, "HWMpS should remain unchanged if price didn't increase");
+        }
 
         // Fast forward past timelock
         vm.warp(block.timestamp + 1 days + 1);
@@ -1826,6 +1858,183 @@ contract VaultFacetTest is Test {
         vm.prank(user);
         vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
         VaultFacet(facet).requestWithdraw(assets);
+    }
+
+    /**
+     * @notice Test that requestWithdraw updates HWMpS when current price is higher
+     */
+    function test_requestWithdraw_ShouldUpdateHWMpSWhenPriceIncreased() public {
+        // Setup withdrawal queue
+        vm.prank(owner);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 1 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // Get initial HWMpS (should be set to current price per share)
+        uint256 initialHWMpS = _getHWMpS(user);
+        assertGt(initialHWMpS, 0, "Initial HWMpS should be set");
+
+        // Simulate price increase by minting assets to vault
+        MockERC20(asset).mint(facet, 100 ether);
+
+
+        // Verify price increased
+        // Get current price per share before requestWithdraw
+        uint256 totalAssets = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply = IERC20(facet).totalSupply();
+        uint256 pricePerShareBeforeRequest = _calculatePricePerShare(totalAssets, totalSupply);
+        assertGt(pricePerShareBeforeRequest, initialHWMpS, "Price should have increased");
+
+        // Request withdrawal - this should update HWMpS
+        uint256 withdrawAmount = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount);
+
+        // Price should decrease because of fee shares minted
+        // Get current price per share before requestWithdraw
+        totalAssets = IVaultFacet(facet).totalAssets();
+        totalSupply = IERC20(facet).totalSupply();
+        uint256 pricePerShareAfterRequest = _calculatePricePerShare(totalAssets, totalSupply);
+        assertGt(pricePerShareBeforeRequest, pricePerShareAfterRequest, "Price should have decreased");
+
+        // Verify HWMpS was updated to current price per share
+        uint256 updatedHWMpS = _getHWMpS(user);
+        assertEq(updatedHWMpS, pricePerShareAfterRequest, "HWMpS should be updated to current price per share");
+        assertGt(updatedHWMpS, initialHWMpS, "HWMpS should have increased");
+    }
+
+    /**
+     * @notice Test that requestWithdraw does not update HWMpS when current price is lower
+     */
+    function test_requestWithdraw_ShouldNotUpdateHWMpSWhenPriceDecreased() public {
+        // Setup withdrawal queue
+        vm.prank(owner);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 1 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // Simulate price increase first
+        MockERC20(asset).mint(facet, 100 ether);
+        
+        // Request withdrawal to update HWMpS to higher value
+        uint256 withdrawAmount1 = 50 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount1);
+
+        // Get HWMpS after first request (should be updated)
+        uint256 hwmAfterFirstRequest = _getHWMpS(user);
+        assertGt(hwmAfterFirstRequest, 0, "HWMpS should be set after first request");
+
+        // Simulate price decrease (burn assets from vault - this is not realistic but for testing)
+        // Note: In reality, we can't easily decrease totalAssets, but we can test with a scenario
+        // where the price doesn't increase further
+        uint256 totalAssetsBefore = IVaultFacet(facet).totalAssets();
+        
+        // Request another withdrawal - price should be same or lower relative to HWMpS
+        uint256 withdrawAmount2 = 50 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount2);
+
+        // HWMpS should remain the same (not decrease)
+        uint256 hwmAfterSecondRequest = _getHWMpS(user);
+        assertEq(hwmAfterSecondRequest, hwmAfterFirstRequest, "HWMpS should not decrease");
+    }
+
+    /**
+     * @notice Test that requestWithdraw updates HWMpS correctly when called multiple times with price increases
+     */
+    function test_requestWithdraw_ShouldUpdateHWMpSMultipleTimes() public {
+        // Setup withdrawal queue
+        vm.prank(owner);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 1 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // First request - get initial HWMpS
+        uint256 withdrawAmount1 = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount1);
+        
+        // Get price after first request (price decreases due to fee shares minted)
+        uint256 totalAssets1 = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply1 = IERC20(facet).totalSupply();
+        uint256 price1AfterRequest = _calculatePricePerShare(totalAssets1, totalSupply1);
+        uint256 hwm1 = _getHWMpS(user);
+        assertEq(hwm1, price1AfterRequest, "HWMpS should be updated to price after first request");
+        assertGt(hwm1, 0, "HWMpS should be set after first request");
+
+        // Simulate price increase
+        MockERC20(asset).mint(facet, 50 ether);
+        uint256 totalAssets2BeforeRequest = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply2BeforeRequest = IERC20(facet).totalSupply();
+        uint256 price2BeforeRequest = _calculatePricePerShare(totalAssets2BeforeRequest, totalSupply2BeforeRequest);
+        assertGt(price2BeforeRequest, hwm1, "Price should have increased before second request");
+
+        // Second request - HWMpS should update to price AFTER request
+        uint256 withdrawAmount2 = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount2);
+        
+        // Get price after second request (price decreases due to fee shares minted)
+        uint256 totalAssets2AfterRequest = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply2AfterRequest = IERC20(facet).totalSupply();
+        uint256 price2AfterRequest = _calculatePricePerShare(totalAssets2AfterRequest, totalSupply2AfterRequest);
+        uint256 hwm2 = _getHWMpS(user);
+        assertEq(hwm2, price2AfterRequest, "HWMpS should be updated to price after second request");
+        assertGt(hwm2, hwm1, "HWMpS should have increased");
+
+        // Simulate another price increase
+        MockERC20(asset).mint(facet, 50 ether);
+        uint256 totalAssets3BeforeRequest = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply3BeforeRequest = IERC20(facet).totalSupply();
+        uint256 price3BeforeRequest = _calculatePricePerShare(totalAssets3BeforeRequest, totalSupply3BeforeRequest);
+        assertGt(price3BeforeRequest, hwm2, "Price should have increased before third request");
+
+        // Third request - HWMpS should update to price AFTER request
+        uint256 withdrawAmount3 = 100 ether;
+        vm.prank(user);
+        VaultFacet(facet).requestWithdraw(withdrawAmount3);
+        
+        // Get price after third request (price decreases due to fee shares minted)
+        uint256 totalAssets3AfterRequest = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply3AfterRequest = IERC20(facet).totalSupply();
+        uint256 price3AfterRequest = _calculatePricePerShare(totalAssets3AfterRequest, totalSupply3AfterRequest);
+        uint256 hwm3 = _getHWMpS(user);
+        assertEq(hwm3, price3AfterRequest, "HWMpS should be updated to price after third request");
+        assertGt(hwm3, hwm2, "HWMpS should have increased again");
     }
 
     // ============ Preview Function Tests ============

@@ -434,6 +434,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
+        _updateUserHWMpS(newTotalAssets, msg.sender);
 
         emit WithdrawRequestCreated(msg.sender, shares, endsAt);
     }
