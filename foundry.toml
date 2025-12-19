@@ -7,7 +7,7 @@ viaIR = true
 fs_permissions = [{ access = "read-write", path = "./"}]
 allow_internal_expect_revert = true
 optimizer = true
-optimizer_runs = 3000
+optimizer_runs = 2000
 
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
