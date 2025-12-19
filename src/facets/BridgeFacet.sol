@@ -136,7 +136,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     function initVaultActionRequest(
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
-        uint256 minAmountOut,
+        uint256 amountLimit,
         bytes calldata extraOptions
     ) external payable whenNotPaused nonReentrant returns (bytes32 guid) {
         MoreVaultsLib.validateNotMulticall();
@@ -147,7 +147,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             if (ds.oraclesCrossChainAccounting) {
                 revert AccountingViaOracles();
             }
-            guid = _createCrossChainRequest(ds, vaults, eids, actionType, actionCallData, minAmountOut, extraOptions);
+            guid = _createCrossChainRequest(ds, vaults, eids, actionType, actionCallData, amountLimit, extraOptions);
         }
     }
 
@@ -157,7 +157,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         uint32[] memory eids,
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
-        uint256 minAmountOut,
+        uint256 amountLimit,
         bytes calldata extraOptions
     ) internal returns (bytes32 guid) {
         MessagingFee memory fee = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
@@ -181,7 +181,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             finalized: false,
             totalAssets: IVaultFacet(address(this)).totalAssets(),
             finalizationResult: 0,
-            minAmountOut: minAmountOut
+            amountLimit: amountLimit
         });
 
         guid =
@@ -258,6 +258,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         ds.finalizationGuid = guid;
 
         bool success;
+        uint256 amountIn = 0;
         if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
             (uint256 assets, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
             (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.deposit.selector, assets, receiver));
@@ -272,12 +273,18 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             ds.pendingNative -= value;
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
             (uint256 shares, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
+            uint256 balanceBefore = IERC20(MoreVaultsLib.getUnderlyingTokenAddress()).balanceOf(requestInfo.initiator);
             (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.mint.selector, shares, receiver));
+            uint256 balanceAfter = IERC20(MoreVaultsLib.getUnderlyingTokenAddress()).balanceOf(requestInfo.initiator);
+            amountIn = balanceBefore - balanceAfter;
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
             (uint256 assets, address receiver, address owner) =
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
+            uint256 balanceBefore = IERC20(address(this)).balanceOf(requestInfo.initiator);
             (success, result) =
                 address(this).call(abi.encodeWithSelector(IERC4626.withdraw.selector, assets, receiver, owner));
+            uint256 balanceAfter = IERC20(address(this)).balanceOf(requestInfo.initiator);
+            amountIn = balanceBefore - balanceAfter;
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
             (uint256 shares, address receiver, address owner) =
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
@@ -286,11 +293,17 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         if (!success) revert FinalizationCallFailed();
 
-        uint256 resultValue = 0;
-        resultValue = abi.decode(result, (uint256));
-
-        if (resultValue < requestInfo.minAmountOut) {
-            revert SlippageExceeded(resultValue, requestInfo.minAmountOut);
+        uint256 resultValue = abi.decode(result, (uint256));
+        if (requestInfo.amountLimit != 0) {
+            if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW || requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
+                if (amountIn > requestInfo.amountLimit) {
+                    revert SlippageExceeded(amountIn, requestInfo.amountLimit);
+                }
+            } else {
+                if (resultValue < requestInfo.amountLimit) {
+                    revert SlippageExceeded(resultValue, requestInfo.amountLimit);
+                }
+            }
         }
 
         ds.guidToCrossChainRequestInfo[guid].finalized = true;

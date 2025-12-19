@@ -120,7 +120,7 @@ library MoreVaultsLib {
         bool finalized;
         uint256 totalAssets;
         uint256 finalizationResult;
-        uint256 minAmountOut; // Minimum expected result amount for slippage check (0 = check not required)
+        uint256 amountLimit; // Amount limit for slippage check: minAmountOut for deposits/mints, maxAmountIn for withdraws/redeems (0 = check not required)
     }
 
     struct MoreVaultsStorage {
@@ -295,9 +295,13 @@ library MoreVaultsLib {
         );
     }
 
+    function getUnderlyingTokenAddress() internal view returns (address) {
+        return address(getERC4626Storage()._asset);
+    }
+
     function convertUnderlyingToUsd(uint256 amount, Math.Rounding rounding) internal view returns (uint256) {
         IOracleRegistry oracle = IMoreVaultsRegistry(AccessControlLib.vaultRegistry()).oracle();
-        address underlyingToken = address(getERC4626Storage()._asset);
+        address underlyingToken = getUnderlyingTokenAddress();
         return amount.mulDiv(
             oracle.getAssetPrice(underlyingToken), 10 ** IERC20Metadata(underlyingToken).decimals(), rounding
         );

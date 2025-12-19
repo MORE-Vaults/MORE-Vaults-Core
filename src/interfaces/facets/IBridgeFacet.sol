@@ -23,7 +23,7 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error RequestTimedOut();
     error RequestAlreadyFinalized();
     error NotEnoughMsgValueProvided();
-    error SlippageExceeded(uint256 amountLD, uint256 minAmountLD);
+    error SlippageExceeded(uint256 amount, uint256 limit);
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD
@@ -69,17 +69,17 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @dev Initiates a request to perform an action in a cross-chain vault
      * @param actionType Type of action to perform (deposit, withdraw, mint, etc.)
      * @param actionCallData Action call data
-     * @param minAmountOut Minimum expected output amount for slippage protection (0 = no slippage check)
+     * @param amountLimit Amount limit for slippage protection: minAmountOut for deposits/mints, maxAmountIn for withdraws/redeems (0 = no slippage check)
      * @param extraOptions Additional options for cross-chain transfer
      * @return guid Unique request number for tracking
      * @notice Function requires gas payment for cross-chain transfer
      * @notice Available only when the contract is not paused
-     * @notice minAmountOut is used for slippage protection for all actions except SET_FEE
+     * @notice amountLimit is used for slippage protection for all actions except SET_FEE
      */
     function initVaultActionRequest(
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
-        uint256 minAmountOut,
+        uint256 amountLimit,
         bytes calldata extraOptions
     ) external payable returns (bytes32 guid);
 

@@ -454,7 +454,20 @@ contract BridgeFacetTest is Test {
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         bytes memory callData = abi.encode(uint256(50), address(this), address(this));
+        address user = address(0x1111);
+        vm.startPrank(user);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, 0, bytes(""));
+        facet.h_setInitiatorByGuid(guid, user);
+        vm.stopPrank();
+
+        // Set initial balance and amount to send in for withdraw
+        // In withdraw, share tokens are transferred from msg.sender (facet via call) to address(this) (facet)
+        // So we need to set initial balance for facet (as msg.sender)
+        uint256 sharesToSpend = 50;
+        uint256 initialBalance = 100;
+        facet.h_setBalance(address(facet), user, initialBalance); // Initial balance for facet
+        facet.h_setAmountOfTokenToSendIn(guid, sharesToSpend);
+        facet.h_setWithdrawResult(guid, 50); // Return value
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -601,19 +614,28 @@ contract BridgeFacetTest is Test {
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         uint256 shares = 100e18;
-        uint256 minAmountOut = 150e18; // Expect at least 150 assets
+        uint256 maxAmountIn = 1e18; // Expect at most 1 asset
         bytes memory callData = abi.encode(shares, address(this));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, minAmountOut, bytes(""));
+        address user = address(0x1111);
+        vm.startPrank(user);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, maxAmountIn, bytes(""));
+        vm.stopPrank();
 
-        // Set mint result to be less than minAmountOut
-        uint256 actualAssets = 100e18; // Less than minAmountOut (150e18)
+        // Set mint result and amount of underlying tokens that will be spent (more than maxAmountIn)
+        uint256 actualAssets = 100e18; // More than maxAmountIn (1e18) - this is the amount that will be spent
         facet.h_setMintResult(guid, actualAssets);
+        facet.h_setAmountOfTokenToSendIn(guid, actualAssets); // Set the amount that will be transferred in
+        facet.h_setInitiatorByGuid(guid, user);
+        
+        // Set initial balance for underlying token so balanceOf works correctly
+        // The mint function will transfer from msg.sender (facet) to address(this) (facet)
+        underlying.mint(user, actualAssets);
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
 
         // Expect revert with SlippageExceeded error
-        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualAssets, minAmountOut));
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualAssets, maxAmountIn));
         facet.executeRequest(guid);
         vm.stopPrank();
     }
@@ -649,6 +671,138 @@ contract BridgeFacetTest is Test {
 
         // Expect revert with SlippageExceeded error
         vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
+        facet.executeRequest(guid);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that executeRequest reverts when slippage exceeds maxAmountIn for WITHDRAW
+     */
+    function test_executeRequest_WITHDRAW_reverts_on_slippage() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-withdraw-slippage"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 assets = 50e18;
+        uint256 maxAmountIn = 40e18; // Expect at most 40 share tokens to be spent
+        bytes memory callData = abi.encode(assets, address(this), address(this));
+        address user = address(0x1111);
+        vm.startPrank(user);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
+        facet.h_setInitiatorByGuid(guid, user);
+        vm.stopPrank();
+
+        // Set amount of share tokens that will be spent (more than maxAmountIn)
+        uint256 actualSharesSpent = 50e18; // More than maxAmountIn (40e18)
+        uint256 initialBalance = 100e18;
+        facet.h_setBalance(address(facet), user, initialBalance);
+        facet.h_setAmountOfTokenToSendIn(guid, actualSharesSpent);
+        facet.h_setWithdrawResult(guid, 50e18); // Return value
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+
+        // Expect revert with SlippageExceeded error
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualSharesSpent, maxAmountIn));
+        facet.executeRequest(guid);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that executeRequest succeeds when slippage is ok for WITHDRAW
+     */
+    function test_executeRequest_WITHDRAW_succeeds_when_slippage_ok() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-withdraw-ok"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 assets = 50e18;
+        uint256 maxAmountIn = 60e18; // Expect at most 60 share tokens to be spent
+        bytes memory callData = abi.encode(assets, address(this), address(this));
+        address user = address(0x1111);
+        vm.startPrank(user);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
+        facet.h_setInitiatorByGuid(guid, user);
+        vm.stopPrank();
+
+        // Set amount of share tokens that will be spent (less than maxAmountIn)
+        uint256 actualSharesSpent = 50e18; // Less than maxAmountIn (60e18)
+        uint256 initialBalance = 100e18;
+        facet.h_setBalance(address(facet), user, initialBalance);
+        facet.h_setAmountOfTokenToSendIn(guid, actualSharesSpent);
+        facet.h_setWithdrawResult(guid, 50e18); // Return value
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+
+        // Should succeed
+        facet.executeRequest(guid);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that executeRequest reverts when slippage exceeds minAmountOut for REDEEM
+     */
+    function test_executeRequest_REDEEM_reverts_on_slippage() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-redeem-slippage"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 shares = 75e18;
+        uint256 minAmountOut = 80e18; // Expect at least 80 assets
+        bytes memory callData = abi.encode(shares, address(this), address(this));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, minAmountOut, bytes(""));
+
+        // Set redeem result to be less than minAmountOut (simulating unfavorable price movement)
+        uint256 actualAssets = 70e18; // Less than minAmountOut (80e18)
+        facet.h_setRedeemResult(guid, actualAssets);
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+
+        // Expect revert with SlippageExceeded error
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualAssets, minAmountOut));
+        facet.executeRequest(guid);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that executeRequest succeeds when slippage is ok for REDEEM
+     */
+    function test_executeRequest_REDEEM_succeeds_when_slippage_ok() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-redeem-ok"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        uint256 shares = 75e18;
+        uint256 minAmountOut = 70e18; // Expect at least 70 assets
+        bytes memory callData = abi.encode(shares, address(this), address(this));
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, minAmountOut, bytes(""));
+
+        // Set redeem result to meet minAmountOut
+        uint256 actualAssets = 80e18; // More than minAmountOut (70e18)
+        facet.h_setRedeemResult(guid, actualAssets);
+
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+
+        // Should succeed
         facet.executeRequest(guid);
         vm.stopPrank();
     }

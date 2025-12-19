@@ -433,7 +433,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             assets[0] = _assetAmount;
             actionCallData = abi.encode(tokens, assets, address(this));
         }
-        // Pass minAmountOut for slippage check in _executeRequest
+        // Pass amountLimit for slippage check in _executeRequest
         bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
             actionType, actionCallData, _sendParam.minAmountLD, ""
         );
