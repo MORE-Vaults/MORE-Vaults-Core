@@ -766,6 +766,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             return 0;
         }
 
+        // For fee recipients HWMpS won't be set automatically, if HWMpS is 0, no fee is accrued
+        if (userHWMpS == 0) {
+            return 0;
+        }
+
         // Calculate user's current position value
         uint256 userShares = balanceOf(_user);
         if (userShares == 0) {

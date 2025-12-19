@@ -2582,4 +2582,71 @@ contract VaultFacetTest is Test {
         // HWMpS should equal current price per share
         assertEq(finalHWMpS, finalPricePerShare, "HWMpS should equal current price per share after fee accrual");
     }
+
+    /**
+     * @notice Test that _accruedFeeSharesPerUser returns 0 when userHWMpS is 0
+     * @dev For fee recipients HWMpS won't be set automatically, if HWMpS is 0, no fee is accrued
+     * This test verifies that even when a user (fee recipient) has shares and currentPricePerShare > 0,
+     * if userHWMpS == 0, the function returns 0 fee shares
+     */
+    function test_accruedFeeSharesPerUser_UserHWMpSZero_ReturnsZero() public {
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Initial deposit by user
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // Simulate yield by minting assets to vault (price increases)
+        MockERC20(asset).mint(facet, 100 ether);
+
+        // Another deposit should accrue fees and mint shares to fee recipient
+        vm.prank(user);
+        IVaultFacet(facet).deposit(depositAmount, user);
+
+        // Verify fee recipient received shares
+        uint256 feeRecipientShares = IERC20(facet).balanceOf(feeRecipient);
+        assertGt(feeRecipientShares, 0, "Fee recipient should have shares");
+
+        // Verify fee recipient's HWMpS is 0 (not set automatically for fee recipients)
+        uint256 feeRecipientHWMpS = _getHWMpS(feeRecipient);
+        assertEq(feeRecipientHWMpS, 0, "Fee recipient HWMpS should be 0");
+
+        // Get current state
+        uint256 totalAssets = IVaultFacet(facet).totalAssets();
+        uint256 totalSupply = IERC20(facet).totalSupply();
+        uint256 currentPricePerShare = _calculatePricePerShare(totalAssets, totalSupply);
+
+        // Verify current price per share is greater than 0
+        assertGt(currentPricePerShare, 0, "Current price per share should be greater than 0");
+
+        // Simulate further price increase to ensure currentPricePerShare > userHWMpS (which is 0)
+        MockERC20(asset).mint(facet, 50 ether);
+        uint256 newTotalAssets = IVaultFacet(facet).totalAssets();
+        uint256 newPricePerShare = _calculatePricePerShare(newTotalAssets, totalSupply);
+
+        // Verify new price per share is greater than 0 (and greater than userHWMpS which is 0)
+        assertGt(newPricePerShare, 0, "New price per share should be greater than 0");
+        assertGt(newPricePerShare, feeRecipientHWMpS, "New price per share should be greater than userHWMpS (0)");
+
+        // When fee recipient calls previewDeposit, _accruedFeeSharesPerUser is called internally
+        // Since fee recipient has HWMpS == 0, _accruedFeeSharesPerUser should return 0
+        // This means simTotalSupply in _getPreviewData should equal totalSupply (no fee shares added)
+        vm.prank(feeRecipient);
+        uint256 previewShares = IVaultFacet(facet).previewDeposit(100 ether);
+
+        // Calculate expected shares: since _accruedFeeSharesPerUser returns 0 for fee recipient,
+        // simTotalSupply = totalSupply (no fee shares added), so:
+        // shares = (assets * (totalSupply + 10^decimalsOffset)) / (totalAssets + 1)
+        uint256 decimalsOffset = 2;
+        uint256 expectedShares = (100 ether * (totalSupply + 10 ** decimalsOffset)) / (newTotalAssets + 1);
+
+        // Verify preview returns expected shares (no fee accrual for fee recipient with HWMpS == 0)
+        assertEq(previewShares, expectedShares, "Preview should not include fee shares for fee recipient with HWMpS == 0");
+    }
 }
