@@ -1281,6 +1281,11 @@ contract ERC7540FacetTest is Test {
 
         vault.mintShares(address(facet), MINT_SHARES * 10);
 
+        // Add vault to tokensHeld (simulating that it was added through proper facet operations)
+        address[] memory tokensHeld = new address[](1);
+        tokensHeld[0] = address(vault);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), ERC7540_ID, tokensHeld);
+
         vm.mockCall(
             address(registry),
             abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),

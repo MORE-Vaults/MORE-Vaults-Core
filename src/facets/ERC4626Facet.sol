@@ -109,19 +109,33 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         for (uint256 i = 0; i < ds.tokensHeld[ERC4626_ID].length();) {
             address vault = ds.tokensHeld[ERC4626_ID].at(i);
+            address asset = IERC4626(vault).asset();
+
+            // Always account for locked tokens, even if vault is whitelisted as available asset
+            // Get shares locked in pending redeem requests (vault is the share token for ERC-4626)
+            uint256 lockedShares = ds.lockedTokensPerContract[vault][vault];
+            // Get assets locked in pending deposit requests
+            uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
+
+            // If locked tokens exist, account for them
+            if (lockedShares > 0 || lockedAssets > 0) {
+                uint256 lockedSharesValue = lockedShares > 0 ? IERC4626(vault).convertToAssets(lockedShares) : 0;
+                sum += MoreVaultsLib.convertToUnderlying(asset, lockedSharesValue + lockedAssets, Math.Rounding.Floor);
+            }
+
+            // Skip vault shares accounting if vault is whitelisted as available asset to prevent double counting
+            // (the vault shares will be counted in VaultFacet's accounting as an available asset)
             if (ds.isAssetAvailable[vault]) {
                 unchecked {
                     ++i;
                 }
                 continue;
             }
-            address asset = IERC4626(vault).asset();
-            // Shares we hold + shares locked in pending redeem requests (vault is the share token for ERC-4626)
-            uint256 sharesBalance = IERC4626(vault).balanceOf(address(this)) + ds.lockedTokensPerContract[vault][vault];
+
+            // Shares we hold (not locked)
+            uint256 sharesBalance = IERC4626(vault).balanceOf(address(this));
             uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(sharesBalance);
-            // Add assets locked in pending deposit requests
-            uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
-            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying + lockedAssets, Math.Rounding.Floor);
+            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
@@ -268,6 +282,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
             if (ds.lockedTokensPerContract[vault][balances.asset] > 0) revert PendingOperationExists();
             uint256 assetsLocked = balances.assetsBefore - balances.assetsAfter;
             ds.lockedTokensPerContract[vault][balances.asset] = assetsLocked;
+            ds.tokensHeld[ERC4626_ID].add(vault);
             return;
         }
         // Case when upon withdrawal request shares will be transferred to the vault, but assets will not be transferred back until request is executed
@@ -276,6 +291,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
             if (ds.lockedTokensPerContract[vault][vault] > 0) revert PendingOperationExists();
             uint256 sharesLocked = balances.sharesBefore - balances.sharesAfter;
             ds.lockedTokensPerContract[vault][vault] = sharesLocked;
+            ds.tokensHeld[ERC4626_ID].add(vault);
             return;
         }
 
