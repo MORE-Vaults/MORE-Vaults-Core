@@ -172,6 +172,13 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             }
         }
 
+        guid =
+        IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
+        .initiateCrossChainAccounting{value: msg.value - value}(
+            vaults, eids, extraOptions, msg.sender
+        )
+        .guid;
+
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
             timestamp: uint64(block.timestamp),
@@ -184,12 +191,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             amountLimit: amountLimit
         });
 
-        guid =
-        IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
-        .initiateCrossChainAccounting{value: msg.value - value}(
-            vaults, eids, extraOptions, msg.sender
-        )
-        .guid;
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
     }
 
