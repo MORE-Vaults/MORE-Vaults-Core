@@ -13,6 +13,10 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
 
     bool public shouldRevert = false;
     string public revertMessage = "";
+    
+    // Track refundDeposit calls for testing
+    mapping(bytes32 => uint256) public refundDepositCalls;
+    mapping(bytes32 => uint256) public refundDepositMsgValues;
 
     function initialize(address _vault, address _registry, address _factory) external {
         if (shouldRevert) {
@@ -109,7 +113,15 @@ contract MockMoreVaultsComposer is IMoreVaultsComposer {
     }
 
     function refundDeposit(bytes32 guid) external payable {
-        // Mock implementation
+        if (shouldRevert) {
+            if (bytes(revertMessage).length > 0) {
+                revert(revertMessage);
+            } else {
+                revert("MockMoreVaultsComposer: refundDeposit failed");
+            }
+        }
+        refundDepositCalls[guid]++;
+        refundDepositMsgValues[guid] = msg.value;
     }
 
     function rescue(address _token, address payable _to, uint256 _amount) external {

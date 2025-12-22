@@ -11,6 +11,7 @@ import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {AccessControlLib} from "../libraries/AccessControlLib.sol";
 import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
+import {IMoreVaultsComposer} from "../interfaces/LayerZero/IMoreVaultsComposer.sol";
 import {IOracleRegistry} from "../interfaces/IOracleRegistry.sol";
 import {IBridgeFacet} from "../interfaces/facets/IBridgeFacet.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -24,6 +25,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
 
     event AccountingInfoUpdated(bytes32 indexed guid, uint256 sumOfSpokesUsdValue, bool readSuccess);
     event OracleCrossChainAccountingUpdated(bool indexed isTrue);
+
+    uint256 public constant MAX_DELAY = 1 hours;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.BridgeFacetV1.0.1");
@@ -163,7 +166,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         MessagingFee memory fee = IBridgeAdapter(MoreVaultsLib._getCrossChainAccountingManager())
             .quoteReadFee(vaults, eids, extraOptions);
         uint256 value;
-        uint256 totalAssets;
         if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (,,, value) = abi.decode(actionCallData, (address[], uint256[], address, uint256));
             ds.pendingNative += value;
@@ -226,7 +228,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     /**
      * @inheritdoc IBridgeFacet
      */
-    function refundIfNecessary(bytes32 guid) external {
+    function sendNativeTokenBackToInitiator(bytes32 guid) external {
         address crossChainAccountingManager = MoreVaultsLib._getCrossChainAccountingManager();
         if (msg.sender != crossChainAccountingManager) {
             revert OnlyCrossChainAccountingManager();
@@ -234,8 +236,11 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo storage requestInfo = ds.guidToCrossChainRequestInfo[guid];
         if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (address[] memory tokens, uint256[] memory assets, address receiver, uint256 value) =
+            (, , , uint256 value) =
                 abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
+            if (value == 0) {
+                return;
+            }
             ds.pendingNative -= value;
             (bool success, ) = requestInfo.initiator.call{value: value}("");
             if (!success) {
@@ -244,13 +249,34 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
     }
 
+    /**
+     * @dev Refunds the request if necessary
+     * @param guid Request number to refund
+     * @notice Can only be called by the cross-chain accounting manager
+     * @notice Refunds the request if necessary
+     */
+    function refundStuckDepositInComposer(bytes32 guid) external payable {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        MoreVaultsLib.CrossChainRequestInfo storage requestInfo = ds.guidToCrossChainRequestInfo[guid];
+
+        address vaultComposer = IVaultsFactory(ds.factory).vaultComposer(address(this));
+        if (requestInfo.initiator != vaultComposer) {
+            revert InitiatorIsNotVaultComposer();
+        }
+        if (requestInfo.timestamp + MAX_DELAY > block.timestamp && !requestInfo.finalized) {
+            revert RequestNotStuck();
+        }
+
+        IMoreVaultsComposer(vaultComposer).refundDeposit{value: msg.value}(guid);
+    }
+
     function _executeRequest(bytes32 guid) internal returns (bytes memory result) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = ds.guidToCrossChainRequestInfo[guid];
         if (!ds.guidToCrossChainRequestInfo[guid].fulfilled) {
             revert RequestWasntFulfilled();
         }
-        if (requestInfo.timestamp + 1 hours < block.timestamp) {
+        if (requestInfo.timestamp + MAX_DELAY < block.timestamp) {
             revert RequestTimedOut();
         }
         if (requestInfo.finalized) {

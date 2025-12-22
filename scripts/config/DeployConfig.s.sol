@@ -363,7 +363,7 @@ contract DeployConfig {
         bytes memory initDataERC7540Facet = abi.encode(facetSelectorERC7540);
 
         // selectors for bridge
-        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](10);
+        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](12);
         functionSelectorsBridgeFacet[0] = IBridgeFacet.executeBridging.selector;
         functionSelectorsBridgeFacet[1] = IBridgeFacet.quoteAccountingFee.selector;
         functionSelectorsBridgeFacet[2] = IBridgeFacet
@@ -378,6 +378,8 @@ contract DeployConfig {
         functionSelectorsBridgeFacet[7] = IBridgeFacet.setOraclesCrossChainAccounting.selector;
         functionSelectorsBridgeFacet[8] = IBridgeFacet.oraclesCrossChainAccounting.selector;
         functionSelectorsBridgeFacet[9] = IBridgeFacet.getFinalizationResult.selector;
+        functionSelectorsBridgeFacet[10] = IBridgeFacet.sendNativeTokenBackToInitiator.selector;
+        functionSelectorsBridgeFacet[11] = IBridgeFacet.refundStuckDepositInComposer.selector;
         bytes memory initDataBridgeFacet = abi.encode();
 
         IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](8);
