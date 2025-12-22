@@ -488,7 +488,7 @@ contract VaultFacetTest is Test {
         uint256 currentPricePerShare = _calculatePricePerShare(totalAssetsBefore, totalSupplyBefore);
         
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, user);
         
         // Verify HWMpS was updated if current price is higher
         uint256 hwmAfter = _getHWMpS(user);
@@ -529,7 +529,7 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
-        VaultFacet(facet).requestWithdraw(100 ether);
+        VaultFacet(facet).requestWithdraw(100 ether, address(facet));
     }
 
     function test_redeem_ShouldBurnShares() public {
@@ -576,7 +576,7 @@ contract VaultFacetTest is Test {
 
         uint256 balanceBefore = IERC20(asset).balanceOf(user);
         vm.prank(user);
-        VaultFacet(facet).requestRedeem(shares);
+        VaultFacet(facet).requestRedeem(shares, user);
         (uint256 sharesRequest, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
         assertEq(sharesRequest, shares, "Should request correct amount of shares");
         assertEq(timelockEndsAt, block.timestamp + 110, "Should set correct timelock end time");
@@ -600,14 +600,14 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
         vm.prank(user);
         vm.expectRevert(IVaultFacet.InvalidSharesAmount.selector);
-        VaultFacet(facet).requestRedeem(0);
+        VaultFacet(facet).requestRedeem(0, user);
     }
 
     function test_requestRedeem_ShouldRevertInMulticall() public {
         MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
-        VaultFacet(facet).requestRedeem(100 ether);
+        VaultFacet(facet).requestRedeem(100 ether, address(facet));
     }
 
     function test_pause_ShouldRevertWhenNotOwner() public {
@@ -1699,7 +1699,7 @@ contract VaultFacetTest is Test {
         // Request withdrawal
         uint256 withdrawAmount = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, user);
 
         // Verify HWMpS was updated if current price is higher
         uint256 hwmAfter = _getHWMpS(user);
@@ -1758,7 +1758,7 @@ contract VaultFacetTest is Test {
         // Request redeem
         uint256 redeemShares = shares / 10; // Redeem 10% of shares
         vm.prank(user);
-        VaultFacet(facet).requestRedeem(redeemShares);
+        VaultFacet(facet).requestRedeem(redeemShares, user);
 
         // Fast forward past timelock
         vm.warp(block.timestamp + 1 days + 1);
@@ -1847,7 +1847,7 @@ contract VaultFacetTest is Test {
         uint256 shares = 100 ether;
         vm.prank(user);
         vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
-        VaultFacet(facet).requestRedeem(shares);
+        VaultFacet(facet).requestRedeem(shares, user);
     }
 
     function test_requestWithdraw_ShouldRevertWhenQueueDisabled() public {
@@ -1857,7 +1857,7 @@ contract VaultFacetTest is Test {
         uint256 assets = 100 ether;
         vm.prank(user);
         vm.expectRevert(IVaultFacet.WithdrawalQueueDisabled.selector);
-        VaultFacet(facet).requestWithdraw(assets);
+        VaultFacet(facet).requestWithdraw(assets, user);
     }
 
     /**
@@ -1899,7 +1899,7 @@ contract VaultFacetTest is Test {
         // Request withdrawal - this should update HWMpS
         uint256 withdrawAmount = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, user);
 
         // Price should decrease because of fee shares minted
         // Get current price per share before requestWithdraw
@@ -1941,7 +1941,7 @@ contract VaultFacetTest is Test {
         // Request withdrawal to update HWMpS to higher value
         uint256 withdrawAmount1 = 50 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount1);
+        VaultFacet(facet).requestWithdraw(withdrawAmount1, user);
 
         // Get HWMpS after first request (should be updated)
         uint256 hwmAfterFirstRequest = _getHWMpS(user);
@@ -1955,7 +1955,7 @@ contract VaultFacetTest is Test {
         // Request another withdrawal - price should be same or lower relative to HWMpS
         uint256 withdrawAmount2 = 50 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount2);
+        VaultFacet(facet).requestWithdraw(withdrawAmount2, user);
 
         // HWMpS should remain the same (not decrease)
         uint256 hwmAfterSecondRequest = _getHWMpS(user);
@@ -1986,7 +1986,7 @@ contract VaultFacetTest is Test {
         // First request - get initial HWMpS
         uint256 withdrawAmount1 = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount1);
+        VaultFacet(facet).requestWithdraw(withdrawAmount1, user);
         
         // Get price after first request (price decreases due to fee shares minted)
         uint256 totalAssets1 = IVaultFacet(facet).totalAssets();
@@ -2006,7 +2006,7 @@ contract VaultFacetTest is Test {
         // Second request - HWMpS should update to price AFTER request
         uint256 withdrawAmount2 = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount2);
+        VaultFacet(facet).requestWithdraw(withdrawAmount2, user);
         
         // Get price after second request (price decreases due to fee shares minted)
         uint256 totalAssets2AfterRequest = IVaultFacet(facet).totalAssets();
@@ -2026,7 +2026,7 @@ contract VaultFacetTest is Test {
         // Third request - HWMpS should update to price AFTER request
         uint256 withdrawAmount3 = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount3);
+        VaultFacet(facet).requestWithdraw(withdrawAmount3, user);
         
         // Get price after third request (price decreases due to fee shares minted)
         uint256 totalAssets3AfterRequest = IVaultFacet(facet).totalAssets();
@@ -2204,7 +2204,7 @@ contract VaultFacetTest is Test {
         // Create a withdrawal request
         uint256 shares = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestRedeem(shares);
+        VaultFacet(facet).requestRedeem(shares, user);
 
         // Check request exists
         (uint256 requestShares, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
@@ -2248,7 +2248,7 @@ contract VaultFacetTest is Test {
         // Request withdrawal
         uint256 withdrawAmount = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestWithdraw(withdrawAmount);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, user);
 
         // Fast forward past timelock
         vm.warp(block.timestamp + 1 days + 1);
@@ -2291,7 +2291,7 @@ contract VaultFacetTest is Test {
         // Request redeem
         uint256 redeemShares = shares / 10; // Redeem 10% of shares
         vm.prank(user);
-        VaultFacet(facet).requestRedeem(redeemShares);
+        VaultFacet(facet).requestRedeem(redeemShares, user);
 
         // Fast forward past timelock
         vm.warp(block.timestamp + 1 days + 1);
@@ -2408,7 +2408,7 @@ contract VaultFacetTest is Test {
         // Create a request
         uint256 requestShares = 100 ether;
         vm.prank(user);
-        VaultFacet(facet).requestRedeem(requestShares);
+        VaultFacet(facet).requestRedeem(requestShares, user);
 
         // Check request values
         (shares, timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);

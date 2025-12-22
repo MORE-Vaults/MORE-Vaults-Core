@@ -373,8 +373,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     /**
      * @inheritdoc IVaultFacet
      */
-    function requestRedeem(uint256 _shares) external {
+    function requestRedeem(uint256 _shares, address _onBehalfOf) external {
         MoreVaultsLib.validateNotMulticall();
+        if (allowance(msg.sender, _onBehalfOf) < _shares) {
+            revert ERC20InsufficientAllowance(msg.sender, allowance(msg.sender, _onBehalfOf), _shares);
+        }
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
@@ -389,23 +392,23 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert InvalidSharesAmount();
         }
 
-        uint256 maxRedeem_ = maxRedeem(msg.sender);
+        uint256 maxRedeem_ = maxRedeem(_onBehalfOf);
         if (_shares > maxRedeem_) {
-            revert ERC4626ExceededMaxRedeem(msg.sender, _shares, maxRedeem_);
+            revert ERC4626ExceededMaxRedeem(_onBehalfOf, _shares, maxRedeem_);
         }
 
-        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[msg.sender];
+        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[_onBehalfOf];
         request.shares = _shares;
         uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
 
-        emit WithdrawRequestCreated(msg.sender, _shares, endsAt);
+        emit WithdrawRequestCreated(_onBehalfOf, _shares, endsAt);
     }
 
     /**
      * @inheritdoc IVaultFacet
      */
-    function requestWithdraw(uint256 _assets) external {
+    function requestWithdraw(uint256 _assets, address _onBehalfOf) external {
         MoreVaultsLib.validateNotMulticall();
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
@@ -425,28 +428,31 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
         _beforeAccounting(ds.beforeAccountingFacets);
         uint256 newTotalAssets = totalAssets();
-        _accrueInterest(newTotalAssets, msg.sender);
+        _accrueInterest(newTotalAssets, _onBehalfOf);
 
         uint256 shares = _convertToSharesWithTotals(_assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
+        if (allowance(msg.sender, _onBehalfOf) < shares) {
+            revert ERC20InsufficientAllowance(msg.sender, allowance(msg.sender, _onBehalfOf), shares);
+        }
 
         if (shares == 0) {
             revert InvalidSharesAmount();
         }
 
-        uint256 maxRedeem_ = maxRedeem(msg.sender);
+        uint256 maxRedeem_ = maxRedeem(_onBehalfOf);
         if (shares > maxRedeem_) {
-            revert ERC4626ExceededMaxRedeem(msg.sender, shares, maxRedeem_);
+            revert ERC4626ExceededMaxRedeem(_onBehalfOf, shares, maxRedeem_);
         }
 
-        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[msg.sender];
+        MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[_onBehalfOf];
 
         request.shares = shares;
 
         uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
-        _updateUserHWMpS(newTotalAssets, msg.sender);
+        _updateUserHWMpS(newTotalAssets, _onBehalfOf);
 
-        emit WithdrawRequestCreated(msg.sender, shares, endsAt);
+        emit WithdrawRequestCreated(_onBehalfOf, shares, endsAt);
     }
 
     /**
@@ -464,6 +470,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
 
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (msgSender == IMoreVaultsRegistry(acs.moreVaultsRegistry).router()) {
+            msgSender = receiver;
+        }
         _accrueInterest(newTotalAssets, receiver);
         _validateCapacity(msgSender, newTotalAssets, assets);
 
@@ -489,6 +499,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (msgSender == IMoreVaultsRegistry(acs.moreVaultsRegistry).router()) {
+            msgSender = receiver;
+        }
 
         _accrueInterest(newTotalAssets, receiver);
 
@@ -591,6 +605,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             ds.isNativeDeposit = true;
         }
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds);
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (msgSender == IMoreVaultsRegistry(acs.moreVaultsRegistry).router()) {
+            msgSender = receiver;
+        }
         _accrueInterest(newTotalAssets, receiver);
 
         if (assets.length != tokens.length) {
@@ -681,6 +699,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         super._deposit(caller, receiver, assets, shares);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        if (caller == IMoreVaultsRegistry(acs.moreVaultsRegistry).router()) {
+            caller = receiver;
+        }
         _changeDepositCap(ds, caller, assets, true);
     }
 
@@ -846,26 +868,26 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @notice Changes the dynamic deposit limit for a user
      * @dev On deposit decreases availableToDeposit, on withdrawal increases it, but not more than initialDepositCapPerUser
      * @param ds Storage structure
-     * @param receiver User address
+     * @param caller User address
      * @param assets Amount of assets
      * @param isDecrease true on deposit (decrease limit), false on withdrawal (increase limit)
      */
     function _changeDepositCap(
         MoreVaultsLib.MoreVaultsStorage storage ds,
-        address receiver,
+        address caller,
         uint256 assets,
         bool isDecrease
     ) internal {
         if (ds.isWhitelistEnabled) {
             if (isDecrease) {
                 // On deposit, decrease the available limit
-                ds.availableToDeposit[receiver] =
-                    ds.availableToDeposit[receiver] - assets;
+                ds.availableToDeposit[caller] =
+                    ds.availableToDeposit[caller] - assets;
             } else {
                 // On withdrawal, increase the available limit, but not more than initialDepositCapPerUser
-                uint256 sum = ds.availableToDeposit[receiver] + assets;
-                ds.availableToDeposit[receiver] =
-                    sum > ds.initialDepositCapPerUser[receiver] ? ds.initialDepositCapPerUser[receiver] : sum;
+                uint256 sum = ds.availableToDeposit[caller] + assets;
+                ds.availableToDeposit[caller] =
+                    sum > ds.initialDepositCapPerUser[caller] ? ds.initialDepositCapPerUser[caller] : sum;
             }
         }
     }

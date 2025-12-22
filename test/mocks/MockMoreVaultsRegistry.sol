@@ -8,7 +8,7 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     address public oracleAddress;
     mapping(address => bool) public allowedBridges;
     address public defaultCrossChainAccountingManager;
-
+    address public router;
     function setDefaultCrossChainAccountingManager(address manager) external {
         defaultCrossChainAccountingManager = manager;
     }
@@ -94,4 +94,8 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     }
 
     function setIsCrossChainAccountingManager(address manager, bool isManager) external {}
+
+    function setRouter(address _router) external {
+        router = _router;
+    }
 }

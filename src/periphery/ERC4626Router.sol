@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
 
 /// @title ERC4626Router
 /// @notice Adds slippage protection to ERC-4626 vault operations
@@ -17,8 +18,11 @@ contract ERC4626Router {
     error SlippageExceeded(uint256 actual, uint256 limit);
     error DepositWhitelistEnabled();
     error WithdrawalQueueEnabled();
+    error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed);
+    error MaxDepositExceeded(uint256 assets, uint256 max);
+    error MaxMintExceeded(uint256 shares, uint256 max);
 
-    function depositWithSlippage(IERC4626 vault, uint256 assets, uint256 minShares, address receiver)
+    function depositWithSlippage(IERC4626 vault, uint256 assets, uint256 minShares)
         external
         returns (uint256 shares)
     {
@@ -28,12 +32,14 @@ contract ERC4626Router {
         asset.safeTransferFrom(msg.sender, address(this), assets);
         asset.forceApprove(address(vault), assets);
 
-        shares = vault.deposit(assets, receiver);
+        uint256 maxDeposit = vault.maxDeposit(msg.sender);
+        if (assets > maxDeposit) revert MaxDepositExceeded(assets, maxDeposit);
+        shares = vault.deposit(assets, msg.sender);
 
         if (shares < minShares) revert SlippageExceeded(shares, minShares);
     }
 
-    function mintWithSlippage(IERC4626 vault, uint256 shares, uint256 maxAssets, address receiver)
+    function mintWithSlippage(IERC4626 vault, uint256 shares, uint256 maxAssets)
         external
         returns (uint256 assets)
     {
@@ -43,12 +49,30 @@ contract ERC4626Router {
         asset.safeTransferFrom(msg.sender, address(this), maxAssets);
         asset.forceApprove(address(vault), maxAssets);
 
-        assets = vault.mint(shares, receiver);
+        uint256 maxMint = vault.maxMint(msg.sender);
+        if (shares > maxMint) revert MaxMintExceeded(shares, maxMint);
+        assets = vault.mint(shares, msg.sender);
 
         if (assets > maxAssets) revert SlippageExceeded(assets, maxAssets);
 
         uint256 refund = maxAssets - assets;
         if (refund > 0) asset.safeTransfer(msg.sender, refund);
+    }
+
+    function requestWithdraw(IERC4626 vault, uint256 assets, address receiver, address owner) external
+    {
+        if (IERC20(address(vault)).allowance(owner, address(this)) < IERC4626(address(vault)).convertToShares(assets)) {
+            revert ERC20InsufficientAllowance(owner, IERC20(address(vault)).allowance(owner, address(this)), IERC4626(address(vault)).convertToShares(assets));
+        }
+        IVaultFacet(address(vault)).requestWithdraw(assets, owner);
+    }
+
+    function requestRedeem(IERC4626 vault, uint256 shares, address receiver, address owner) external
+    {
+        if (IERC20(address(vault)).allowance(owner, address(this)) < shares) {
+            revert ERC20InsufficientAllowance(owner, IERC20(address(vault)).allowance(owner, address(this)), IERC4626(address(vault)).convertToAssets(shares));
+        }
+        IVaultFacet(address(vault)).requestRedeem(shares, owner);
     }
 
     function withdrawWithSlippage(IERC4626 vault, uint256 assets, uint256 maxShares, address receiver, address owner)

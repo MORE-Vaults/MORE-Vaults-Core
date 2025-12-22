@@ -106,14 +106,16 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /**
      * @notice Request a redeem of shares
      * @param shares Amount of shares to redeem
+     * @param onBehalfOf The address of the user on behalf of which the request is made
      */
-    function requestRedeem(uint256 shares) external;
+    function requestRedeem(uint256 shares, address onBehalfOf) external;
 
     /**
      * @notice Request a withdraw of assets
      * @param assets Amount of assets to withdraw
+     * @param onBehalfOf The address of the user on behalf of which the request is made
      */
-    function requestWithdraw(uint256 assets) external;
+    function requestWithdraw(uint256 assets, address onBehalfOf) external;
 
     /**
      * @notice Clear a request

@@ -82,6 +82,18 @@ interface IMoreVaultsRegistry {
     event DefaultCrossChainAccountingManagerSet(address indexed manager);
 
     /**
+     * @dev Emitted when router is set
+     * @param router Address of the router
+     */
+    event RouterSet(address indexed router);
+
+    /**
+     * @notice Get router address
+     * @return address Router address
+     */
+    function router() external view returns (address);
+
+    /**
      * @notice Initialize the registry
      * @param _owner Address of the owner
      * @param _oracle Address of the oracle
@@ -151,6 +163,12 @@ interface IMoreVaultsRegistry {
      * @param isManager True if cross chain accounting manager is allowed, false otherwise
      */
     function setIsCrossChainAccountingManager(address manager, bool isManager) external;
+
+    /**
+     * @notice Set router address
+     * @param router Address of the router
+     */
+    function setRouter(address router) external;
 
     /**
      * @notice Get all selectors for facet
