@@ -9,6 +9,7 @@ import {MockOracleRegistry} from "../../mocks/MockOracleRegistry.sol";
 import {MockBridgeAdapter} from "../../mocks/MockBridgeAdapter.sol";
 import {MockOFT} from "../../mocks/MockOFT.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
+import {MockMoreVaultsComposer} from "../../mocks/MockMoreVaultsComposer.sol";
 import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
 import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
@@ -16,6 +17,7 @@ import {IBridgeFacet} from "../../../src/interfaces/facets/IBridgeFacet.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IAggregatorV2V3Interface} from "../../../src/interfaces/Chainlink/IAggregatorV2V3Interface.sol";
 import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
+import {console} from "forge-std/console.sol";
 
 /**
  * @notice Contract that rejects native currency transfers by reverting in receive()
@@ -34,6 +36,7 @@ contract BridgeFacetTest is Test {
     MockBridgeAdapter public adapter;
     MockOFT public oft;
     MockERC20 public underlying;
+    MockMoreVaultsComposer public composer;
 
     address public owner = address(1);
     address public curator = address(2);
@@ -47,6 +50,7 @@ contract BridgeFacetTest is Test {
         adapter = new MockBridgeAdapter();
         oft = new MockOFT("OFT", "OFT");
         underlying = new MockERC20("Underlying", "UND");
+        composer = new MockMoreVaultsComposer();
 
         // Wire roles and addresses
         MoreVaultsStorageHelper.setOwner(address(facet), owner);
@@ -55,6 +59,7 @@ contract BridgeFacetTest is Test {
         registry.setOracle(address(oracle));
         MoreVaultsStorageHelper.setFactory(address(facet), address(factory));
         MoreVaultsStorageHelper.setCrossChainAccountingManager(address(facet), address(adapter));
+        factory.setVaultComposer(address(facet), address(composer));
 
         // ERC4626 underlying price used in convertUsdToUnderlying
         MoreVaultsStorageHelper.setUnderlyingAsset(address(facet), address(underlying));
@@ -883,9 +888,9 @@ contract BridgeFacetTest is Test {
     }
 
     /**
-     * @notice Test that pendingNative decreases and funds are refunded on refundIfNecessary
+     * @notice Test that pendingNative decreases and funds are refunded on sendNativeTokenBackToInitiator
      */
-    function test_pendingNative_decreases_on_refundIfNecessary() public {
+    function test_pendingNative_decreases_on_sendNativeTokenBackToInitiator() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
         address[] memory spokes = new address[](1);
@@ -914,7 +919,7 @@ contract BridgeFacetTest is Test {
         uint256 initiatorBalanceBefore = initiator.balance;
 
         vm.startPrank(address(adapter));
-        facet.refundIfNecessary(guid);
+        facet.sendNativeTokenBackToInitiator(guid);
         vm.stopPrank();
 
         uint256 pendingNativeAfterRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
@@ -969,7 +974,7 @@ contract BridgeFacetTest is Test {
 
         registry.setDefaultCrossChainAccountingManager(accountingManager);
         vm.startPrank(address(adapter));
-        facet.refundIfNecessary(guid);
+        facet.sendNativeTokenBackToInitiator(guid);
         vm.stopPrank();
 
         uint256 pendingNativeAfterRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
@@ -1222,5 +1227,199 @@ contract BridgeFacetTest is Test {
         MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
         assertTrue(info.finalized, "Request should be finalized");
         assertEq(info.finalizationResult, feeShares, "Finalization result should match fee shares");
+    }
+
+    // ============ refundStuckDepositInComposer tests ============
+
+    /**
+     * @notice Test that refundStuckDepositInComposer successfully refunds a stuck request (timeout)
+     */
+    function test_refundStuckDepositInComposer_success_timeout() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-stuck-timeout"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        vm.deal(address(composer), 0.1 ether);
+        vm.startPrank(address(composer));
+        bytes32 guid = facet.initVaultActionRequest{value: 0.1 ether}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Get request info to check timestamp
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        uint64 requestTimestamp = infoBefore.timestamp;
+
+        // Advance time beyond MAX_DELAY (1 hour)
+        vm.warp(requestTimestamp + 1 hours + 1);
+        assertEq(infoBefore.initiator, address(composer), "Initiator should be composer");
+        assertEq(infoBefore.finalized, false, "Request should not be finalized");
+        assertLt(infoBefore.timestamp + 1 hours, block.timestamp, "Timestamp should be set");
+
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(adapter), refundValue);
+
+        vm.startPrank(address(adapter));
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was called on composer
+        assertEq(composer.refundDepositCalls(guid), 1, "refundDeposit should be called once");
+        assertEq(composer.refundDepositMsgValues(guid), refundValue, "msg.value should be passed to refundDeposit");
+    }
+
+    /**
+     * @notice Test that refundStuckDepositInComposer successfully refunds a finalized request
+     */
+    function test_refundStuckDepositInComposer_success_finalized() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-stuck-finalized"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+
+        // Set initiator to composer (required for refundStuckDepositInComposer)
+        facet.h_setInitiatorByGuid(guid, address(composer));
+
+        // Finalize the request
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        facet.h_setDepositResult(guid, 10 * 1e18);
+        facet.executeRequest(guid);
+        vm.stopPrank();
+
+        // Verify request is finalized
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        assertTrue(infoBefore.finalized, "Request should be finalized");
+        assertEq(infoBefore.initiator, address(composer), "Initiator should be composer");
+
+        // Try to refund even though not timed out (should succeed because finalized)
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(adapter), refundValue);
+
+        vm.startPrank(address(adapter));
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was called on composer
+        assertEq(composer.refundDepositCalls(guid), 1, "refundDeposit should be called once");
+        assertEq(composer.refundDepositMsgValues(guid), refundValue, "msg.value should be passed to refundDeposit");
+        vm.warp(block.timestamp + 1 hours + 1);
+    }
+
+    /**
+     * @notice Test that refundStuckDepositInComposer reverts when initiator is not composer
+     */
+    function test_refundStuckDepositInComposer_revert_InitiatorIsNotVaultComposer() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-wrong-initiator"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+
+        // Don't set initiator to composer - keep it as the original caller (address(this))
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        assertNotEq(infoBefore.initiator, address(composer), "Initiator should not be composer");
+
+        // Advance time beyond MAX_DELAY
+        vm.warp(infoBefore.timestamp + 1 hours + 1);
+
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(adapter), refundValue);
+
+        vm.startPrank(address(adapter));
+        vm.expectRevert(IBridgeFacet.InitiatorIsNotVaultComposer.selector);
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was NOT called on composer
+        assertEq(composer.refundDepositCalls(guid), 0, "refundDeposit should not be called");
+    }
+
+    /**
+     * @notice Test that refundStuckDepositInComposer reverts when request is not stuck (not timed out and not finalized)
+     */
+    function test_refundStuckDepositInComposer_revert_RequestNotStuck() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-not-stuck"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+
+        // Set initiator to composer (required for refundStuckDepositInComposer)
+        facet.h_setInitiatorByGuid(guid, address(composer));
+
+        // Get request info to check timestamp
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        uint64 requestTimestamp = infoBefore.timestamp;
+
+        // Advance time but not beyond MAX_DELAY (still within 1 hour)
+        vm.warp(requestTimestamp + 30 minutes);
+
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(adapter), refundValue);
+
+        vm.startPrank(address(adapter));
+        vm.expectRevert(IBridgeFacet.RequestNotStuck.selector);
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was NOT called on composer
+        assertEq(composer.refundDepositCalls(guid), 0, "refundDeposit should not be called");
+    }
+
+    /**
+     * @notice Test that refundStuckDepositInComposer reverts when request is not stuck (exactly at MAX_DELAY boundary)
+     */
+    function test_refundStuckDepositInComposer_revert_RequestNotStuck_atBoundary() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-boundary"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+
+        // Set initiator to composer (required for refundStuckDepositInComposer)
+        facet.h_setInitiatorByGuid(guid, address(composer));
+
+        // Get request info to check timestamp
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        uint64 requestTimestamp = infoBefore.timestamp;
+
+        // Advance time to exactly MAX_DELAY (should still revert because condition uses > not >=)
+        vm.warp(requestTimestamp + 59 minutes + 59 seconds);
+
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(composer), refundValue);
+
+        vm.startPrank(address(composer));
+        vm.expectRevert(IBridgeFacet.RequestNotStuck.selector);
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was NOT called on composer
+        assertEq(composer.refundDepositCalls(guid), 0, "refundDeposit should not be called");
     }
 }

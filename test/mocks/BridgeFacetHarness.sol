@@ -47,6 +47,9 @@ contract BridgeFacetHarness is BridgeFacet {
 
     function h_setInitiatorByGuid(bytes32 guid, address initiator) external {
         initiatorByGuid[guid] = initiator;
+        // Also update the actual storage
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.guidToCrossChainRequestInfo[guid].initiator = initiator;
     }
 
     function h_setOwnerByGuid(bytes32 guid, address owner) external {

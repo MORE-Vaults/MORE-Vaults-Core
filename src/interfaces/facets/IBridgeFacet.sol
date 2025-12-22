@@ -21,7 +21,9 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error AccountingViaOracles();
     error AdapterNotAllowed(address);
     error RequestTimedOut();
+    error RequestNotStuck();
     error RequestAlreadyFinalized();
+    error InitiatorIsNotVaultComposer();
     error NotEnoughMsgValueProvided();
     error SlippageExceeded(uint256 amount, uint256 limit);
 
@@ -103,11 +105,18 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function executeRequest(bytes32 guid) external;
 
     /**
-     * @dev Refunds the request if necessary
+     * @dev Send native token back to the initiator of the request if necessary
+     * @notice If initiator cannot receive native token, the funds are sent to the cross-chain accounting manager instead
+     * @param guid Request number to send token back
+     */
+    function sendNativeTokenBackToInitiator(bytes32 guid) external;
+
+    /**
+     * @dev Refunds the stuck deposit
      * @param guid Request number to refund
      * @notice Can only be called by the cross-chain accounting manager
      */
-    function refundIfNecessary(bytes32 guid) external;
+    function refundStuckDepositInComposer(bytes32 guid) external payable;
 
     /**
      *
