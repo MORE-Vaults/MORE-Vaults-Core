@@ -93,14 +93,9 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
                 continue;
             }
             address asset = IERC4626(vault).asset();
-            // Get share token address (vault itself for standard ERC-4626, external for ERC-7575)
-            address shareToken = _getShareToken(vault);
-            // Shares we hold + shares locked in pending redeem requests
-            uint256 sharesBalance = IERC20(vault).balanceOf(address(this)) + ds.lockedTokensPerContract[vault][shareToken];
-            uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(sharesBalance);
-            // Add assets locked in pending deposit requests
-            uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
-            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying + lockedAssets, Math.Rounding.Floor);
+            uint256 balance = IERC20(vault).balanceOf(address(this)) + ds.lockedTokens[vault];
+            uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
+            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
@@ -124,6 +119,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
         IERC20(asset).forceApprove(vault, assets);
         requestId = IERC7540(vault).requestDeposit(assets, address(this), address(this));
+        ds.lockedTokens[asset] += assets;
         ds.lockedTokensPerContract[vault][asset] = assets;
     }
 
@@ -149,6 +145,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         }
 
         requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
+        ds.lockedTokens[vault] += shares;
         ds.lockedTokensPerContract[vault][shareToken] = shares;
     }
 
@@ -166,6 +163,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
+        ds.lockedTokens[asset] -= ds.lockedTokensPerContract[vault][asset];
         ds.lockedTokensPerContract[vault][asset] = 0;
     }
 
@@ -183,6 +181,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
+        ds.lockedTokens[asset] -= ds.lockedTokensPerContract[vault][asset];
         ds.lockedTokensPerContract[vault][asset] = 0;
     }
 
@@ -199,6 +198,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
         // Unlock shares that were locked during requestRedeem
         address shareToken = _getShareToken(vault);
+        ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
         ds.lockedTokensPerContract[vault][shareToken] = 0;
 
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
@@ -217,6 +217,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
         // Unlock shares that were locked during requestRedeem
         address shareToken = _getShareToken(vault);
+        ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
         ds.lockedTokensPerContract[vault][shareToken] = 0;
 
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
