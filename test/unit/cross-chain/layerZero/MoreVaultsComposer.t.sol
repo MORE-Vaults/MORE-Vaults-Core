@@ -17,6 +17,9 @@ import {IVaultsFactory} from "../../../../src/interfaces/IVaultsFactory.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockVaultsFactory} from "../../../../test/mocks/MockVaultsFactory.sol";
 import {IAccessControlFacet} from "../../../../src/interfaces/facets/IAccessControlFacet.sol";
+import {IMoreVaultsRegistry} from "../../../../src/interfaces/IMoreVaultsRegistry.sol";
+import {MoreVaultsStorageHelper} from "../../../../test/helper/MoreVaultsStorageHelper.sol";
+
 import {console} from "forge-std/console.sol";
 
 contract TestableComposer {
@@ -794,6 +797,10 @@ contract MoreVaultsComposerTest is Test {
         MockOFT otherToken = new MockOFT("Other", "OTH");
         otherToken.mint(user, 1000e18);
 
+        address registry = address(1001);
+        address router = address(1002);
+        MoreVaultsStorageHelper.setMoreVaultsRegistry(address(vault), registry);
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
         deal(user, 10 ether);
         vm.startPrank(user);
         otherToken.approve(address(composer), 1000e18);

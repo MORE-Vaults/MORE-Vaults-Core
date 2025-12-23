@@ -26,6 +26,7 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     error RequestWasntFulfilled();
     error RequestWithdrawDisabled();
     error ZeroAddress();
+    error SlippageExceeded(uint256 actual, uint256 limit);
 
     /// @dev Events
     event Deposit(address indexed sender, address indexed owner, address[] tokens, uint256[] assets, uint256 shares);
@@ -65,8 +66,9 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /// @param tokens Array of token addresses to deposit
     /// @param assets Array of amounts to deposit for each token
     /// @param receiver Address that will receive the vault shares
+    /// @param minAmountOut Minimum amount of vault shares to mint
     /// @return shares Amount of vault shares minted
-    function deposit(address[] calldata tokens, uint256[] calldata assets, address receiver)
+    function deposit(address[] calldata tokens, uint256[] calldata assets, address receiver, uint256 minAmountOut)
         external
         payable
         returns (uint256 shares);

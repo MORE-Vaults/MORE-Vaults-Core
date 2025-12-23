@@ -20,6 +20,7 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 import {BaseFacetInitializer} from "../../../src/facets/BaseFacetInitializer.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {ERC4626Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import {ERC20Upgradeable, IERC20Errors} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -41,6 +42,7 @@ contract VaultFacetTest is Test {
     address public asset;
     address public user = address(1);
     address public factory = address(1001);
+    address public router = address(1002);
 
     // Test data
     string constant VAULT_NAME = "Test Vault";
@@ -101,6 +103,7 @@ contract VaultFacetTest is Test {
             abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), facet),
             abi.encode(false)
         );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
 
         // Mint some assets to user for testing
         MockERC20(asset).mint(user, 1000 ether);
@@ -229,7 +232,7 @@ contract VaultFacetTest is Test {
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
         vm.prank(user);
-        VaultFacet(facet).deposit(tokens, amounts, user);
+        VaultFacet(facet).deposit(tokens, amounts, user, 0);
 
         // apply generic slippage 1% for conversion of non underlying asset
         uint256 expectedShares = depositAmount + depositAmount2;
@@ -256,7 +259,56 @@ contract VaultFacetTest is Test {
         MoreVaultsStorageHelper.setIsMulticall(address(facet), true);
         vm.prank(address(facet));
         vm.expectRevert(MoreVaultsLib.RestrictedActionInsideMulticall.selector);
-        VaultFacet(facet).deposit(tokens, amounts, user);
+        VaultFacet(facet).deposit(tokens, amounts, user, 0);
+    }
+
+    function test_deposit_ShouldRevertWhenSlippageExceeded() public {
+        MockERC20 mockAsset2 = new MockERC20("Test Asset 2", "TA2");
+        address asset2 = address(mockAsset2);
+        uint256 depositAmount = 100 ether;
+        uint256 depositAmount2 = 200 ether;
+
+        MockERC20(asset2).mint(user, depositAmount2);
+        vm.prank(user);
+        IERC20(asset2).approve(facet, type(uint256).max);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = asset;
+        tokens[1] = asset2;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = depositAmount;
+        amounts[1] = depositAmount2;
+        MoreVaultsStorageHelper.setAvailableAssets(facet, tokens);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            MoreVaultsStorageHelper.setDepositableAssets(facet, tokens[i], true);
+        }
+
+        // Mock oracle call
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(
+            oracleRegistry,
+            abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, asset2),
+            abi.encode(oracle, uint96(1000))
+        );
+        vm.mockCall(
+            oracleRegistry,
+            abi.encodeWithSelector(IOracleRegistry.getAssetPrice.selector, asset2),
+            abi.encode(1 * 10 ** 8)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Set minAmountOut to a very large value that will definitely exceed actual shares
+        // This simulates a scenario where user expects more shares than they will receive
+        uint256 minAmountOut = type(uint256).max;
+
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.SlippageExceeded.selector, (depositAmount + depositAmount2) * 1e2, minAmountOut));
+        VaultFacet(facet).deposit(tokens, amounts, user, minAmountOut);
     }
 
     function test_deposit_ShouldMintSharesWhenDepositingNative() public {
@@ -303,7 +355,7 @@ contract VaultFacetTest is Test {
         uint256 depositAmountInNative = 100 ether;
         vm.deal(user, depositAmountInNative);
         MoreVaultsStorageHelper.setWrappedNative(facet, asset);
-        VaultFacet(facet).deposit{value: depositAmountInNative}(tokens, amounts, user);
+        VaultFacet(facet).deposit{value: depositAmountInNative}(tokens, amounts, user, 0);
 
         // apply generic slippage 1% for conversion of non underlying asset
         uint256 expectedShares = depositAmount + depositAmount2 + depositAmountInNative;
@@ -745,7 +797,7 @@ contract VaultFacetTest is Test {
                 ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, user, 1000001 ether, 1000000 ether
             )
         );
-        VaultFacet(facet).deposit(tokens, amounts, user);
+        VaultFacet(facet).deposit(tokens, amounts, user, 0);
     }
 
     function test_deposit_ShouldRevertWhenPausedWithMultipleAssets() public {
@@ -773,7 +825,7 @@ contract VaultFacetTest is Test {
         // Try to deposit
         vm.prank(user);
         vm.expectRevert(PausableUpgradeable.EnforcedPause.selector);
-        VaultFacet(facet).deposit(tokens, amounts, user);
+        VaultFacet(facet).deposit(tokens, amounts, user, 0);
     }
 
     function test_deposit_ShouldRevertWhenDepositWithMultipleAssetsAndArrayLengthsDoesntMatch() public {
@@ -804,7 +856,7 @@ contract VaultFacetTest is Test {
         uint256[] memory corruptedAmounts = new uint256[](1);
         corruptedAmounts[0] = depositAmount;
         vm.expectRevert(abi.encodeWithSelector(IVaultFacet.ArraysLengthsDontMatch.selector, 2, 1));
-        VaultFacet(facet).deposit(tokens, corruptedAmounts, user);
+        VaultFacet(facet).deposit(tokens, corruptedAmounts, user, 0);
     }
 
     function test_deposit_ShouldRevertWhenDepositWithMultipleAssetsAndAssetIsNotDepositable() public {
@@ -833,7 +885,7 @@ contract VaultFacetTest is Test {
         // Try to deposit
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(IVaultFacet.UnsupportedAsset.selector, asset2));
-        VaultFacet(facet).deposit(tokens, amounts, user);
+        VaultFacet(facet).deposit(tokens, amounts, user, 0);
     }
 
     function test_accrueInterest_ShouldDistributeFeesWithProtocolFee() public {
@@ -1339,7 +1391,7 @@ contract VaultFacetTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(ERC4626Upgradeable.ERC4626ExceededMaxDeposit.selector, testUser2, 300 ether, 10 ether)
         );
-        VaultFacet(facet).deposit(tokens, amounts, testUser2);
+        VaultFacet(facet).deposit(tokens, amounts, testUser2, 0);
         vm.stopPrank();
     }
 
@@ -3175,5 +3227,636 @@ contract VaultFacetTest is Test {
         uint256 finalHWMpS = _getHWMpS(user);
 
         assertEq(finalHWMpS, finalPricePerShare, "HWMpS should be updated");
+    }
+
+    /**
+     * @notice Test requestRedeem with onBehalfOf when caller has allowance
+     */
+    function test_requestRedeem_OnBehalfOf_WithAllowance() public {
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 13 days);
+
+        address spender = address(0x1234);
+        address owner = user;
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, shares);
+
+        // Request redeem on behalf of owner
+        uint256 requestShares = shares / 2;
+        vm.prank(spender);
+        VaultFacet(facet).requestRedeem(requestShares, owner);
+
+        // Verify request was created
+        (uint256 requestShares_, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(owner);
+        assertEq(requestShares_, requestShares, "Should create request with correct shares");
+        assertGt(timelockEndsAt, block.timestamp, "Should set timelock");
+    }
+
+    /**
+     * @notice Test requestRedeem with onBehalfOf when caller doesn't have allowance
+     */
+    function test_requestRedeem_OnBehalfOf_WithoutAllowance() public {
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+
+        address spender = address(0x1234);
+        address owner = user;
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Don't approve spender - should revert
+        uint256 requestShares = shares / 2;
+        vm.prank(spender);
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, spender, 0, requestShares));
+        VaultFacet(facet).requestRedeem(requestShares, owner);
+    }
+
+    /**
+     * @notice Test requestRedeem with onBehalfOf when caller is the owner (no allowance needed)
+     */
+    function test_requestRedeem_OnBehalfOf_Self() public {
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 13 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Request redeem for self (no allowance needed)
+        uint256 requestShares = shares / 2;
+        vm.prank(user);
+        VaultFacet(facet).requestRedeem(requestShares, user);
+
+        // Verify request was created
+        (uint256 requestShares_, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(user);
+        assertEq(requestShares_, requestShares, "Should create request with correct shares");
+        assertGt(timelockEndsAt, block.timestamp, "Should set timelock");
+    }
+
+    /**
+     * @notice Test requestWithdraw with onBehalfOf when caller has allowance
+     */
+    function test_requestWithdraw_OnBehalfOf_WithAllowance() public {
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 13 days);
+
+        address spender = address(0x1234);
+        address owner = user;
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, shares);
+
+        // Request withdraw on behalf of owner
+        uint256 requestAssets = depositAmount / 2;
+        vm.prank(spender);
+        VaultFacet(facet).requestWithdraw(requestAssets, owner);
+
+        // Verify request was created
+        (uint256 requestShares, uint256 timelockEndsAt) = VaultFacet(facet).getWithdrawalRequest(owner);
+        assertGt(requestShares, 0, "Should create request with shares");
+        assertGt(timelockEndsAt, block.timestamp, "Should set timelock");
+    }
+
+    /**
+     * @notice Test requestWithdraw with onBehalfOf when caller doesn't have allowance
+     */
+    function test_requestWithdraw_OnBehalfOf_WithoutAllowance() public {
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+
+        address spender = address(0x1234);
+        address owner = user;
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Don't approve spender - should revert
+        uint256 requestAssets = depositAmount / 2;
+        vm.prank(spender);
+        // Will revert because shares calculation happens before allowance check, but allowance check will fail
+        vm.expectRevert(abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, spender, 0, requestAssets * 1e2));
+        VaultFacet(facet).requestWithdraw(requestAssets, owner);
+    }
+
+    /**
+     * @notice Test deposit through router - deposit cap should be updated for receiver, not router
+     */
+    function test_deposit_ThroughRouter_UpdatesDepositCapForReceiver() public {
+        address routerAddress = address(0x020202);
+        address receiver = user;
+
+        // Set router in registry
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(routerAddress));
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, receiver, 10_000 ether);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(routerAddress, depositAmount);
+
+        // Deposit through router
+        vm.startPrank(routerAddress);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, receiver);
+        vm.stopPrank();
+
+        // Check that deposit cap was updated for receiver, not router
+        uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
+        uint256 routerCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, routerAddress);
+
+        assertLt(receiverCap, 10_000 ether, "Receiver cap should be decreased");
+        assertEq(routerCap, 0, "Router cap should not be changed");
+        assertEq(receiverCap, 10_000 ether - depositAmount, "Receiver cap should be decreased by deposit amount");
+    }
+
+    /**
+     * @notice Test mint through router - deposit cap should be updated for receiver, not router
+     */
+    function test_mint_ThroughRouter_UpdatesDepositCapForReceiver() public {
+        address routerAddress = address(0x020202);
+        address receiver = user;
+
+        // Set router in registry
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(routerAddress));
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, receiver, 10_000 ether);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 sharesToMint = 1000 ether;
+        uint256 depositAmount = VaultFacet(facet).previewMint(sharesToMint);
+        MockERC20(asset).mint(routerAddress, depositAmount);
+
+        // Mint through router
+        vm.startPrank(routerAddress);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).mint(sharesToMint, receiver);
+        vm.stopPrank();
+
+        // Check that deposit cap was updated for receiver, not router
+        uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
+        uint256 routerCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, routerAddress);
+
+        assertEq(receiverCap, 10_000 ether - depositAmount, "Receiver cap should be decreased");
+        assertEq(routerCap, 0, "Router cap should not be changed");
+    }
+
+    /**
+     * @notice Test deposit with multiple tokens through router
+     */
+    function test_deposit_MultipleTokens_ThroughRouter() public {
+        address routerAddress = address(0x020202);
+        address receiver = user;
+
+        // Set router in registry
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(routerAddress));
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, receiver, 10_000 ether);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = asset;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1000 ether;
+
+        MockERC20(asset).mint(routerAddress, amounts[0]);
+
+        // Deposit through router
+        vm.startPrank(routerAddress);
+        IERC20(asset).approve(facet, amounts[0]);
+        VaultFacet(facet).deposit(tokens, amounts, receiver, 0);
+        vm.stopPrank();
+
+        // Check that deposit cap was updated for receiver
+        uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
+        assertLt(receiverCap, 10_000 ether, "Receiver cap should be decreased");
+    }
+
+    /**
+     * @notice Test withdraw through router - deposit cap should be updated for owner, not router
+     */
+    function test_withdraw_ThroughRouter_UpdatesDepositCapForOwner() public {
+        address routerAddress = address(0x020202);
+        address owner = user;
+        address receiver = owner;
+
+        // Set router in registry
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(routerAddress));
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, owner, 10_000 ether);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, owner, 10_000 ether);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Setup withdrawal queue
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, owner);
+
+        // Check that deposit cap was updated for owner (because router -> receiver mapping), not router
+        uint256 ownerCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        uint256 routerCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, routerAddress);
+
+        assertEq(ownerCap, 10_000 ether - depositAmount, "Owner cap should be decreased by deposit amount");
+        assertEq(routerCap, 0, "Router cap should not be changed");
+        vm.stopPrank();
+
+        // Withdraw through router (router calls withdraw, receiver is owner)
+        uint256 withdrawAmount = 500 ether;
+        vm.prank(owner);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, owner);
+        vm.warp(block.timestamp + 1 days + 1);
+
+        vm.startPrank(owner);
+        VaultFacet(facet).approve(routerAddress, VaultFacet(facet).convertToShares(withdrawAmount));
+        vm.stopPrank();
+        vm.prank(routerAddress);
+        VaultFacet(facet).withdraw(withdrawAmount, receiver, owner);
+
+        // Check that deposit cap was updated for owner (because router -> receiver mapping), not router
+        ownerCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        routerCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, routerAddress);
+
+        assertEq(ownerCap, 10_000 ether - depositAmount + withdrawAmount, "Owner cap should be increased by withdraw amount");
+        assertEq(routerCap, 0, "Router cap should not be changed");
+    }
+
+    /**
+     * @notice Test withdraw through spender with allowance - deposit cap should be updated for owner, not spender
+     */
+    function test_withdraw_ThroughSpender_UpdatesDepositCapForOwner() public {
+        address spender = address(0x1234);
+        address owner = user;
+        address receiver = owner;
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, owner, 10_000 ether);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, owner, 10_000 ether);
+
+        // Setup withdrawal queue
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 1 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Check initial cap
+        uint256 ownerCapBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        assertEq(ownerCapBefore, 10_000 ether - depositAmount, "Owner cap should be decreased after deposit");
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, type(uint256).max);
+
+        // Create withdrawal request
+        uint256 withdrawAmount = 500 ether;
+        vm.prank(owner);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, owner);
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Withdraw through spender
+        vm.prank(spender);
+        VaultFacet(facet).withdraw(withdrawAmount, receiver, owner);
+
+        // Check that deposit cap was updated for owner, not spender
+        uint256 ownerCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        uint256 spenderCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, spender);
+
+        assertEq(ownerCapAfter, 10_000 ether - depositAmount + withdrawAmount, "Owner cap should be increased by withdraw amount");
+        assertEq(spenderCap, 0, "Spender cap should not be changed");
+    }
+
+    /**
+     * @notice Test redeem through spender with allowance - deposit cap should be updated for owner, not spender
+     */
+    function test_redeem_ThroughSpender_UpdatesDepositCapForOwner() public {
+        address spender = address(0x1234);
+        address owner = user;
+        address receiver = owner;
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, owner, 10_000 ether);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, owner, 10_000 ether);
+
+        // Setup withdrawal queue
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 1 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Check initial cap
+        uint256 ownerCapBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        assertEq(ownerCapBefore, 10_000 ether - depositAmount, "Owner cap should be decreased after deposit");
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, type(uint256).max);
+
+        // Create withdrawal request
+        uint256 redeemShares = shares / 2;
+        vm.prank(owner);
+        VaultFacet(facet).requestRedeem(redeemShares, owner);
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Redeem through spender
+        vm.prank(spender);
+        uint256 assets = VaultFacet(facet).redeem(redeemShares, receiver, owner);
+
+        // Check that deposit cap was updated for owner, not spender
+        uint256 ownerCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        uint256 spenderCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, spender);
+
+        assertEq(ownerCapAfter, 10_000 ether - depositAmount + assets, "Owner cap should be increased by redeem assets");
+        assertEq(spenderCap, 0, "Spender cap should not be changed");
+    }
+
+    /**
+     * @notice Test withdraw through spender with allowance when withdrawal queue is disabled
+     * @dev When queue is disabled, withdrawFromRequest returns true (synchronous withdrawal)
+     * Spender with allowance can withdraw on behalf of owner without request
+     * This test verifies that deposit cap updates for owner, not spender
+     */
+    function test_withdraw_ThroughSpender_WithoutQueue_UpdatesDepositCapForOwner() public {
+        address spender = address(0x1234);
+        address owner = user;
+        address receiver = owner;
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, owner, 10_000 ether);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, owner, 10_000 ether);
+
+        // Disable withdrawal queue (allows synchronous withdrawal)
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Check initial cap
+        uint256 ownerCapBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        assertEq(ownerCapBefore, 10_000 ether - depositAmount, "Owner cap should be decreased after deposit");
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, type(uint256).max);
+
+        // Withdraw through spender (synchronous, no request needed when queue is disabled)
+        uint256 withdrawAmount = 500 ether;
+        vm.prank(spender);
+        VaultFacet(facet).withdraw(withdrawAmount, receiver, owner);
+
+        // Check that deposit cap was updated for owner, not spender
+        uint256 ownerCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        uint256 spenderCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, spender);
+
+        assertEq(ownerCapAfter, 10_000 ether - depositAmount + withdrawAmount, "Owner cap should be increased by withdraw amount");
+        assertEq(spenderCap, 0, "Spender cap should not be changed");
+    }
+
+    /**
+     * @notice Test redeem through spender with allowance when withdrawal queue is disabled
+     * @dev When queue is disabled, withdrawFromRequest returns true (synchronous withdrawal)
+     * Spender with allowance can redeem on behalf of owner without request
+     * This test verifies that deposit cap updates for owner, not spender
+     */
+    function test_redeem_ThroughSpender_WithoutQueue_UpdatesDepositCapForOwner() public {
+        address spender = address(0x1234);
+        address owner = user;
+        address receiver = owner;
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, owner, 10_000 ether);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, owner, 10_000 ether);
+
+        // Disable withdrawal queue (allows synchronous withdrawal)
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        uint256 shares = VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Check initial cap
+        uint256 ownerCapBefore = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        assertEq(ownerCapBefore, 10_000 ether - depositAmount, "Owner cap should be decreased after deposit");
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, type(uint256).max);
+
+        // Redeem through spender (synchronous, no request needed when queue is disabled)
+        uint256 redeemShares = shares / 2;
+        vm.prank(spender);
+        uint256 assets = VaultFacet(facet).redeem(redeemShares, receiver, owner);
+
+        // Check that deposit cap was updated for owner, not spender
+        uint256 ownerCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        uint256 spenderCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, spender);
+
+        assertEq(ownerCapAfter, 10_000 ether - depositAmount + assets, "Owner cap should be increased by redeem assets");
+        assertEq(spenderCap, 0, "Spender cap should not be changed");
+    }
+
+    /**
+     * @notice Test withdraw through spender with different receiver - deposit cap should still be updated for owner
+     */
+    function test_withdraw_ThroughSpender_DifferentReceiver_UpdatesDepositCapForOwner() public {
+        address spender = address(0x1234);
+        address owner = user;
+        address receiver = address(0x5678); // Different receiver
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, owner, 10_000 ether);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, owner, 10_000 ether);
+
+        // Setup withdrawal queue
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, true);
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(facet, 14 days);
+        MoreVaultsStorageHelper.setWithdrawTimelock(facet, 1 days);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit first
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(owner, depositAmount);
+        vm.startPrank(owner);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, owner);
+        vm.stopPrank();
+
+        // Approve spender
+        vm.prank(owner);
+        IERC20(facet).approve(spender, type(uint256).max);
+
+        // Create withdrawal request
+        uint256 withdrawAmount = 500 ether;
+        vm.prank(owner);
+        VaultFacet(facet).requestWithdraw(withdrawAmount, owner);
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Withdraw through spender to different receiver
+        vm.prank(spender);
+        VaultFacet(facet).withdraw(withdrawAmount, receiver, owner);
+
+        // Check that deposit cap was updated for owner, not spender or receiver
+        uint256 ownerCapAfter = MoreVaultsStorageHelper.getAvailableToDeposit(facet, owner);
+        uint256 spenderCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, spender);
+        uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
+
+        assertEq(ownerCapAfter, 10_000 ether - depositAmount + withdrawAmount, "Owner cap should be increased by withdraw amount");
+        assertEq(spenderCap, 0, "Spender cap should not be changed");
+        assertEq(receiverCap, 0, "Receiver cap should not be changed");
     }
 }

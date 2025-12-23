@@ -98,7 +98,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         virtual
         returns (MessagingFee memory)
     {
-        /// @dev Only deposit flow is supported; quoting is only valid for SHARE_OFT (hub → destination hop)
+        /// @dev Only deposit flow is supported; quoting is only valid for SHARE_OFT (hub to destination hop)
         if (_targetOFT != SHARE_OFT) revert NotImplemented();
 
         uint256 maxDeposit = VAULT.maxDeposit(_from);
@@ -312,15 +312,15 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         IERC20(_tokenAddress).forceApprove(address(VAULT), _assetAmount);
         if (_tokenAddress == IERC4626(VAULT).asset()) {
             shareAmount = VAULT.deposit(_assetAmount, address(this));
+            _assertSlippage(shareAmount, _sendParam.minAmountLD);
         } else {
             address[] memory tokens = new address[](1);
             tokens[0] = _tokenAddress;
             uint256[] memory assets = new uint256[](1);
             assets[0] = _assetAmount;
-            shareAmount = VAULT.deposit(tokens, assets, address(this));
+            shareAmount = VAULT.deposit(tokens, assets, address(this), _sendParam.minAmountLD);
         }
         IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
-        _assertSlippage(shareAmount, _sendParam.minAmountLD);
 
         _sendParam.amountLD = shareAmount;
         _sendParam.minAmountLD = 0;

@@ -229,7 +229,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
     }
 
     function setRouter(address _router) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        router = router;
+        router = _router;
 
         emit RouterSet(_router);
     }

@@ -49,7 +49,7 @@ contract MockVaultFacet {
         return assets;
     }
 
-    function deposit(address[] calldata, uint256[] calldata, address) external pure returns (uint256) {
+    function deposit(address[] calldata, uint256[] calldata, address, uint256) external pure returns (uint256) {
         return 1;
     }
 

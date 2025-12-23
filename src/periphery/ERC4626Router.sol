@@ -59,7 +59,7 @@ contract ERC4626Router {
         if (refund > 0) asset.safeTransfer(msg.sender, refund);
     }
 
-    function requestWithdraw(IERC4626 vault, uint256 assets, address receiver, address owner) external
+    function requestWithdraw(IERC4626 vault, uint256 assets, address owner) external
     {
         if (IERC20(address(vault)).allowance(owner, address(this)) < IERC4626(address(vault)).convertToShares(assets)) {
             revert ERC20InsufficientAllowance(owner, IERC20(address(vault)).allowance(owner, address(this)), IERC4626(address(vault)).convertToShares(assets));
@@ -67,7 +67,7 @@ contract ERC4626Router {
         IVaultFacet(address(vault)).requestWithdraw(assets, owner);
     }
 
-    function requestRedeem(IERC4626 vault, uint256 shares, address receiver, address owner) external
+    function requestRedeem(IERC4626 vault, uint256 shares, address owner) external
     {
         if (IERC20(address(vault)).allowance(owner, address(this)) < shares) {
             revert ERC20InsufficientAllowance(owner, IERC20(address(vault)).allowance(owner, address(this)), IERC4626(address(vault)).convertToAssets(shares));
@@ -80,15 +80,9 @@ contract ERC4626Router {
         returns (uint256 shares)
     {
         if (_isWithdrawalQueueEnabled(address(vault))) revert WithdrawalQueueEnabled();
-
-        IERC20(address(vault)).safeTransferFrom(owner, address(this), maxShares);
-
-        shares = vault.withdraw(assets, receiver, address(this));
+        shares = vault.withdraw(assets, receiver, owner);
 
         if (shares > maxShares) revert SlippageExceeded(shares, maxShares);
-
-        uint256 refund = maxShares - shares;
-        if (refund > 0) IERC20(address(vault)).safeTransfer(owner, refund);
     }
 
     function redeemWithSlippage(IERC4626 vault, uint256 shares, uint256 minAssets, address receiver, address owner)
@@ -96,10 +90,7 @@ contract ERC4626Router {
         returns (uint256 assets)
     {
         if (_isWithdrawalQueueEnabled(address(vault))) revert WithdrawalQueueEnabled();
-
-        IERC20(address(vault)).safeTransferFrom(owner, address(this), shares);
-
-        assets = vault.redeem(shares, receiver, address(this));
+        assets = vault.redeem(shares, receiver, owner);
 
         if (assets < minAssets) revert SlippageExceeded(assets, minAssets);
     }

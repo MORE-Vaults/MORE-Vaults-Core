@@ -804,7 +804,7 @@ contract MoreVaultsLibTest is Test {
         uint256 shares = 100e18;
 
         // Queue is disabled by default
-        bool result = MoreVaultsLib.withdrawFromRequest(caller, owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
         assertTrue(result, "Should allow withdrawal when caller is the owner");
     }
@@ -821,7 +821,7 @@ contract MoreVaultsLibTest is Test {
         // Queue is disabled by default
         // When called via finalizeRequest, msgSender (from _getInfoForAction) is the real owner
         // even though msg.sender is the diamond
-        bool result = MoreVaultsLib.withdrawFromRequest(owner, owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
         assertTrue(result, "Should allow withdrawal when msgSender equals owner");
     }
@@ -835,9 +835,9 @@ contract MoreVaultsLibTest is Test {
         uint256 shares = 100e18;
 
         // Queue is disabled by default
-        bool result = MoreVaultsLib.withdrawFromRequest(notOwner, owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
-        assertFalse(result, "Should reject when msgSender is not the owner");
+        assertTrue(result, "Should allow withdrawal when msgSender is not the owner, further will check allowance");
     }
 
     function test_withdrawFromRequest_ShouldAllowWithdrawalWhenTimelockPassed() public {
@@ -855,7 +855,7 @@ contract MoreVaultsLibTest is Test {
         ds.maxWithdrawalDelay = 14 days;
 
         // When queue is enabled, msgSender doesn't matter - it checks the request
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
 
         assertTrue(result, "Should allow withdrawal when timelock passed");
         assertEq(ds.withdrawalRequests[requester].shares, 0, "Shares should be deducted");
@@ -874,7 +874,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = 50e18; // Less than requested
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, requestedShares);
+        bool result = MoreVaultsLib.withdrawFromRequest(requester, requestedShares);
 
         assertFalse(result, "Should reject withdrawal when insufficient shares");
     }
@@ -977,7 +977,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = shares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 15 days;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
 
         assertFalse(result, "Should reject withdrawal when max delay exceeded");
     }
@@ -998,7 +998,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = shares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 14 days;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
 
         assertTrue(result, "Should allow withdrawal at exact max delay");
     }
@@ -1016,7 +1016,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = shares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp + 1 hours;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
 
         assertFalse(result, "Should reject withdrawal when timelock not ended");
     }
@@ -1034,7 +1034,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = totalShares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, withdrawShares);
+        bool result = MoreVaultsLib.withdrawFromRequest(requester, withdrawShares);
 
         assertTrue(result, "Should allow partial withdrawal");
         assertEq(ds.withdrawalRequests[requester].shares, totalShares - withdrawShares, "Should deduct partial shares");
@@ -1049,7 +1049,7 @@ contract MoreVaultsLibTest is Test {
         ds.maxWithdrawalDelay = 0; // Even with zero delay
 
         // When queue is disabled, maxWithdrawalDelay should be ignored
-        bool result = MoreVaultsLib.withdrawFromRequest(owner, owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
 
         assertTrue(result, "Should allow withdrawal when queue disabled regardless of maxDelay");
     }
