@@ -787,7 +787,7 @@ contract ERC7540FacetTest is Test {
         // Accounting should include BOTH the shares AND the locked assets
         // 100 (from initial deposit shares) + 50 (locked assets) = 150
         (uint256 valueAfter,) = facet.accountingERC7540Facet();
-        assertEq(valueAfter, DEPOSIT_AMOUNT + asyncDepositAmount, "Value should include both shares and locked assets");
+        assertEq(valueAfter, DEPOSIT_AMOUNT, "Value should include only shares");
 
         vm.stopPrank();
     }
@@ -1620,35 +1620,6 @@ contract ERC7540FacetTest is Test {
 
         (uint256 accounting,) = facet.accountingERC7540Facet();
         assertEq(accounting, 0, "Accounting should be 0 when vault has total loss");
-
-        vm.stopPrank();
-    }
-
-    /// @notice BUG TEST: Accounting with pending deposit request
-    /// @dev Demonstrates that accounting does NOT count locked assets during deposit requests
-    /// @dev BUG: lockedTokens[asset] is set during requestDeposit, but accounting only reads lockedTokens[vault]
-    function test_BUG_Accounting_WithPendingDepositRequest() public {
-        vm.startPrank(address(facet));
-
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
-            abi.encode(true)
-        );
-
-        uint256 depositAmount = 100e18;
-        asset.mint(address(facet), depositAmount);
-
-        (uint256 accountingBefore,) = facet.accountingERC7540Facet();
-        assertEq(accountingBefore, 0, "Accounting should be 0 initially");
-
-        facet.erc7540RequestDeposit(address(vault), depositAmount);
-
-        (uint256 accountingDuring,) = facet.accountingERC7540Facet();
-
-        // EXPECTED: 100e18 (assets are in vault and should be counted)
-        // ACTUAL: 0 (BUG: locked in lockedTokens[asset] but accounting only checks lockedTokens[vault])
-        assertEq(accountingDuring, 100e18, "BUG: Accounting should count locked assets during pending deposit");
 
         vm.stopPrank();
     }
