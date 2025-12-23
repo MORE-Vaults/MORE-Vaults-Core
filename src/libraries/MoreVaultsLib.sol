@@ -231,10 +231,19 @@ library MoreVaultsLib {
         }
     }
 
-    function removeTokenIfnecessary(EnumerableSet.AddressSet storage tokensHeld, address token) internal {
+    function removeTokenIfnecessary(
+        EnumerableSet.AddressSet storage tokensHeld,
+        address vault,
+        address asset,
+        address shareToken
+    ) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        if (IERC20(token).balanceOf(address(this)) + ds.lockedTokens[token] < 10e3) {
-            tokensHeld.remove(token);
+        uint256 sharesBalance = IERC20(vault).balanceOf(address(this));
+        uint256 lockedShares = ds.lockedTokensPerContract[vault][shareToken];
+        uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
+
+        if (sharesBalance + lockedShares + lockedAssets < 10e3) {
+            tokensHeld.remove(vault);
         }
     }
 

@@ -68,9 +68,13 @@ contract MoreVaultsLibTest is Test {
     }
 
     function test_removeTokenIfnecessary_ShouldRemoveTokenWhenBalanceIsLow() public {
-        // Mock IERC20.balanceOf to return low balance
+        address vault = token1;
+        address asset = token2;
+        address shareToken = token1;
+
+        // Mock IERC20.balanceOf to return low balance for vault shares
         vm.mockCall(
-            token1,
+            vault,
             abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)),
             abi.encode(5e3) // Less than 10e3
         );
@@ -79,20 +83,24 @@ contract MoreVaultsLibTest is Test {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
 
-        // Add token to set
-        tokensHeld.add(token1);
+        // Add vault to set
+        tokensHeld.add(vault);
 
-        // Call function
-        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, token1);
+        // Call function with vault, asset, and shareToken
+        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, vault, asset, shareToken);
 
-        // Verify token was removed
-        assertFalse(tokensHeld.contains(token1), "Token should be removed");
+        // Verify vault was removed
+        assertFalse(tokensHeld.contains(vault), "Vault should be removed");
     }
 
     function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsHigh() public {
-        // Mock IERC20.balanceOf to return high balance
+        address vault = token1;
+        address asset = token2;
+        address shareToken = token1;
+
+        // Mock IERC20.balanceOf to return high balance for vault shares
         vm.mockCall(
-            token1,
+            vault,
             abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)),
             abi.encode(20e3) // More than 10e3
         );
@@ -101,37 +109,43 @@ contract MoreVaultsLibTest is Test {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
 
-        // Add token to set
-        tokensHeld.add(token1);
+        // Add vault to set
+        tokensHeld.add(vault);
 
-        // Call function
-        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, token1);
+        // Call function with vault, asset, and shareToken
+        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, vault, asset, shareToken);
 
-        // Verify token was not removed
-        assertTrue(tokensHeld.contains(token1), "Token should not be removed");
+        // Verify vault was not removed
+        assertTrue(tokensHeld.contains(vault), "Vault should not be removed");
     }
 
-    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsLowButStakedIsHigh() public {
-        // Mock IERC20.balanceOf to return high balance
+    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsLowButLockedIsHigh() public {
+        address vault = token1;
+        address asset = token2;
+        address shareToken = token1;
+
+        // Mock IERC20.balanceOf to return low balance for vault shares
         vm.mockCall(
-            token1,
+            vault,
             abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)),
-            abi.encode(1e3) // More than 10e3
+            abi.encode(1e3) // Less than 10e3
         );
 
         // Get storage pointer for tokensHeld
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
-        MoreVaultsStorageHelper.setStaked(address(this), token1, 10e4);
 
-        // Add token to set
-        tokensHeld.add(token1);
+        // Set high locked shares for the vault
+        ds.lockedTokensPerContract[vault][shareToken] = 10e4;
 
-        // Call function
-        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, token1);
+        // Add vault to set
+        tokensHeld.add(vault);
 
-        // Verify token was not removed
-        assertTrue(tokensHeld.contains(token1), "Token should not be removed");
+        // Call function with vault, asset, and shareToken
+        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, vault, asset, shareToken);
+
+        // Verify vault was not removed because locked tokens are high
+        assertTrue(tokensHeld.contains(vault), "Vault should not be removed");
     }
 
     function test_convertToUnderlying_ShouldConvertNativeToken() public {
