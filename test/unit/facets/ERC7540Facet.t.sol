@@ -1460,4 +1460,196 @@ contract ERC7540FacetTest is Test {
         // MORE Vault's own VaultFacet is protected
         // But MORE Vault cannot protect against vulnerabilities in external vaults
     }
+
+    // ============================================
+    // EDGE CASES - Locked Tokens Critical Tests
+    // ============================================
+
+    /// @notice Edge Case 1.1: Unlock without prior request
+    /// @dev Tests that unlock operations (0 - 0) don't underflow when no prior request exists
+    function test_EdgeCase_erc7540Deposit_WithoutPriorRequest() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 100e18;
+
+        // Mock vault.deposit to simulate vault that already has assets (no request needed)
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("deposit(uint256,address,address)"))),
+            abi.encode(depositAmount)
+        );
+
+        uint256 lockedBefore = MoreVaultsStorageHelper.getLockedAssetsPerVault(
+            address(facet), address(vault), address(asset)
+        );
+        assertEq(lockedBefore, 0, "Should have no locked tokens");
+
+        // Call deposit without prior request - should not underflow (0 - 0 = 0)
+        facet.erc7540Deposit(address(vault), depositAmount);
+
+        uint256 lockedAfter = MoreVaultsStorageHelper.getLockedAssetsPerVault(
+            address(facet), address(vault), address(asset)
+        );
+        assertEq(lockedAfter, 0, "Should still have no locked tokens (no underflow)");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Edge Case 2.1: Multiple vaults with same underlying asset
+    /// @dev Tests that global lockedTokens correctly tracks multiple vaults using same underlying asset
+    function test_EdgeCase_MultipleVaultsSameAsset_GlobalLockedTokens() public {
+        MockERC7540Vault vault2 = new MockERC7540Vault(address(asset));
+
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault2)),
+            abi.encode(true)
+        );
+
+        uint256 amount1 = 100e18;
+        uint256 amount2 = 200e18;
+
+        asset.mint(address(facet), amount1 + amount2);
+
+        facet.erc7540RequestDeposit(address(vault), amount1);
+        uint256 globalLocked1 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked1, amount1, "Global should be 100 after vault1 request");
+
+        facet.erc7540RequestDeposit(address(vault2), amount2);
+        uint256 globalLocked2 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked2, amount1 + amount2, "Global should be 300 after vault2 request");
+
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("deposit(uint256,address,address)"))),
+            abi.encode(amount1)
+        );
+        vm.mockCall(
+            address(vault2),
+            abi.encodeWithSelector(bytes4(keccak256("deposit(uint256,address,address)"))),
+            abi.encode(amount2)
+        );
+
+        facet.erc7540Deposit(address(vault), amount1);
+        uint256 globalLocked3 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked3, amount2, "Global should be 200 after vault1 finalize");
+
+        facet.erc7540Deposit(address(vault2), amount2);
+        uint256 globalLocked4 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked4, 0, "Global should be 0 after vault2 finalize");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Edge Case 3.1: Simultaneous deposit and redeem requests
+    /// @dev Tests that both deposit and redeem can be pending at the same time (different keys)
+    function test_EdgeCase_SimultaneousDepositAndRedeemPending() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 shareAmount = 100e18;
+        vault.mintShares(address(facet), shareAmount);
+
+        uint256 depositAmount = 50e18;
+
+        facet.erc7540RequestDeposit(address(vault), depositAmount);
+        facet.erc7540RequestRedeem(address(vault), shareAmount);
+
+        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedAssetsPerVault(
+            address(facet), address(vault), address(asset)
+        );
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerVault(
+            address(facet), address(vault), address(vault)
+        );
+
+        assertEq(lockedAssets, depositAmount, "Assets should be locked");
+        assertEq(lockedShares, shareAmount, "Shares should be locked");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Edge Case 4.1: Vault total loss with locked shares
+    /// @dev Tests that accounting correctly values locked shares at 0 when vault loses all value
+    function test_EdgeCase_Accounting_VaultTotalLossWithLockedShares() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 100e18;
+        asset.mint(address(facet), depositAmount);
+        asset.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, address(facet));
+
+        uint256 shareAmount = vault.balanceOf(address(facet));
+        facet.erc7540RequestRedeem(address(vault), shareAmount);
+
+        // Simulate total vault loss by draining all assets
+        uint256 vaultBalance = asset.balanceOf(address(vault));
+        vm.startPrank(address(vault));
+        asset.transfer(address(1), vaultBalance);
+        vm.startPrank(address(facet));
+
+        // Mock convertToAssets to return 0 (vault mock has hardcoded 1:1 ratio)
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("convertToAssets(uint256)"))),
+            abi.encode(0)
+        );
+
+        (uint256 accounting,) = facet.accountingERC7540Facet();
+        assertEq(accounting, 0, "Accounting should be 0 when vault has total loss");
+
+        vm.stopPrank();
+    }
+
+    /// @notice BUG TEST: Accounting with pending deposit request
+    /// @dev Demonstrates that accounting does NOT count locked assets during deposit requests
+    /// @dev BUG: lockedTokens[asset] is set during requestDeposit, but accounting only reads lockedTokens[vault]
+    function test_BUG_Accounting_WithPendingDepositRequest() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 100e18;
+        asset.mint(address(facet), depositAmount);
+
+        (uint256 accountingBefore,) = facet.accountingERC7540Facet();
+        assertEq(accountingBefore, 0, "Accounting should be 0 initially");
+
+        facet.erc7540RequestDeposit(address(vault), depositAmount);
+
+        (uint256 accountingDuring,) = facet.accountingERC7540Facet();
+
+        // EXPECTED: 100e18 (assets are in vault and should be counted)
+        // ACTUAL: 0 (BUG: locked in lockedTokens[asset] but accounting only checks lockedTokens[vault])
+        assertEq(accountingDuring, 100e18, "BUG: Accounting should count locked assets during pending deposit");
+
+        vm.stopPrank();
+    }
 }
