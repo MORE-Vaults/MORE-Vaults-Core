@@ -11,3 +11,4 @@ docs/
 # Dotenv file
 .env
 .env copy
+EDGE_CASES_ANALYSIS.md

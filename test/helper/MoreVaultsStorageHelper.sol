@@ -756,6 +756,11 @@ library MoreVaultsStorageHelper {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
     }
 
+    // Alias for global locked tokens (used by dual-mapping solution)
+    function getLockedTokensGlobal(address contractAddress, address token) internal view returns (uint256) {
+        return getLockedTokens(contractAddress, token);
+    }
+
     // Functions for lockedTokensPerContract mapping (contract => token => uint256)
     function getLockedTokensPerContract(address contractAddress, address contract_, address token) internal view returns (uint256) {
         // First level: contract key
