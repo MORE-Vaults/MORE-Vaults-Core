@@ -116,9 +116,11 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
                 continue;
             }
             address asset = IERC4626(vault).asset();
+            // Count both locked shares (from redeem requests) and locked assets (from deposit requests)
             uint256 balance = IERC4626(vault).balanceOf(address(this)) + ds.lockedTokens[vault];
             uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
-            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
+            uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
+            sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying + lockedAssets, Math.Rounding.Floor);
             unchecked {
                 ++i;
             }
