@@ -56,6 +56,11 @@ library MoreVaultsStorageHelper {
     uint256 constant FINALIZATION_GUID = 36;
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
     uint256 constant WITHDRAWAL_FEE = 37;
+    uint256 constant USER_HIGH_WATER_MARK_PER_SHARE = 38;
+    uint256 constant NATIVE_PENDING = 39;
+    uint256 constant MAX_WITHDRAWAL_DELAY = 40;
+    uint256 constant LOCKED_TOKENS_PER_CONTRACT = 41;
+    uint256 constant INITIAL_DEPOSIT_CAP_PER_USER = 42;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -521,8 +526,13 @@ library MoreVaultsStorageHelper {
         );
     }
 
-    function getDepositWhitelist(address contractAddress, address depositor) internal view returns (uint256) {
+    function getAvailableToDeposit(address contractAddress, address depositor) internal view returns (uint256) {
         return uint256(getMappingValue(contractAddress, DEPOSIT_WHITELIST, bytes32(uint256(uint160(depositor)))));
+    }
+
+    // Alias functions for better naming (availableToDeposit)
+    function setAvailableToDeposit(address contractAddress, address depositor, uint256 underlyingAssetCap) internal {
+        setDepositWhitelist(contractAddress, depositor, underlyingAssetCap);
     }
 
     function setIsNecessaryToCheckLock(address contractAddress, address token, bool isNecessaryToCheckLock) internal {
@@ -691,6 +701,14 @@ library MoreVaultsStorageHelper {
         return uint96(uint256((storedValue & mask) >> 8));
     }
 
+    function setMaxWithdrawalDelay(address contractAddress, uint32 value) internal {
+        setStorageValue(contractAddress, MAX_WITHDRAWAL_DELAY, bytes32(uint256(value)));
+    }
+
+    function getMaxWithdrawalDelay(address contractAddress) internal view returns (uint32) {
+        return uint32(uint256(getStorageValue(contractAddress, MAX_WITHDRAWAL_DELAY)));
+    }
+
     // Functions for WITHDRAW_TIMELOCK (slot 25)
     function setWithdrawTimelock(address contractAddress, uint64 value) internal {
         setStorageValue(contractAddress, WITHDRAW_TIMELOCK, bytes32(uint256(value)));
@@ -729,13 +747,43 @@ library MoreVaultsStorageHelper {
         shares = uint256(vm.load(contractAddress, bytes32(uint256(key) + 1)));
     }
 
-    // Functions for lockedTokens mapping (slot 17)
+    // Functions for lockedTokens mapping (slot 17) - DEPRECATED
     function getLockedTokens(address contractAddress, address token) internal view returns (uint256) {
         return uint256(getMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token)))));
     }
 
     function setLockedTokens(address contractAddress, address token, uint256 amount) internal {
         setMappingValue(contractAddress, STAKED, bytes32(uint256(uint160(token))), bytes32(amount));
+    }
+
+    // Functions for lockedTokensPerContract mapping (contract => token => uint256)
+    function getLockedTokensPerContract(address contractAddress, address contract_, address token) internal view returns (uint256) {
+        // First level: contract key
+        bytes32 firstLevelSlot = keccak256(
+            abi.encode(contract_, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + LOCKED_TOKENS_PER_CONTRACT))
+        );
+        // Second level: token key
+        bytes32 secondLevelSlot = keccak256(abi.encode(token, firstLevelSlot));
+        return uint256(vm.load(contractAddress, secondLevelSlot));
+    }
+
+    function setLockedTokensPerContract(address contractAddress, address contract_, address token, uint256 amount) internal {
+        bytes32 firstLevelSlot = keccak256(
+            abi.encode(contract_, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + LOCKED_TOKENS_PER_CONTRACT))
+        );
+        bytes32 secondLevelSlot = keccak256(abi.encode(token, firstLevelSlot));
+        vm.store(contractAddress, secondLevelSlot, bytes32(amount));
+    }
+
+    // Wrapper functions for backwards compatibility with tests
+    // For deposits: token = asset address
+    function getLockedAssetsPerVault(address contractAddress, address vault, address asset) internal view returns (uint256) {
+        return getLockedTokensPerContract(contractAddress, vault, asset);
+    }
+
+    // For redeems: token = share token address (vault address for ERC-4626, or external share for ERC-7575)
+    function getLockedSharesPerVault(address contractAddress, address vault, address shareToken) internal view returns (uint256) {
+        return getLockedTokensPerContract(contractAddress, vault, shareToken);
     }
 
     // Functions for facetsForAccounting array (slot 3)
@@ -754,5 +802,41 @@ library MoreVaultsStorageHelper {
 
         // Increment array length
         vm.store(contractAddress, slot, bytes32(length + 1));
+    }
+
+    // Functions for USER_HIGH_WATER_MARK_PER_SHARE (slot 38) - mapping(address => uint256)
+    function setUserHighWaterMarkPerShare(address contractAddress, address user, uint256 value) internal {
+        setMappingValue(
+            contractAddress, USER_HIGH_WATER_MARK_PER_SHARE, bytes32(uint256(uint160(user))), bytes32(value)
+        );
+    }
+
+    function getUserHighWaterMarkPerShare(address contractAddress, address user) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, USER_HIGH_WATER_MARK_PER_SHARE, bytes32(uint256(uint160(user)))));
+    }
+
+    // Function for lastTotalAssets (for compatibility)
+    function getLastTotalAssets(address contractAddress) internal view returns (uint256) {
+        return uint256(getStorageValue(contractAddress, LAST_TOTAL_ASSETS));
+    }
+
+    // Functions for pendingNative (slot 39) - uint256
+    function setPendingNative(address contractAddress, uint256 value) internal {
+        setStorageValue(contractAddress, NATIVE_PENDING, bytes32(value));
+    }
+
+    function getPendingNative(address contractAddress) internal view returns (uint256) {
+        return uint256(getStorageValue(contractAddress, NATIVE_PENDING));
+    }
+
+    // Functions for INITIAL_DEPOSIT_CAP_PER_USER (slot 43) - mapping(address => uint256)
+    function setInitialDepositCapPerUser(address contractAddress, address user, uint256 value) internal {
+        setMappingValue(
+            contractAddress, INITIAL_DEPOSIT_CAP_PER_USER, bytes32(uint256(uint160(user))), bytes32(value)
+        );
+    }
+
+    function getInitialDepositCapPerUser(address contractAddress, address user) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, INITIAL_DEPOSIT_CAP_PER_USER, bytes32(uint256(uint160(user)))));
     }
 }

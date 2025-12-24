@@ -7,6 +7,11 @@ import {IOracleRegistry} from "../../src/interfaces/IOracleRegistry.sol";
 contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     address public oracleAddress;
     mapping(address => bool) public allowedBridges;
+    address public defaultCrossChainAccountingManager;
+    address public router;
+    function setDefaultCrossChainAccountingManager(address manager) external {
+        defaultCrossChainAccountingManager = manager;
+    }
 
     function setOracle(address _oracle) external {
         oracleAddress = _oracle;
@@ -38,7 +43,6 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     function updateOracleRegistry(address) external {}
     function setProtocolFeeInfo(address, address, uint96) external {}
     function setSelectorAndMask(address, bytes4, bool, bytes memory) external {}
-    function setDefaultCrossChainAccountingManager(address) external {}
 
     function getFacetSelectors(address) external pure returns (bytes4[] memory) {
         bytes4[] memory a;
@@ -89,9 +93,9 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
         return false;
     }
 
-    function defaultCrossChainAccountingManager() external pure returns (address) {
-        return address(0);
-    }
-
     function setIsCrossChainAccountingManager(address manager, bool isManager) external {}
+
+    function setRouter(address _router) external {
+        router = _router;
+    }
 }

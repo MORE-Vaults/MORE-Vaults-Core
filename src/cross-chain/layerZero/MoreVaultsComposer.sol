@@ -17,6 +17,7 @@ import {MoreVaultsLib} from "../../libraries/MoreVaultsLib.sol";
 import {LzAdapter} from "./LzAdapter.sol";
 import {IConfigurationFacet} from "../../interfaces/facets/IConfigurationFacet.sol";
 import {IVaultFacet} from "../../interfaces/facets/IVaultFacet.sol";
+import {IAccessControlFacet} from "../../interfaces/facets/IAccessControlFacet.sol";
 import {IVaultsFactory} from "../../interfaces/IVaultsFactory.sol";
 
 /**
@@ -37,20 +38,11 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     address public ENDPOINT;
     uint32 public VAULT_EID;
 
-    /// @dev Structure to store pending async deposit information
-    struct PendingDeposit {
-        bytes32 depositor;
-        address tokenAddress;
-        address oftAddress;
-        uint256 assetAmount;
-        address refundAddress;
-        uint256 msgValue;
-        uint32 srcEid;
-        SendParam sendParam;
-    }
-
     /// @dev Mapping from deposit ID to pending deposit info
-    mapping(bytes32 => PendingDeposit) public pendingDeposits;
+    mapping(bytes32 => PendingDeposit) internal _pendingDeposits;
+
+    /// @dev Total native pending amount (native currency locked in the composer to facilitate the async flow)
+    uint256 public totalNativePending;
 
     // Async deposit lifecycle is tracked via callbacks and the Deposited event in the interface
     constructor() {
@@ -106,7 +98,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         virtual
         returns (MessagingFee memory)
     {
-        /// @dev Only deposit flow is supported; quoting is only valid for SHARE_OFT (hub → destination hop)
+        /// @dev Only deposit flow is supported; quoting is only valid for SHARE_OFT (hub to destination hop)
         if (_targetOFT != SHARE_OFT) revert NotImplemented();
 
         uint256 maxDeposit = VAULT.maxDeposit(_from);
@@ -140,7 +132,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     {
         if (msg.sender != ENDPOINT) revert OnlyEndpoint(msg.sender);
         if (
-            !LzAdapter(VAULT_FACTORY.lzAdapter()).isTrustedOFT(_composeSender)
+            !LzAdapter(payable(VAULT_FACTORY.lzAdapter())).isTrustedOFT(_composeSender)
                 || !IConfigurationFacet(address(VAULT)).isAssetDepositable(IOFT(_composeSender).token())
         ) {
             revert InvalidComposeCaller(_composeSender);
@@ -220,7 +212,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             revert OnlyVaultOrLzAdapter(msg.sender);
         }
 
-        PendingDeposit memory deposit = pendingDeposits[_guid];
+        PendingDeposit memory deposit = _pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
 
         // Request action already executed in executeRequest
@@ -230,9 +222,10 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         deposit.sendParam.amountLD = shares;
         deposit.sendParam.minAmountLD = 0;
 
-        delete pendingDeposits[_guid];
+        delete _pendingDeposits[_guid];
 
         uint256 amountSentLD = _send(SHARE_OFT, deposit.sendParam, deposit.refundAddress, deposit.msgValue);
+        totalNativePending -= deposit.msgValue;
         emit Deposited(
             deposit.depositor, deposit.sendParam.to, deposit.sendParam.dstEid, deposit.assetAmount, amountSentLD
         );
@@ -242,10 +235,10 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         if (msg.sender != address(VAULT) && msg.sender != address(VAULT_FACTORY.lzAdapter())) {
             revert OnlyVaultOrLzAdapter(msg.sender);
         }
-        PendingDeposit memory deposit = pendingDeposits[_guid];
+        PendingDeposit memory deposit = _pendingDeposits[_guid];
         if (deposit.assetAmount == 0) revert DepositNotFound(_guid);
 
-        delete pendingDeposits[_guid];
+        delete _pendingDeposits[_guid];
 
         // Decrease approve for vault by deposit amount (supports parallel deposits)
         // If request execution didn't occur, approve wasn't used and should be decreased
@@ -272,6 +265,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             refundSendParam, MessagingFee(totalMsgValue, 0), deposit.refundAddress
         );
         IERC20(deposit.tokenAddress).forceApprove(deposit.oftAddress, 0);
+        totalNativePending -= deposit.msgValue;
         emit Refunded(_guid);
     }
 
@@ -318,15 +312,15 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
         IERC20(_tokenAddress).forceApprove(address(VAULT), _assetAmount);
         if (_tokenAddress == IERC4626(VAULT).asset()) {
             shareAmount = VAULT.deposit(_assetAmount, address(this));
+            _assertSlippage(shareAmount, _sendParam.minAmountLD);
         } else {
             address[] memory tokens = new address[](1);
             tokens[0] = _tokenAddress;
             uint256[] memory assets = new uint256[](1);
             assets[0] = _assetAmount;
-            shareAmount = VAULT.deposit(tokens, assets, address(this));
+            shareAmount = VAULT.deposit(tokens, assets, address(this), _sendParam.minAmountLD);
         }
         IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
-        _assertSlippage(shareAmount, _sendParam.minAmountLD);
 
         _sendParam.amountLD = shareAmount;
         _sendParam.minAmountLD = 0;
@@ -346,6 +340,48 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
     ) external payable virtual nonReentrant {
         IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _assetAmount);
         _initDeposit(_depositor, _tokenAddress, _oftAddress, _assetAmount, _sendParam, _refundAddress, _srcEid);
+    }
+
+    /**
+     * @notice Returns the pending deposit info for the given guid
+     * @param guid The guid of the pending deposit
+     * @return The pending deposit info
+     */
+    function pendingDeposits(bytes32 guid) external view returns (PendingDeposit memory) {
+        return _pendingDeposits[guid];
+    }
+
+    /**
+     * @notice Rescue accumulated dust tokens that remain locked due to LayerZero's decimal normalization
+     * @dev LayerZero normalizes token amounts to sharedDecimals (6 decimals), which truncates
+     *      the least significant digits for tokens with higher precision (e.g., 18 decimals).
+     *      This dust accumulates in the adapter contract and cannot be recovered through normal operations.
+     * @param _token The address of the token to rescue (use address(0) for native currency/ETH)
+     * @param _to The address to send the rescued tokens to
+     * @param _amount The amount of tokens to rescue (use type(uint256).max to rescue all available balance)
+     */
+    function rescue(address _token, address payable _to, uint256 _amount) external {
+        if (IAccessControlFacet(address(VAULT)).owner() != msg.sender) revert Unauthorized();
+        if (_to == address(0)) revert ZeroAddress();
+
+        if (_token == address(0)) {
+            // Rescue native currency (ETH)
+            uint256 availableBalance = address(this).balance - totalNativePending;
+            uint256 amountToRescue = _amount == type(uint256).max ? availableBalance : _amount;
+            if (amountToRescue > availableBalance) revert InsufficientBalance();
+
+            (bool success,) = _to.call{value: amountToRescue}("");
+            if (!success) revert NativeTransferFailed();
+            emit Rescued(address(0), _to, amountToRescue);
+        } else {
+            // Rescue ERC20 token
+            uint256 availableBalance = IERC20(_token).balanceOf(address(this));
+            uint256 amountToRescue = _amount == type(uint256).max ? availableBalance : _amount;
+            if (amountToRescue > availableBalance) revert InsufficientBalance();
+
+            IERC20(_token).safeTransfer(_to, amountToRescue);
+            emit Rescued(_token, _to, amountToRescue);
+        }
     }
 
     /**
@@ -397,11 +433,11 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             assets[0] = _assetAmount;
             actionCallData = abi.encode(tokens, assets, address(this));
         }
-        // Pass minAmountOut for slippage check in _executeRequest
+        // Pass amountLimit for slippage check in _executeRequest
         bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
             actionType, actionCallData, _sendParam.minAmountLD, ""
         );
-        pendingDeposits[guid] = PendingDeposit(
+        _pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,
             _oftAddress,
@@ -411,6 +447,8 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             _srcEid,
             _sendParam
         );
+
+        totalNativePending += msg.value - readFee;
     }
 
     /**

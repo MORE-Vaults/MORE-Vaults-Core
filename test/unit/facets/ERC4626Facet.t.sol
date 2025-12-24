@@ -484,10 +484,10 @@ contract ERC4626FacetTest is Test {
         );
         // Execute generic async action
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should be 0");
         facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
-        assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should increase staked amount");
+        assertGt(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should increase locked amount");
 
         vm.stopPrank();
     }
@@ -513,10 +513,10 @@ contract ERC4626FacetTest is Test {
         );
         // Execute generic async action
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should be 0");
         facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
-        assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should increase staked amount");
+        assertGt(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should increase locked amount");
 
         selector = MockAsyncERC4626WithLockOnDeposit.depositFinalize.selector;
         vm.mockCall(
@@ -527,13 +527,13 @@ contract ERC4626FacetTest is Test {
         data = abi.encodeWithSelector(selector, DEPOSIT_AMOUNT);
 
         assertEq(
-            MoreVaultsStorageHelper.getStaked(address(facet), address(asset)),
+            MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)),
             DEPOSIT_AMOUNT,
             "Should be equal to deposit amount"
         );
         facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should be 0");
 
         vm.stopPrank();
     }
@@ -559,10 +559,10 @@ contract ERC4626FacetTest is Test {
         );
         // Execute generic async action
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should be 0");
         facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
-        assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should increase staked amount");
+        assertGt(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should increase locked amount");
 
         selector = MockAsyncERC4626WithLockOnDeposit.depositCancel.selector;
         vm.mockCall(
@@ -573,13 +573,13 @@ contract ERC4626FacetTest is Test {
         data = abi.encodeWithSelector(selector, DEPOSIT_AMOUNT);
 
         assertEq(
-            MoreVaultsStorageHelper.getStaked(address(facet), address(asset)),
+            MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)),
             DEPOSIT_AMOUNT,
             "Should be equal to deposit amount"
         );
         facet.genericAsyncActionExecution(address(newVault), DEPOSIT_AMOUNT, data);
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(asset)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset)), 0, "Should be 0");
 
         vm.stopPrank();
     }
@@ -603,11 +603,11 @@ contract ERC4626FacetTest is Test {
             abi.encode(true)
         );
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be greater than 0");
+        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be greater than 0");
 
         vm.stopPrank();
     }
@@ -631,11 +631,11 @@ contract ERC4626FacetTest is Test {
             abi.encode(true)
         );
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be greater than 0");
+        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be greater than 0");
 
         selector = MockAsyncERC4626WithLockOnWithdraw.withdrawFinalize.selector;
         vm.mockCall(
@@ -646,7 +646,7 @@ contract ERC4626FacetTest is Test {
         data = abi.encodeWithSelector(selector, MINT_SHARES);
 
         assertEq(
-            MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)),
+            MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)),
             MINT_SHARES,
             "Should be equal to mint shares"
         );
@@ -654,7 +654,7 @@ contract ERC4626FacetTest is Test {
         asset.mint(address(newVault), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
 
         vm.stopPrank();
     }
@@ -678,11 +678,11 @@ contract ERC4626FacetTest is Test {
             abi.encode(true)
         );
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
         newVault.mintShares(address(facet), MINT_SHARES);
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertGt(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be greater than 0");
+        assertGt(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be greater than 0");
 
         selector = MockAsyncERC4626WithLockOnWithdraw.withdrawCancel.selector;
         vm.mockCall(
@@ -693,14 +693,14 @@ contract ERC4626FacetTest is Test {
         data = abi.encodeWithSelector(selector, MINT_SHARES);
 
         assertEq(
-            MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)),
+            MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)),
             MINT_SHARES,
             "Should be equal to mint shares"
         );
 
         facet.genericAsyncActionExecution(address(newVault), MINT_SHARES, data);
 
-        assertEq(MoreVaultsStorageHelper.getStaked(address(facet), address(newVault)), 0, "Should be 0");
+        assertEq(MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(newVault), address(newVault)), 0, "Should be 0");
 
         vm.stopPrank();
     }
@@ -1027,23 +1027,17 @@ contract ERC4626FacetTest is Test {
         vm.stopPrank();
     }
 
-    // Test for Issue #13: Multiple concurrent async requests should not interfere
-    function test_genericAsyncActionExecution_Issue13_MultipleDepositsCancelShouldNotZeroGlobal() public {
+    // Test for Issue #12 fix: Only one pending operation per vault/asset allowed
+    function test_genericAsyncActionExecution_ShouldRevertOnSecondPendingDeposit() public {
         MockAsyncERC4626WithLockOnDeposit newVault = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
 
         bytes4 depositSelector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
-        bytes4 cancelSelector = MockAsyncERC4626WithLockOnDeposit.depositCancel.selector;
 
-        // Setup mocks for both selectors
+        // Setup mocks
         vm.mockCall(
             address(registry),
             abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(newVault), depositSelector),
             abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
-        );
-        vm.mockCall(
-            address(registry),
-            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(newVault), cancelSelector),
-            abi.encode(true, bytes(abi.encode(type(uint256).max)))
         );
         vm.mockCall(
             address(registry),
@@ -1053,32 +1047,357 @@ contract ERC4626FacetTest is Test {
 
         vm.startPrank(address(facet));
 
-        // User A deposits 100
+        // First deposit should succeed
         uint256 depositAmountA = 100e18;
         bytes memory dataA = abi.encodeWithSelector(depositSelector, depositAmountA, address(facet), address(facet));
         facet.genericAsyncActionExecution(address(newVault), depositAmountA, dataA);
 
-        uint256 lockedAfterA = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
-        assertEq(lockedAfterA, depositAmountA, "Should have User A's deposit locked");
+        uint256 lockedAfterA = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(newVault), address(asset));
+        assertEq(lockedAfterA, depositAmountA, "Should have first deposit locked");
 
-        // User B deposits 200
+        // Second deposit to same vault should revert with PendingOperationExists
         uint256 depositAmountB = 200e18;
         bytes memory dataB = abi.encodeWithSelector(depositSelector, depositAmountB, address(facet), address(facet));
+        vm.expectRevert(IERC4626Facet.PendingOperationExists.selector);
         facet.genericAsyncActionExecution(address(newVault), depositAmountB, dataB);
 
-        uint256 lockedAfterB = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
-        assertEq(lockedAfterB, depositAmountA + depositAmountB, "Should have both deposits locked");
+        vm.stopPrank();
+    }
 
-        // User B cancels their deposit
-        bytes memory dataBCancel = abi.encodeWithSelector(cancelSelector, depositAmountB);
-        facet.genericAsyncActionExecution(address(newVault), depositAmountB, dataBCancel);
+    // Test that parallel operations to different vaults work
+    function test_genericAsyncActionExecution_ShouldAllowParallelDepositsToDifferentVaults() public {
+        MockAsyncERC4626WithLockOnDeposit vault1 = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
+        MockAsyncERC4626WithLockOnDeposit vault2 = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
 
-        uint256 lockedAfterCancel = MoreVaultsStorageHelper.getStaked(address(facet), address(asset));
+        bytes4 depositSelector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
 
-        // CRITICAL: Should still have User A's deposit (100), not 0!
-        assertEq(lockedAfterCancel, depositAmountA, "Should only unlock User B's deposit, User A's should remain");
-        assertGt(lockedAfterCancel, 0, "Should NOT be zero - User A's deposit still pending");
+        // Setup mocks for both vaults
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(vault1), depositSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(vault2), depositSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector),
+            abi.encode(true)
+        );
+
+        vm.startPrank(address(facet));
+
+        // First deposit to vault1
+        uint256 depositAmount1 = 100e18;
+        bytes memory data1 = abi.encodeWithSelector(depositSelector, depositAmount1, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(vault1), depositAmount1, data1);
+
+        // Second deposit to vault2 should succeed (different vault)
+        uint256 depositAmount2 = 200e18;
+        bytes memory data2 = abi.encodeWithSelector(depositSelector, depositAmount2, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(vault2), depositAmount2, data2);
+
+        // Verify both are locked independently
+        uint256 locked1 = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault1), address(asset));
+        uint256 locked2 = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault2), address(asset));
+        assertEq(locked1, depositAmount1, "Vault1 should have deposit locked");
+        assertEq(locked2, depositAmount2, "Vault2 should have deposit locked");
 
         vm.stopPrank();
+    }
+
+    // ============================================
+    // ISSUE #12 FIX TESTS
+    // ============================================
+
+    /// @notice Test that locked shares are counted in accounting even when vault is whitelisted as available asset
+    /// @dev This tests Fix #1 for issue #12: locked tokens must be counted before the isAssetAvailable check
+    function test_accountingERC4626Facet_ShouldCountLockedSharesWhenVaultWhitelisted() public {
+        MockAsyncERC4626WithLockOnWithdraw asyncVault = new MockAsyncERC4626WithLockOnWithdraw(IERC20(address(asset)));
+
+        // Setup: Mint assets to the vault (so convertToAssets works)
+        uint256 vaultAssets = 100e18;
+        asset.mint(address(asyncVault), vaultAssets);
+
+        // Setup: Mint shares to facet
+        uint256 shareAmount = 100e18;
+        asyncVault.mintShares(address(facet), shareAmount);
+
+        // Whitelist the vault as an available asset
+        address[] memory availableAssets = new address[](1);
+        availableAssets[0] = address(asyncVault);
+        MoreVaultsStorageHelper.setAvailableAssets(address(facet), availableAssets);
+
+        // Setup mocks for async withdrawal
+        bytes4 selector = MockAsyncERC4626WithLockOnWithdraw.requestWithdraw.selector;
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), selector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(asyncVault)),
+            abi.encode(true)
+        );
+
+        // Execute async withdrawal request (locks shares)
+        vm.startPrank(address(facet));
+        bytes memory data = abi.encodeWithSelector(selector, shareAmount, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(asyncVault), shareAmount, data);
+        vm.stopPrank();
+
+        // Verify shares are locked
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(asyncVault), address(asyncVault));
+        assertEq(lockedShares, shareAmount, "Shares should be locked");
+
+        // CRITICAL: Even though vault is whitelisted, locked shares MUST be counted
+        (uint256 accountingSum,) = facet.accountingERC4626Facet();
+
+        // The locked shares should be converted to assets and counted
+        uint256 expectedValue = asyncVault.convertToAssets(shareAmount);
+        assertGt(accountingSum, 0, "Locked shares must be counted in accounting");
+        assertEq(accountingSum, expectedValue, "Locked shares value should match expected");
+    }
+
+    /// @notice Test that locked assets are counted in accounting even when vault is whitelisted
+    /// @dev This tests Fix #1 for issue #12: locked assets must be counted before the isAssetAvailable check
+    function test_accountingERC4626Facet_ShouldCountLockedAssetsWhenVaultWhitelisted() public {
+        MockAsyncERC4626WithLockOnDeposit asyncVault = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
+
+        // Whitelist the vault as an available asset
+        address[] memory availableAssets = new address[](1);
+        availableAssets[0] = address(asyncVault);
+        MoreVaultsStorageHelper.setAvailableAssets(address(facet), availableAssets);
+
+        // Setup mocks for async deposit
+        bytes4 selector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), selector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(asyncVault)),
+            abi.encode(true)
+        );
+
+        // Execute async deposit request (locks assets)
+        uint256 depositAmount = 100e18;
+        vm.startPrank(address(facet));
+        bytes memory data = abi.encodeWithSelector(selector, depositAmount, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(asyncVault), depositAmount, data);
+        vm.stopPrank();
+
+        // Verify assets are locked
+        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(asyncVault), address(asset));
+        assertEq(lockedAssets, depositAmount, "Assets should be locked");
+
+        // CRITICAL: Even though vault is whitelisted, locked assets MUST be counted
+        (uint256 accountingSum,) = facet.accountingERC4626Facet();
+
+        assertGt(accountingSum, 0, "Locked assets must be counted in accounting");
+        assertEq(accountingSum, depositAmount, "Locked assets value should match deposited amount");
+    }
+
+    /// @notice Test that async-only vaults are added to tokensHeld and counted in accounting
+    /// @dev This tests Fix #2 for issue #12: vaults must be added to tokensHeld during async requests
+    function test_accountingERC4626Facet_ShouldCountAsyncOnlyVaultShares() public {
+        MockAsyncERC4626WithLockOnDeposit asyncVault = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
+
+        // Setup mocks for async deposit
+        bytes4 selector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), selector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(asyncVault)),
+            abi.encode(true)
+        );
+
+        // Verify vault is NOT in tokensHeld initially
+        address[] memory tokensHeldBefore = MoreVaultsStorageHelper.getTokensHeld(address(facet), ERC4626_ID);
+        bool vaultInListBefore = false;
+        for (uint256 i = 0; i < tokensHeldBefore.length; i++) {
+            if (tokensHeldBefore[i] == address(asyncVault)) {
+                vaultInListBefore = true;
+                break;
+            }
+        }
+        assertFalse(vaultInListBefore, "Vault should NOT be in tokensHeld initially");
+
+        // Execute async deposit request (should add vault to tokensHeld)
+        uint256 depositAmount = 100e18;
+        vm.startPrank(address(facet));
+        bytes memory data = abi.encodeWithSelector(selector, depositAmount, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(asyncVault), depositAmount, data);
+        vm.stopPrank();
+
+        // CRITICAL: Verify vault was added to tokensHeld (Fix #2)
+        address[] memory tokensHeldAfter = MoreVaultsStorageHelper.getTokensHeld(address(facet), ERC4626_ID);
+        bool vaultInListAfter = false;
+        for (uint256 i = 0; i < tokensHeldAfter.length; i++) {
+            if (tokensHeldAfter[i] == address(asyncVault)) {
+                vaultInListAfter = true;
+                break;
+            }
+        }
+        assertTrue(vaultInListAfter, "Vault MUST be added to tokensHeld after async request");
+
+        // Verify locked assets are counted in accounting
+        (uint256 accountingSum,) = facet.accountingERC4626Facet();
+        assertEq(accountingSum, depositAmount, "Locked assets must be counted");
+    }
+
+    /// @notice Test mixed scenario: whitelisted vault with both locked and unlocked tokens
+    /// @dev This tests that both locked tokens and normal shares are counted correctly
+    function test_accountingERC4626Facet_MixedScenarioWithLockedAndUnlockedTokens() public {
+        MockAsyncERC4626WithLockOnWithdraw asyncVault = new MockAsyncERC4626WithLockOnWithdraw(IERC20(address(asset)));
+
+        // Setup: Mint shares to facet (some will be locked, some won't)
+        uint256 totalShares = 200e18;
+        uint256 sharesToLock = 100e18;
+        asyncVault.mintShares(address(facet), totalShares);
+
+        // DO NOT whitelist the vault (so both locked and unlocked shares are counted)
+        // This ensures we test the full accounting logic
+
+        // Setup mocks for async withdrawal
+        bytes4 selector = MockAsyncERC4626WithLockOnWithdraw.requestWithdraw.selector;
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), selector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(asyncVault)),
+            abi.encode(true)
+        );
+
+        // Get accounting before locking
+        (uint256 accountingBefore,) = facet.accountingERC4626Facet();
+        uint256 expectedBefore = asyncVault.convertToAssets(totalShares);
+        assertEq(accountingBefore, expectedBefore, "Should count all shares before locking");
+
+        // Execute async withdrawal request (locks some shares)
+        vm.startPrank(address(facet));
+        bytes memory data = abi.encodeWithSelector(selector, sharesToLock, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(asyncVault), sharesToLock, data);
+        vm.stopPrank();
+
+        // Get accounting after locking
+        (uint256 accountingAfter,) = facet.accountingERC4626Facet();
+
+        // Total should still be the same (locked shares moved from balance to lockedTokens, but still counted)
+        uint256 remainingShares = totalShares - sharesToLock;
+        uint256 expectedAfter = asyncVault.convertToAssets(remainingShares) + asyncVault.convertToAssets(sharesToLock);
+        assertEq(accountingAfter, expectedAfter, "Should count both locked and unlocked shares");
+        assertEq(accountingAfter, accountingBefore, "Total accounting should remain the same after locking");
+    }
+
+    /// @notice Test full async flow: request → finalize → accounting
+    /// @dev This tests that accounting is correct throughout the entire async lifecycle
+    function test_accountingERC4626Facet_FullAsyncDepositFlow() public {
+        MockAsyncERC4626WithLockOnDeposit asyncVault = new MockAsyncERC4626WithLockOnDeposit(IERC20(address(asset)));
+
+        // Setup mocks
+        bytes4 depositSelector = MockAsyncERC4626WithLockOnDeposit.requestDeposit.selector;
+        bytes4 finalizeSelector = MockAsyncERC4626WithLockOnDeposit.depositFinalize.selector;
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), depositSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), finalizeSelector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max)))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(asyncVault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 100e18;
+
+        // Step 1: Request deposit (locks assets)
+        vm.startPrank(address(facet));
+        bytes memory requestData = abi.encodeWithSelector(depositSelector, depositAmount, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(asyncVault), depositAmount, requestData);
+
+        // Verify accounting counts locked assets
+        (uint256 accountingAfterRequest,) = facet.accountingERC4626Facet();
+        assertEq(accountingAfterRequest, depositAmount, "Should count locked assets after request");
+
+        // Step 2: Finalize deposit (mints shares, unlocks assets)
+        uint256 sharesToMint = depositAmount; // 1:1 for simplicity
+        bytes memory finalizeData = abi.encodeWithSelector(finalizeSelector, sharesToMint);
+        facet.genericAsyncActionExecution(address(asyncVault), 0, finalizeData);
+
+        // Verify accounting counts minted shares (and locked assets are cleared)
+        (uint256 accountingAfterFinalize,) = facet.accountingERC4626Facet();
+        uint256 expectedSharesValue = asyncVault.convertToAssets(sharesToMint);
+        assertEq(accountingAfterFinalize, expectedSharesValue, "Should count shares after finalization");
+
+        // Verify locked assets are cleared
+        uint256 lockedAssetsAfterFinalize = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(asyncVault), address(asset));
+        assertEq(lockedAssetsAfterFinalize, 0, "Locked assets should be cleared after finalization");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Test that vault is added to tokensHeld during async redeem request
+    /// @dev This tests Fix #2 for redeem operations
+    function test_accountingERC4626Facet_VaultAddedToTokensHeldOnAsyncRedeem() public {
+        MockAsyncERC4626WithLockOnWithdraw asyncVault = new MockAsyncERC4626WithLockOnWithdraw(IERC20(address(asset)));
+
+        // Setup: Mint shares to facet
+        uint256 shareAmount = 100e18;
+        asyncVault.mintShares(address(facet), shareAmount);
+
+        // Setup mocks for async withdrawal
+        bytes4 selector = MockAsyncERC4626WithLockOnWithdraw.requestWithdraw.selector;
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.selectorInfo.selector, address(asyncVault), selector),
+            abi.encode(true, bytes(abi.encode(type(uint256).max, uint256(0), uint256(0))))
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(asyncVault)),
+            abi.encode(true)
+        );
+
+        // Execute async redeem request
+        vm.startPrank(address(facet));
+        bytes memory data = abi.encodeWithSelector(selector, shareAmount, address(facet), address(facet));
+        facet.genericAsyncActionExecution(address(asyncVault), shareAmount, data);
+        vm.stopPrank();
+
+        // CRITICAL: Verify vault was added to tokensHeld (Fix #2)
+        address[] memory tokensHeld = MoreVaultsStorageHelper.getTokensHeld(address(facet), ERC4626_ID);
+        bool vaultInList = false;
+        for (uint256 i = 0; i < tokensHeld.length; i++) {
+            if (tokensHeld[i] == address(asyncVault)) {
+                vaultInList = true;
+                break;
+            }
+        }
+        assertTrue(vaultInList, "Vault MUST be in tokensHeld after async redeem request");
+
+        // Verify locked shares are counted
+        (uint256 accountingSum,) = facet.accountingERC4626Facet();
+        uint256 expectedValue = asyncVault.convertToAssets(shareAmount);
+        assertEq(accountingSum, expectedValue, "Locked shares must be counted");
     }
 }
