@@ -47,10 +47,6 @@ contract TestBaseVaultsRegistry is BaseVaultsRegistry {
     function selectorInfo(address, bytes4) external view override returns (bool, bytes memory) {}
 
     function setIsCrossChainAccountingManager(address manager, bool isManager) external {}
-
-    function setRouter(address) external override {}
-
-    function router() external view override returns (address) {}
 }
 
 contract BaseVaultsRegistryTest is Test {

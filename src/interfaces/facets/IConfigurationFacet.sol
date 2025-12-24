@@ -17,7 +17,6 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error InvalidManager();
     error SlippageTooHigh();
     error FeeIsTooHigh();
-    error InvalidMaxWithdrawalDelay();
 
     /**
      * @dev Events
@@ -38,8 +37,6 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event CrossChainAccountingManagerSet(address indexed manager);
     /// @notice Emitted when the max slippage percent is set
     event MaxSlippagePercentSet(uint256 percent);
-    /// @notice Emitted when the max withdrawal delay is set
-    event MaxWithdrawalDelaySet(uint32 delay);
 
     /**
      * @notice Sets fee recipient address, callable by owner
@@ -60,7 +57,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function setDepositCapacity(uint256 capacity) external;
 
     /**
-     * @notice Sets available to deposit amounts for users, callable by owner
+     * @notice Sets deposit whitelist, callable by owner
      * @param depositors Array of depositors
      * @param undelyingAssetCaps Array of underlying asset caps
      */
@@ -77,11 +74,14 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function disableDepositWhitelist() external;
 
     /**
-     * @notice Gets available to deposit amount for a depositor
-     * @param depositor Depositor address
-     * @return Available amount to deposit
+     * @notice Disables deposit whitelist
      */
-    function getAvailableToDeposit(address depositor) external view returns (uint256);
+    /**
+     * @notice Gets deposit whitelist
+     * @param depositor Depositor address
+     * @return Undelying asset cap
+     */
+    function getDepositWhitelist(address depositor) external view returns (uint256);
 
     /**
      * @notice Adds new available asset, callable by curator or owner
@@ -126,12 +126,6 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function updateWithdrawalQueueStatus(bool _status) external;
 
     /**
-     * @notice Update the max withdrawal delay, callable by owner through `submitActions` and timelocked
-     * @param _delay New max withdrawal delay
-     */
-    function setMaxWithdrawalDelay(uint32 _delay) external;
-
-    /**
      * @notice Sets gas limit for accounting, callable by curator or owner through `submitActions` and timelocked
      * @param _availableTokenAccountingGas Gas limit for available token accounting
      * @param _heldTokenAccountingGas Gas limit for held token accounting
@@ -168,12 +162,6 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @return The current withdrawal queue status
      */
     function getWithdrawalQueueStatus() external view returns (bool);
-
-    /**
-     * @notice Get the current max withdrawal delay
-     * @return The current max withdrawal delay
-     */
-    function getMaxWithdrawalDelay() external view returns (uint32);
 
     /**
      * @notice Gets list of depositable assets

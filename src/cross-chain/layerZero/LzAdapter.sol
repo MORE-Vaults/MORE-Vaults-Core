@@ -362,10 +362,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
             }
         }
 
-        if (!readSuccess || !executionSuccess) {
-            IBridgeFacet(info.vault).sendNativeTokenBackToInitiator(_guid);
-        }
-
         // Step 3: Call composer callback to handle the result
         if (info.initiator == vaultsFactory.vaultComposer(info.vault)) {
             _callbackToComposer(info.initiator, _guid, readSuccess && executionSuccess);
@@ -375,7 +371,6 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
     }
 
     function _callbackToComposer(address composer, bytes32 guid, bool success) internal {
-        bool shouldRefund = !success;
         if (success) {
             try ILzComposer(composer).sendDepositShares(guid) {}
             catch (bytes memory _err) {
@@ -386,10 +381,9 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
                         revert(add(32, _err), mload(_err))
                     }
                 }
-                shouldRefund = true;
+                ILzComposer(composer).refundDeposit(guid);
             }
-        }
-        if (shouldRefund) {
+        } else {
             ILzComposer(composer).refundDeposit(guid);
         }
     }
@@ -556,6 +550,4 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
 
         emit TrustedOFTUpdated(oft, trusted);
     }
-
-    receive() external payable {}
 }

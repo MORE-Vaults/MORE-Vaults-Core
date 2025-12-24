@@ -34,8 +34,6 @@ contract VaultsRegistry is BaseVaultsRegistry {
 
     uint96 private constant MAX_PROTOCOL_FEE = 5000; // 50%
 
-    address public router;
-
     /**
      * @inheritdoc IMoreVaultsRegistry
      */
@@ -226,12 +224,6 @@ contract VaultsRegistry is BaseVaultsRegistry {
         defaultCrossChainAccountingManager = manager;
 
         emit DefaultCrossChainAccountingManagerSet(manager);
-    }
-
-    function setRouter(address _router) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        router = _router;
-
-        emit RouterSet(_router);
     }
 
     /**
