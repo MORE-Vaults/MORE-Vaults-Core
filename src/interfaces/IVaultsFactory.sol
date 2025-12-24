@@ -86,15 +86,13 @@ interface IVaultsFactory {
      * @notice Deploy new vault instance
      * @param facetCuts Array of facets to add
      * @param accessControlFacetInitData encoded data that contains addresses of owner, curator and guardian
-     * @param isHub True if vault is a hub, false if spoke
-     * @param vaultIdentifier Unique identifier for the vault mesh (combined with msg.sender to create salt)
      * @return vault Address of deployed vault
      */
     function deployVault(
         IDiamondCut.FacetCut[] calldata facetCuts,
         bytes memory accessControlFacetInitData,
         bool isHub,
-        bytes32 vaultIdentifier
+        bytes32 salt
     ) external returns (address vault);
 
     /**

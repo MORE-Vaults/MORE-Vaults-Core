@@ -24,6 +24,7 @@ contract DeployConfig {
     address public assetToDeposit;
     address public wrappedNative;
     address public usd;
+    address public aaveOracle;
 
     uint96 public fee;
     uint256 public depositCapacity;
@@ -34,7 +35,6 @@ contract DeployConfig {
     string public vaultSymbol;
 
     struct FacetAddresses {
-        address diamondCut;
         address diamondLoupe;
         address accessControl;
         address configuration;
@@ -47,10 +47,12 @@ contract DeployConfig {
 
     function initParamsForProtocolDeployment(
         address _wrappedNative,
-        address _usd
+        address _usd,
+        address _aaveOracle
     ) external {
         wrappedNative = _wrappedNative;
         usd = _usd;
+        aaveOracle = _aaveOracle;
     }
 
     function initParamsForVaultCreation(
@@ -96,28 +98,28 @@ contract DeployConfig {
 
         // selectors for access control
         bytes4[] memory functionSelectorsAccessControlFacet = new bytes4[](8);
-        functionSelectorsAccessControlFacet[0] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[0] = AccessControlFacet
             .transferOwnership
             .selector;
-        functionSelectorsAccessControlFacet[1] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[1] = AccessControlFacet
             .acceptOwnership
             .selector;
-        functionSelectorsAccessControlFacet[2] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[2] = AccessControlFacet
             .transferCuratorship
             .selector;
-        functionSelectorsAccessControlFacet[3] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[3] = AccessControlFacet
             .transferGuardian
             .selector;
-        functionSelectorsAccessControlFacet[4] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[4] = AccessControlFacet
             .owner
             .selector;
-        functionSelectorsAccessControlFacet[5] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[5] = AccessControlFacet
             .pendingOwner
             .selector;
-        functionSelectorsAccessControlFacet[6] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[6] = AccessControlFacet
             .curator
             .selector;
-        functionSelectorsAccessControlFacet[7] = IAccessControlFacet
+        functionSelectorsAccessControlFacet[7] = AccessControlFacet
             .guardian
             .selector;
 
@@ -128,57 +130,57 @@ contract DeployConfig {
         );
 
         // selectors for configuration
-        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](37);
+        bytes4[] memory functionSelectorsConfigurationFacet = new bytes4[](35);
         functionSelectorsConfigurationFacet[0] = ConfigurationFacet
             .setFeeRecipient
             .selector;
-        functionSelectorsConfigurationFacet[1] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[1] = ConfigurationFacet
             .setTimeLockPeriod
             .selector;
-        functionSelectorsConfigurationFacet[2] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[2] = ConfigurationFacet
             .setDepositCapacity
             .selector;
-        functionSelectorsConfigurationFacet[3] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[3] = ConfigurationFacet
             .setDepositWhitelist
             .selector;
-        functionSelectorsConfigurationFacet[4] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[4] = ConfigurationFacet
             .enableDepositWhitelist
             .selector;
-        functionSelectorsConfigurationFacet[5] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[5] = ConfigurationFacet
             .disableDepositWhitelist
             .selector;
-        functionSelectorsConfigurationFacet[6] = IConfigurationFacet
-            .getAvailableToDeposit
+        functionSelectorsConfigurationFacet[6] = ConfigurationFacet
+            .getDepositWhitelist
             .selector;
-        functionSelectorsConfigurationFacet[7] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[7] = ConfigurationFacet
             .addAvailableAsset
             .selector;
-        functionSelectorsConfigurationFacet[8] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[8] = ConfigurationFacet
             .addAvailableAssets
             .selector;
-        functionSelectorsConfigurationFacet[9] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[9] = ConfigurationFacet
             .enableAssetToDeposit
             .selector;
-        functionSelectorsConfigurationFacet[10] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[10] = ConfigurationFacet
             .disableAssetToDeposit
             .selector;
-        functionSelectorsConfigurationFacet[11] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[11] = ConfigurationFacet
             .setWithdrawalFee
             .selector;
-        functionSelectorsConfigurationFacet[12] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[12] = ConfigurationFacet
             .setWithdrawalTimelock
             .selector;
-        functionSelectorsConfigurationFacet[13] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[13] = ConfigurationFacet
             .updateWithdrawalQueueStatus
             .selector;
-        functionSelectorsConfigurationFacet[14] = IConfigurationFacet
-            .setGasLimitForAccounting
-            .selector;
-        functionSelectorsConfigurationFacet[15] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[14] = ConfigurationFacet
             .setMaxSlippagePercent
             .selector;
-        functionSelectorsConfigurationFacet[16] = IConfigurationFacet
+        functionSelectorsConfigurationFacet[15] = ConfigurationFacet
             .setCrossChainAccountingManager
+            .selector;
+        functionSelectorsConfigurationFacet[16] = ConfigurationFacet
+            .setGasLimitForAccounting
             .selector;
         functionSelectorsConfigurationFacet[17] = ConfigurationFacet
             .getWithdrawalFee
@@ -234,31 +236,25 @@ contract DeployConfig {
         functionSelectorsConfigurationFacet[34] = ConfigurationFacet
             .getMaxSlippagePercent
             .selector;
-        functionSelectorsConfigurationFacet[35] = ConfigurationFacet
-            .getMaxWithdrawalDelay
-            .selector;
-        functionSelectorsConfigurationFacet[36] = ConfigurationFacet
-            .setMaxWithdrawalDelay
-            .selector;
         bytes memory initDataConfigurationFacet = abi.encode(
             maxSlippagePercent
         );
 
         // selectors for multicall
         bytes4[] memory functionSelectorsMulticallFacet = new bytes4[](5);
-        functionSelectorsMulticallFacet[0] = IMulticallFacet
+        functionSelectorsMulticallFacet[0] = MulticallFacet
             .submitActions
             .selector;
-        functionSelectorsMulticallFacet[1] = IMulticallFacet
+        functionSelectorsMulticallFacet[1] = MulticallFacet
             .executeActions
             .selector;
-        functionSelectorsMulticallFacet[2] = IMulticallFacet
+        functionSelectorsMulticallFacet[2] = MulticallFacet
             .vetoActions
             .selector;
-        functionSelectorsMulticallFacet[3] = IMulticallFacet
+        functionSelectorsMulticallFacet[3] = MulticallFacet
             .getPendingActions
             .selector;
-        functionSelectorsMulticallFacet[4] = IMulticallFacet
+        functionSelectorsMulticallFacet[4] = MulticallFacet
             .getCurrentNonce
             .selector;
         bytes memory initDataMulticallFacet = abi.encode(timeLockPeriod);
@@ -363,23 +359,23 @@ contract DeployConfig {
         bytes memory initDataERC7540Facet = abi.encode(facetSelectorERC7540);
 
         // selectors for bridge
-        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](12);
+        bytes4[] memory functionSelectorsBridgeFacet = new bytes4[](10);
         functionSelectorsBridgeFacet[0] = IBridgeFacet.executeBridging.selector;
-        functionSelectorsBridgeFacet[1] = IBridgeFacet.quoteAccountingFee.selector;
-        functionSelectorsBridgeFacet[2] = IBridgeFacet
+        functionSelectorsBridgeFacet[1] = IBridgeFacet
             .initVaultActionRequest
             .selector;
-        functionSelectorsBridgeFacet[3] = IBridgeFacet
+        functionSelectorsBridgeFacet[2] = IBridgeFacet
             .updateAccountingInfoForRequest
             .selector;
-        functionSelectorsBridgeFacet[4] = IBridgeFacet.executeRequest.selector;
-        functionSelectorsBridgeFacet[5] = IBridgeFacet.getRequestInfo.selector;
+        functionSelectorsBridgeFacet[3] = IBridgeFacet.executeRequest.selector;
+        functionSelectorsBridgeFacet[4] = IBridgeFacet.getRequestInfo.selector;
+        functionSelectorsBridgeFacet[5] = IBridgeFacet
+            .setOraclesCrossChainAccounting
+            .selector;
         functionSelectorsBridgeFacet[6] = IBridgeFacet.accountingBridgeFacet.selector;
-        functionSelectorsBridgeFacet[7] = IBridgeFacet.setOraclesCrossChainAccounting.selector;
+        functionSelectorsBridgeFacet[7] = IBridgeFacet.quoteAccountingFee.selector;
         functionSelectorsBridgeFacet[8] = IBridgeFacet.oraclesCrossChainAccounting.selector;
         functionSelectorsBridgeFacet[9] = IBridgeFacet.getFinalizationResult.selector;
-        functionSelectorsBridgeFacet[10] = IBridgeFacet.sendNativeTokenBackToInitiator.selector;
-        functionSelectorsBridgeFacet[11] = IBridgeFacet.refundStuckDepositInComposer.selector;
         bytes memory initDataBridgeFacet = abi.encode();
 
         IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](8);

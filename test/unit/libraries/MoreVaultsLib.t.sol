@@ -46,17 +46,6 @@ contract MoreVaultsLibTest is Test {
         MoreVaultsStorageHelper.setVaultAsset(address(this), token1, 18);
     }
 
-    // Helper function to call _setDepositWhitelist with memory arrays
-    // Converts memory to calldata by calling external function
-    function _callSetDepositWhitelist(address[] memory depositors, uint256[] memory caps) internal {
-        this.setDepositWhitelistWrapper(depositors, caps);
-    }
-
-    // External function to receive calldata and call library
-    function setDepositWhitelistWrapper(address[] calldata depositors, uint256[] calldata caps) external {
-        MoreVaultsLib._setDepositWhitelist(depositors, caps);
-    }
-
     function test_validateAsset_ShouldNotRevertWhenAssetIsAvailable() public view {
         MoreVaultsLib.validateAssetAvailable(token1);
     }
@@ -68,13 +57,9 @@ contract MoreVaultsLibTest is Test {
     }
 
     function test_removeTokenIfnecessary_ShouldRemoveTokenWhenBalanceIsLow() public {
-        address vault = token1;
-        address asset = token2;
-        address shareToken = token1;
-
-        // Mock IERC20.balanceOf to return low balance for vault shares
+        // Mock IERC20.balanceOf to return low balance
         vm.mockCall(
-            vault,
+            token1,
             abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)),
             abi.encode(5e3) // Less than 10e3
         );
@@ -83,24 +68,20 @@ contract MoreVaultsLibTest is Test {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
 
-        // Add vault to set
-        tokensHeld.add(vault);
+        // Add token to set
+        tokensHeld.add(token1);
 
-        // Call function with vault, asset, and shareToken
-        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, vault, asset, shareToken);
+        // Call function
+        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, token1);
 
-        // Verify vault was removed
-        assertFalse(tokensHeld.contains(vault), "Vault should be removed");
+        // Verify token was removed
+        assertFalse(tokensHeld.contains(token1), "Token should be removed");
     }
 
     function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsHigh() public {
-        address vault = token1;
-        address asset = token2;
-        address shareToken = token1;
-
-        // Mock IERC20.balanceOf to return high balance for vault shares
+        // Mock IERC20.balanceOf to return high balance
         vm.mockCall(
-            vault,
+            token1,
             abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)),
             abi.encode(20e3) // More than 10e3
         );
@@ -109,43 +90,37 @@ contract MoreVaultsLibTest is Test {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
 
-        // Add vault to set
-        tokensHeld.add(vault);
+        // Add token to set
+        tokensHeld.add(token1);
 
-        // Call function with vault, asset, and shareToken
-        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, vault, asset, shareToken);
+        // Call function
+        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, token1);
 
-        // Verify vault was not removed
-        assertTrue(tokensHeld.contains(vault), "Vault should not be removed");
+        // Verify token was not removed
+        assertTrue(tokensHeld.contains(token1), "Token should not be removed");
     }
 
-    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsLowButLockedIsHigh() public {
-        address vault = token1;
-        address asset = token2;
-        address shareToken = token1;
-
-        // Mock IERC20.balanceOf to return low balance for vault shares
+    function test_removeTokenIfnecessary_ShouldNotRemoveTokenWhenBalanceIsLowButStakedIsHigh() public {
+        // Mock IERC20.balanceOf to return high balance
         vm.mockCall(
-            vault,
+            token1,
             abi.encodeWithSelector(IERC20.balanceOf.selector, address(this)),
-            abi.encode(1e3) // Less than 10e3
+            abi.encode(1e3) // More than 10e3
         );
 
         // Get storage pointer for tokensHeld
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         EnumerableSet.AddressSet storage tokensHeld = ds.tokensHeld[keccak256("test")];
+        MoreVaultsStorageHelper.setStaked(address(this), token1, 10e4);
 
-        // Set high locked shares for the vault
-        ds.lockedTokensPerContract[vault][shareToken] = 10e4;
+        // Add token to set
+        tokensHeld.add(token1);
 
-        // Add vault to set
-        tokensHeld.add(vault);
+        // Call function
+        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, token1);
 
-        // Call function with vault, asset, and shareToken
-        MoreVaultsLib.removeTokenIfnecessary(tokensHeld, vault, asset, shareToken);
-
-        // Verify vault was not removed because locked tokens are high
-        assertTrue(tokensHeld.contains(vault), "Vault should not be removed");
+        // Verify token was not removed
+        assertTrue(tokensHeld.contains(token1), "Token should not be removed");
     }
 
     function test_convertToUnderlying_ShouldConvertNativeToken() public {
@@ -554,242 +529,11 @@ contract MoreVaultsLibTest is Test {
 
         // Create storage arrays using helper
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.availableToDeposit[depositor1] = cap1;
-        ds.availableToDeposit[depositor2] = cap2;
+        ds.depositWhitelist[depositor1] = cap1;
+        ds.depositWhitelist[depositor2] = cap2;
 
-        assertEq(ds.availableToDeposit[depositor1], cap1, "First depositor cap should be set");
-        assertEq(ds.availableToDeposit[depositor2], cap2, "Second depositor cap should be set");
-    }
-
-    /**
-     * @notice Test that new user's availableToDeposit is set equal to initialDepositCapPerUser
-     */
-    function test_setDepositWhitelist_NewUser_SetsBothValuesEqual() public {
-        address newUser = address(0x300);
-        uint256 cap = 100 ether;
-
-        address[] memory depositors = new address[](1);
-        depositors[0] = newUser;
-        uint256[] memory caps = new uint256[](1);
-        caps[0] = cap;
-
-        _callSetDepositWhitelist(depositors, caps);
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        assertEq(
-            ds.availableToDeposit[newUser],
-            cap,
-            "availableToDeposit should be set to cap for new user"
-        );
-        assertEq(
-            ds.initialDepositCapPerUser[newUser],
-            cap,
-            "initialDepositCapPerUser should be set to cap for new user"
-        );
-    }
-
-    /**
-     * @notice Test that existing user's availableToDeposit increases when cap is increased
-     * @dev When newCap > previousInitialCap, availableToDeposit should increase by (newCap - previousInitialCap)
-     */
-    function test_setDepositWhitelist_ExistingUser_IncreasesAvailableToDepositWhenCapIncreased() public {
-        address existingUser = address(0x400);
-        uint256 initialCap = 100 ether;
-        uint256 currentAvailableToDeposit = 50 ether; // User has used 50 ether
-        uint256 newCap = 150 ether; // New cap is higher
-
-        // Set up initial state: user already exists with initialCap
-        address[] memory depositors1 = new address[](1);
-        depositors1[0] = existingUser;
-        uint256[] memory caps1 = new uint256[](1);
-        caps1[0] = initialCap;
-        _callSetDepositWhitelist(depositors1, caps1);
-
-        // Manually set availableToDeposit to simulate user has deposited
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
-
-        // Update initialDepositCapPerUser to a higher value
-        address[] memory depositors2 = new address[](1);
-        depositors2[0] = existingUser;
-        uint256[] memory caps2 = new uint256[](1);
-        caps2[0] = newCap;
-        _callSetDepositWhitelist(depositors2, caps2);
-
-        // availableToDeposit should increase by (newCap - initialCap) = 50 ether
-        uint256 expectedAvailableToDeposit = currentAvailableToDeposit + (newCap - initialCap);
-        assertEq(
-            ds.availableToDeposit[existingUser],
-            expectedAvailableToDeposit,
-            "availableToDeposit should increase by the difference between new and old cap"
-        );
-        assertEq(
-            ds.initialDepositCapPerUser[existingUser],
-            newCap,
-            "initialDepositCapPerUser should be updated to new cap"
-        );
-    }
-
-    /**
-     * @notice Test that existing user's availableToDeposit increases correctly when cap is increased and user has full availableToDeposit
-     */
-    function test_setDepositWhitelist_ExistingUser_IncreasesAvailableToDepositWhenCapIncreasedAndFullAvailable() public {
-        address existingUser = address(0x500);
-        uint256 initialCap = 100 ether;
-        uint256 currentAvailableToDeposit = 100 ether; // User has full availableToDeposit (hasn't deposited)
-        uint256 newCap = 200 ether; // New cap is doubled
-
-        // Set up initial state: user already exists with initialCap
-        address[] memory depositors1 = new address[](1);
-        depositors1[0] = existingUser;
-        uint256[] memory caps1 = new uint256[](1);
-        caps1[0] = initialCap;
-        _callSetDepositWhitelist(depositors1, caps1);
-
-        // Manually set availableToDeposit to full value
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
-
-        // Update initialDepositCapPerUser to a higher value
-        address[] memory depositors2 = new address[](1);
-        depositors2[0] = existingUser;
-        uint256[] memory caps2 = new uint256[](1);
-        caps2[0] = newCap;
-        _callSetDepositWhitelist(depositors2, caps2);
-
-        // availableToDeposit should increase by (newCap - initialCap) = 100 ether
-        uint256 expectedAvailableToDeposit = currentAvailableToDeposit + (newCap - initialCap);
-        assertEq(
-            ds.availableToDeposit[existingUser],
-            expectedAvailableToDeposit,
-            "availableToDeposit should increase by the difference between new and old cap"
-        );
-        assertEq(
-            ds.initialDepositCapPerUser[existingUser],
-            newCap,
-            "initialDepositCapPerUser should be updated to new cap"
-        );
-    }
-
-    /**
-     * @notice Test that existing user's availableToDeposit increases correctly when cap is increased and user has partially used availableToDeposit
-     */
-    function test_setDepositWhitelist_ExistingUser_IncreasesAvailableToDepositWhenCapIncreasedAndPartiallyUsed() public {
-        address existingUser = address(0x600);
-        uint256 initialCap = 100 ether;
-        uint256 currentAvailableToDeposit = 30 ether; // User has used 70 ether
-        uint256 newCap = 150 ether; // New cap is increased by 50 ether
-
-        // Set up initial state: user already exists with initialCap
-        address[] memory depositors1 = new address[](1);
-        depositors1[0] = existingUser;
-        uint256[] memory caps1 = new uint256[](1);
-        caps1[0] = initialCap;
-        _callSetDepositWhitelist(depositors1, caps1);
-
-        // Manually set availableToDeposit to simulate user has deposited
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
-
-        // Update initialDepositCapPerUser to a higher value
-        address[] memory depositors2 = new address[](1);
-        depositors2[0] = existingUser;
-        uint256[] memory caps2 = new uint256[](1);
-        caps2[0] = newCap;
-        _callSetDepositWhitelist(depositors2, caps2);
-
-        // availableToDeposit should increase by (newCap - initialCap) = 50 ether
-        uint256 expectedAvailableToDeposit = currentAvailableToDeposit + (newCap - initialCap);
-        assertEq(
-            ds.availableToDeposit[existingUser],
-            expectedAvailableToDeposit,
-            "availableToDeposit should increase by the difference between new and old cap"
-        );
-        assertEq(
-            ds.initialDepositCapPerUser[existingUser],
-            newCap,
-            "initialDepositCapPerUser should be updated to new cap"
-        );
-    }
-
-    /**
-     * @notice Test that existing user's availableToDeposit is capped when new cap is lower than current availableToDeposit
-     */
-    function test_setDepositWhitelist_ExistingUser_CapsAvailableToDepositWhenNewCapIsLower() public {
-        address existingUser = address(0x700);
-        uint256 initialCap = 100 ether;
-        uint256 currentAvailableToDeposit = 80 ether; // User has used 20 ether
-        uint256 newCap = 50 ether; // New cap is lower than current availableToDeposit
-
-        // Set up initial state: user already exists with initialCap
-        address[] memory depositors1 = new address[](1);
-        depositors1[0] = existingUser;
-        uint256[] memory caps1 = new uint256[](1);
-        caps1[0] = initialCap;
-        _callSetDepositWhitelist(depositors1, caps1);
-
-        // Manually set availableToDeposit to simulate user has deposited
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
-
-        // Update initialDepositCapPerUser to a lower value
-        address[] memory depositors2 = new address[](1);
-        depositors2[0] = existingUser;
-        uint256[] memory caps2 = new uint256[](1);
-        caps2[0] = newCap;
-        _callSetDepositWhitelist(depositors2, caps2);
-
-        // availableToDeposit should be capped to newCap
-        assertEq(
-            ds.availableToDeposit[existingUser],
-            newCap,
-            "availableToDeposit should be capped to new cap when new cap is lower"
-        );
-        assertEq(
-            ds.initialDepositCapPerUser[existingUser],
-            newCap,
-            "initialDepositCapPerUser should be updated to new cap"
-        );
-    }
-
-    /**
-     * @notice Test that existing user's availableToDeposit remains unchanged when new cap equals previous cap
-     */
-    function test_setDepositWhitelist_ExistingUser_NoChangeWhenCapUnchanged() public {
-        address existingUser = address(0x800);
-        uint256 initialCap = 100 ether;
-        uint256 currentAvailableToDeposit = 50 ether;
-        uint256 newCap = 100 ether; // Same as initial cap
-
-        // Set up initial state: user already exists with initialCap
-        address[] memory depositors1 = new address[](1);
-        depositors1[0] = existingUser;
-        uint256[] memory caps1 = new uint256[](1);
-        caps1[0] = initialCap;
-        _callSetDepositWhitelist(depositors1, caps1);
-
-        // Manually set availableToDeposit
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.availableToDeposit[existingUser] = currentAvailableToDeposit;
-
-        // Update initialDepositCapPerUser to the same value
-        address[] memory depositors2 = new address[](1);
-        depositors2[0] = existingUser;
-        uint256[] memory caps2 = new uint256[](1);
-        caps2[0] = newCap;
-        _callSetDepositWhitelist(depositors2, caps2);
-
-        // availableToDeposit should remain unchanged
-        assertEq(
-            ds.availableToDeposit[existingUser],
-            currentAvailableToDeposit,
-            "availableToDeposit should remain unchanged when cap is unchanged"
-        );
-        assertEq(
-            ds.initialDepositCapPerUser[existingUser],
-            newCap,
-            "initialDepositCapPerUser should be updated to new cap"
-        );
+        assertEq(ds.depositWhitelist[depositor1], cap1, "First depositor cap should be set");
+        assertEq(ds.depositWhitelist[depositor2], cap2, "Second depositor cap should be set");
     }
 
     // Tests for withdrawal request functions
@@ -804,7 +548,7 @@ contract MoreVaultsLibTest is Test {
         uint256 shares = 100e18;
 
         // Queue is disabled by default
-        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(caller, owner, shares);
 
         assertTrue(result, "Should allow withdrawal when caller is the owner");
     }
@@ -821,7 +565,7 @@ contract MoreVaultsLibTest is Test {
         // Queue is disabled by default
         // When called via finalizeRequest, msgSender (from _getInfoForAction) is the real owner
         // even though msg.sender is the diamond
-        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(owner, owner, shares);
 
         assertTrue(result, "Should allow withdrawal when msgSender equals owner");
     }
@@ -835,9 +579,9 @@ contract MoreVaultsLibTest is Test {
         uint256 shares = 100e18;
 
         // Queue is disabled by default
-        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(notOwner, owner, shares);
 
-        assertTrue(result, "Should allow withdrawal when msgSender is not the owner, further will check allowance");
+        assertFalse(result, "Should reject when msgSender is not the owner");
     }
 
     function test_withdrawFromRequest_ShouldAllowWithdrawalWhenTimelockPassed() public {
@@ -852,10 +596,9 @@ contract MoreVaultsLibTest is Test {
         // Set withdrawal request
         ds.withdrawalRequests[requester].shares = shares;
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1; // Already passed
-        ds.maxWithdrawalDelay = 14 days;
 
         // When queue is enabled, msgSender doesn't matter - it checks the request
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, shares);
 
         assertTrue(result, "Should allow withdrawal when timelock passed");
         assertEq(ds.withdrawalRequests[requester].shares, 0, "Shares should be deducted");
@@ -874,7 +617,7 @@ contract MoreVaultsLibTest is Test {
         ds.withdrawalRequests[requester].shares = 50e18; // Less than requested
         ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1;
 
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, requestedShares);
+        bool result = MoreVaultsLib.withdrawFromRequest(address(this), requester, requestedShares);
 
         assertFalse(result, "Should reject withdrawal when insufficient shares");
     }
@@ -957,100 +700,5 @@ contract MoreVaultsLibTest is Test {
         );
 
         assertEq(MoreVaultsLib._getCrossChainAccountingManager(), defaultManager, "Should return default manager");
-    }
-
-    // ==================== MaxWithdrawalDelay Tests ====================
-
-    function test_withdrawFromRequest_ShouldRejectWhenMaxDelayExceeded() public {
-        address requester = address(0x123);
-        uint256 shares = 100e18;
-
-        // Warp to a future time so we have room to go back
-        vm.warp(block.timestamp + 30 days);
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = true;
-        ds.witdrawTimelock = 1 days;
-        ds.maxWithdrawalDelay = 14 days;
-
-        // Set withdrawal request - timelock ended 15 days ago (exceeds maxWithdrawalDelay)
-        ds.withdrawalRequests[requester].shares = shares;
-        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 15 days;
-
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
-
-        assertFalse(result, "Should reject withdrawal when max delay exceeded");
-    }
-
-    function test_withdrawFromRequest_ShouldAllowAtExactMaxDelay() public {
-        address requester = address(0x123);
-        uint256 shares = 100e18;
-
-        // Warp to a future time so we have room to go back
-        vm.warp(block.timestamp + 30 days);
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = true;
-        ds.witdrawTimelock = 1 days;
-        ds.maxWithdrawalDelay = 14 days;
-
-        // Set withdrawal request - timelock ended exactly 14 days ago
-        ds.withdrawalRequests[requester].shares = shares;
-        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 14 days;
-
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
-
-        assertTrue(result, "Should allow withdrawal at exact max delay");
-    }
-
-    function test_withdrawFromRequest_ShouldRejectWhenTimelockNotEnded() public {
-        address requester = address(0x123);
-        uint256 shares = 100e18;
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = true;
-        ds.witdrawTimelock = 1 days;
-        ds.maxWithdrawalDelay = 14 days;
-
-        // Set withdrawal request - timelock ends in the future
-        ds.withdrawalRequests[requester].shares = shares;
-        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp + 1 hours;
-
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, shares);
-
-        assertFalse(result, "Should reject withdrawal when timelock not ended");
-    }
-
-    function test_withdrawFromRequest_ShouldAllowPartialWithdrawal() public {
-        address requester = address(0x123);
-        uint256 totalShares = 100e18;
-        uint256 withdrawShares = 30e18;
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = true;
-        ds.witdrawTimelock = 1 days;
-        ds.maxWithdrawalDelay = 14 days;
-
-        ds.withdrawalRequests[requester].shares = totalShares;
-        ds.withdrawalRequests[requester].timelockEndsAt = block.timestamp - 1;
-
-        bool result = MoreVaultsLib.withdrawFromRequest(requester, withdrawShares);
-
-        assertTrue(result, "Should allow partial withdrawal");
-        assertEq(ds.withdrawalRequests[requester].shares, totalShares - withdrawShares, "Should deduct partial shares");
-    }
-
-    function test_withdrawFromRequest_WithQueueDisabled_ShouldIgnoreMaxDelay() public {
-        address owner = address(0x123);
-        uint256 shares = 100e18;
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.isWithdrawalQueueEnabled = false; // Queue disabled
-        ds.maxWithdrawalDelay = 0; // Even with zero delay
-
-        // When queue is disabled, maxWithdrawalDelay should be ignored
-        bool result = MoreVaultsLib.withdrawFromRequest(owner, shares);
-
-        assertTrue(result, "Should allow withdrawal when queue disabled regardless of maxDelay");
     }
 }

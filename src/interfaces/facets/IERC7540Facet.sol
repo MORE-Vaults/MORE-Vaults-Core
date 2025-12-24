@@ -13,8 +13,6 @@ interface IERC7540Facet is IGenericMoreVaultFacetInitializable {
     /// @dev Errors
     /// @notice Error thrown when amount is zero
     error ZeroAmount();
-    /// @notice Error thrown when there is already a pending operation for this vault/asset
-    error PendingOperationExists();
 
     /**
      * @notice Calculates the total accounting for ERC7540 operations

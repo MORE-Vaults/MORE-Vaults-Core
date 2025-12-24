@@ -26,7 +26,6 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     error RequestWasntFulfilled();
     error RequestWithdrawDisabled();
     error ZeroAddress();
-    error SlippageExceeded(uint256 actual, uint256 limit);
 
     /// @dev Events
     event Deposit(address indexed sender, address indexed owner, address[] tokens, uint256[] assets, uint256 shares);
@@ -66,9 +65,8 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /// @param tokens Array of token addresses to deposit
     /// @param assets Array of amounts to deposit for each token
     /// @param receiver Address that will receive the vault shares
-    /// @param minAmountOut Minimum amount of vault shares to mint
     /// @return shares Amount of vault shares minted
-    function deposit(address[] calldata tokens, uint256[] calldata assets, address receiver, uint256 minAmountOut)
+    function deposit(address[] calldata tokens, uint256[] calldata assets, address receiver)
         external
         payable
         returns (uint256 shares);
@@ -108,26 +106,17 @@ interface IVaultFacet is IERC4626, IGenericMoreVaultFacetInitializable {
     /**
      * @notice Request a redeem of shares
      * @param shares Amount of shares to redeem
-     * @param onBehalfOf The address of the user on behalf of which the request is made
      */
-    function requestRedeem(uint256 shares, address onBehalfOf) external;
+    function requestRedeem(uint256 shares) external;
 
     /**
      * @notice Request a withdraw of assets
      * @param assets Amount of assets to withdraw
-     * @param onBehalfOf The address of the user on behalf of which the request is made
      */
-    function requestWithdraw(uint256 assets, address onBehalfOf) external;
+    function requestWithdraw(uint256 assets) external;
 
     /**
      * @notice Clear a request
      */
     function clearRequest() external;
-
-    /**
-     * @notice Accrue interest fees for a specific user and update their High-Water Mark per Share
-     * @dev Calculates and mints fee shares based on the user's profit above their HWMpS, then updates HWMpS to current price
-     * @param _user The address of the user for which to accrue fees
-     */
-    function accrueFees(address _user) external;
 }

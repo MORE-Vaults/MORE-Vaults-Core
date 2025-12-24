@@ -50,8 +50,6 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     error SpokeAlreadyExistsForChain(uint32 hubEid, address hubVault, uint32 spokeEid);
     /// @dev Thrown on unknown message type
     error UnknownMsgType();
-    /// @dev Thrown when hub and spoke addresses don't match (not in same mesh)
-    error VaultsNotInSameMesh();
 
     /// @dev Registry contract address
     IMoreVaultsRegistry public registry;
@@ -255,12 +253,8 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         IDiamondCut.FacetCut[] calldata facets,
         bytes memory accessControlFacetInitData,
         bool isHub,
-        bytes32 vaultIdentifier
+        bytes32 salt
     ) external returns (address vault) {
-        // Salt derived from msg.sender + vaultIdentifier to ensure same address across chains
-        // and prevent front-running (each deployer has its own namespace)
-        bytes32 salt = keccak256(abi.encodePacked(msg.sender, vaultIdentifier));
-
         // Deploy new MoreVaultsDiamond (vault) with CREATE3
         vault = CREATE3.deployDeterministic(
             abi.encodePacked(
@@ -360,10 +354,6 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         (uint16 msgType, bytes memory rest) = abi.decode(_message, (uint16, bytes));
         if (msgType == MSG_TYPE_REGISTER_SPOKE) {
             (address spokeVault, address hubVault, address spokeOwner) = abi.decode(rest, (address, address, address));
-
-            // Hub and spoke must have identical addresses (same mesh via CREATE3 deterministic deployment)
-            if (hubVault != spokeVault) revert VaultsNotInSameMesh();
-
             // Ensure dst hub vault is actually deployed by this factory and is hub
             if (!isFactoryVault[hubVault]) revert NotAVault(hubVault);
             if (!IConfigurationFacet(hubVault).isHub()) {

@@ -116,7 +116,6 @@ library AccessControlLib {
                 || selector == IConfigurationFacet.setMaxSlippagePercent.selector
                 || selector == IConfigurationFacet.setTimeLockPeriod.selector
                 || selector == IConfigurationFacet.setWithdrawalTimelock.selector
-                || selector == IConfigurationFacet.setMaxWithdrawalDelay.selector
                 || selector == IConfigurationFacet.setWithdrawalFee.selector
                 || selector == IConfigurationFacet.updateWithdrawalQueueStatus.selector
                 || selector == IConfigurationFacet.setCrossChainAccountingManager.selector

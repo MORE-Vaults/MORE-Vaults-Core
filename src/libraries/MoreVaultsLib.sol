@@ -23,6 +23,8 @@ bytes32 constant BALANCE_OF_SELECTOR = 0x70a082310000000000000000000000000000000
 bytes32 constant TOTAL_ASSETS_SELECTOR = 0x01e1d11400000000000000000000000000000000000000000000000000000000;
 bytes32 constant TOTAL_ASSETS_RUN_FAILED = 0xb5a7047700000000000000000000000000000000000000000000000000000000;
 
+uint256 constant MAX_WITHDRAWAL_DELAY = 14 days;
+
 library MoreVaultsLib {
     error InitializationFunctionReverted(address _initializationContractAddress, bytes _calldata);
     error UnsupportedAsset(address);
@@ -108,8 +110,7 @@ library MoreVaultsLib {
         MINT,
         WITHDRAW,
         REDEEM,
-        MULTI_ASSETS_DEPOSIT,
-        ACCRUE_FEES
+        MULTI_ASSETS_DEPOSIT
     }
 
     struct CrossChainRequestInfo {
@@ -121,7 +122,7 @@ library MoreVaultsLib {
         bool finalized;
         uint256 totalAssets;
         uint256 finalizationResult;
-        uint256 amountLimit; // Amount limit for slippage check: minAmountOut for deposits/mints, maxAmountIn for withdraws/redeems (0 = check not required)
+        uint256 minAmountOut; // Minimum expected result amount for slippage check (0 = check not required)
     }
 
     struct MoreVaultsStorage {
@@ -163,7 +164,7 @@ library MoreVaultsLib {
         bool isMulticall;
         address factory;
         mapping(address => uint256) curvePoolLength;
-        mapping(address => uint256) availableToDeposit;
+        mapping(address => uint256) depositWhitelist;
         mapping(address => bool) isNecessaryToCheckLock;
         bool isWhitelistEnabled;
         address[] depositableAssets;
@@ -175,13 +176,6 @@ library MoreVaultsLib {
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
         mapping(address => uint256) userHighWaterMarkPerShare;
-        uint256 pendingNative;
-        uint32 maxWithdrawalDelay;
-        /// @dev Locked tokens per external contract per token address
-        /// For deposits: lockedTokensPerContract[vault][asset] = amount
-        /// For redeems: lockedTokensPerContract[vault][shareToken] = shares
-        mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
-        mapping(address => uint256) initialDepositCapPerUser;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -231,19 +225,10 @@ library MoreVaultsLib {
         }
     }
 
-    function removeTokenIfnecessary(
-        EnumerableSet.AddressSet storage tokensHeld,
-        address vault,
-        address asset,
-        address shareToken
-    ) internal {
+    function removeTokenIfnecessary(EnumerableSet.AddressSet storage tokensHeld, address token) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        uint256 sharesBalance = IERC20(vault).balanceOf(address(this));
-        uint256 lockedShares = ds.lockedTokensPerContract[vault][shareToken];
-        uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
-
-        if (sharesBalance + lockedShares + lockedAssets < 10e3) {
-            tokensHeld.remove(vault);
+        if (IERC20(token).balanceOf(address(this)) + ds.lockedTokens[token] < 10e3) {
+            tokensHeld.remove(token);
         }
     }
 
@@ -305,13 +290,9 @@ library MoreVaultsLib {
         );
     }
 
-    function getUnderlyingTokenAddress() internal view returns (address) {
-        return address(getERC4626Storage()._asset);
-    }
-
     function convertUnderlyingToUsd(uint256 amount, Math.Rounding rounding) internal view returns (uint256) {
         IOracleRegistry oracle = IMoreVaultsRegistry(AccessControlLib.vaultRegistry()).oracle();
-        address underlyingToken = getUnderlyingTokenAddress();
+        address underlyingToken = address(getERC4626Storage()._asset);
         return amount.mulDiv(
             oracle.getAssetPrice(underlyingToken), 10 ** IERC20Metadata(underlyingToken).decimals(), rounding
         );
@@ -354,29 +335,10 @@ library MoreVaultsLib {
         emit DepositCapacitySet(previousCapacity, capacity);
     }
 
-    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata underlyingAssetCaps) internal {
+    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         for (uint256 i; i < depositors.length;) {
-            // Check if the user was added previously (by checking if initialDepositCapPerUser exists)
-            uint256 previousInitialCap = ds.initialDepositCapPerUser[depositors[i]];
-            
-            // Update initialDepositCapPerUser to the new value
-            ds.initialDepositCapPerUser[depositors[i]] = underlyingAssetCaps[i];
-            
-            // If the user already existed (initialDepositCapPerUser was set previously)
-            if (previousInitialCap > 0) {
-                // Preserve the current availableToDeposit value, but cap it to the new initialDepositCapPerUser
-                // if it exceeds the new limit
-                uint256 currentAvailableToDeposit = ds.availableToDeposit[depositors[i]];
-                if (currentAvailableToDeposit > underlyingAssetCaps[i]) {
-                    ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
-                } else if (underlyingAssetCaps[i] > previousInitialCap) {
-                    ds.availableToDeposit[depositors[i]] += underlyingAssetCaps[i] - previousInitialCap;
-                }
-            } else {
-                // If the user is new, set both values to be equal
-                ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
-            }
+            ds.depositWhitelist[depositors[i]] = undelyingAssetCaps[i];
             unchecked {
                 ++i;
             }
@@ -784,15 +746,16 @@ library MoreVaultsLib {
         }
     }
 
-    function withdrawFromRequest(address _owner, uint256 _shares) internal returns (bool) {
+    function withdrawFromRequest(address _msgSender, address _requester, uint256 _shares) internal returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        WithdrawRequest storage request = ds.withdrawalRequests[_owner];
+        WithdrawRequest storage request = ds.withdrawalRequests[_requester];
         // if withdrawal queue is disabled, request can be processed immediately
         if (!ds.isWithdrawalQueueEnabled) {
-            return true;
+            // only allow for the shares owner to withdraw in this case
+            return _msgSender == _requester;
         }
 
-        if (isWithdrawableRequest(request.timelockEndsAt) && request.shares >= _shares) {
+        if (isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) && request.shares >= _shares) {
             request.shares -= _shares;
             return true;
         }
@@ -800,10 +763,9 @@ library MoreVaultsLib {
         return false;
     }
 
-    function isWithdrawableRequest(uint256 _timelockEndsAt) internal view returns (bool) {
-        MoreVaultsStorage storage ds = moreVaultsStorage();
-        uint256 maxWithdrawalDelay = ds.maxWithdrawalDelay < 1 days ? 1 days : ds.maxWithdrawalDelay;
-        return block.timestamp >= _timelockEndsAt && block.timestamp - _timelockEndsAt <= maxWithdrawalDelay;
+    function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
+        uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
+        return block.timestamp >= _timelockEndsAt && block.timestamp - requestTimestamp <= MAX_WITHDRAWAL_DELAY;
     }
 
     function factoryAddress() internal view returns (address) {
