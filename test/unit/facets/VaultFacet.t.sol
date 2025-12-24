@@ -3859,4 +3859,85 @@ contract VaultFacetTest is Test {
         assertEq(spenderCap, 0, "Spender cap should not be changed");
         assertEq(receiverCap, 0, "Receiver cap should not be changed");
     }
+
+    
+    /**
+     * @notice Test that withdrawal through approve changes deposit cap only for the owner, not the caller
+     * @dev When user2 withdraws on behalf of user1 (via approve), deposit cap should change only for user1 (owner)
+     */
+    function test_handleWithdrawal_WithApprove_ChangesCapOnlyForOwner() public {
+        address user1 = address(0x1111);
+        address user2 = address(0x2222);
+        uint256 initialCap = 100 ether;
+        uint256 depositAmount = 50 ether;
+        uint256 withdrawAmount = 20 ether;
+
+        // Enable deposit whitelist and set cap for user1
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, user1, initialCap);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, user1, initialCap);
+        MoreVaultsStorageHelper.setIsWithdrawalQueueEnabled(facet, false); // Disable withdrawal queue for direct withdraw
+
+        // Setup mocks
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // User1 deposits
+        MockERC20(asset).mint(user1, depositAmount);
+        vm.prank(user1);
+        IERC20(asset).approve(facet, type(uint256).max);
+        vm.prank(user1);
+        VaultFacet(facet).deposit(depositAmount, user1);
+
+        // Check that user1's cap decreased after deposit
+        uint256 user1CapAfterDeposit = MoreVaultsStorageHelper.getAvailableToDeposit(facet, user1);
+        assertEq(
+            user1CapAfterDeposit,
+            initialCap - depositAmount,
+            "User1's cap should be decreased after deposit"
+        );
+
+        // User1 approves user2 to withdraw on their behalf
+        vm.prank(user1);
+        IERC20(facet).approve(user2, type(uint256).max);
+
+        // User2 withdraws on behalf of user1
+        vm.prank(user2);
+        VaultFacet(facet).withdraw(withdrawAmount, user2, user1);
+
+        // Check that only user1's cap changed (increased), not user2's
+        uint256 user1CapAfterWithdraw = MoreVaultsStorageHelper.getAvailableToDeposit(facet, user1);
+        uint256 user2CapAfterWithdraw = MoreVaultsStorageHelper.getAvailableToDeposit(facet, user2);
+
+        // User1's cap should be increased by withdrawAmount
+        uint256 expectedUser1Cap = user1CapAfterDeposit + withdrawAmount;
+        assertEq(
+            user1CapAfterWithdraw,
+            expectedUser1Cap,
+            "User1's cap should be increased by withdrawAmount"
+        );
+        assertLe(
+            user1CapAfterWithdraw,
+            initialCap,
+            "User1's cap should not exceed initialDepositCapPerUser"
+        );
+
+        // User2's cap should remain 0 (not set)
+        assertEq(
+            user2CapAfterWithdraw,
+            0,
+            "User2's cap should not change (should remain 0 as user2 never deposited)"
+        );
+    }
 }
