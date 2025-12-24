@@ -97,8 +97,11 @@ contract BridgeFacetHarness is BridgeFacet {
         return depositResult[guid];
     }
 
-    function deposit(address[] calldata, uint256[] calldata, address) external payable returns (uint256) {
+    function deposit(address[] calldata, uint256[] calldata, address, uint256 minAmountOut) external payable returns (uint256) {
         bytes32 guid = MoreVaultsLib.moreVaultsStorage().finalizationGuid;
+        if (depositResult[guid] < minAmountOut) {
+            revert SlippageExceeded(depositResult[guid], minAmountOut);
+        }
         return depositResult[guid];
     }
 

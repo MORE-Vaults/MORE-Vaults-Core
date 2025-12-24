@@ -785,13 +785,12 @@ library MoreVaultsLib {
         }
     }
 
-    function withdrawFromRequest(address _msgSender, address _requester, uint256 _shares) internal returns (bool) {
+    function withdrawFromRequest(address _owner, uint256 _shares) internal returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        WithdrawRequest storage request = ds.withdrawalRequests[_requester];
+        WithdrawRequest storage request = ds.withdrawalRequests[_owner];
         // if withdrawal queue is disabled, request can be processed immediately
         if (!ds.isWithdrawalQueueEnabled) {
-            // only allow for the shares owner to withdraw in this case
-            return _msgSender == _requester;
+            return true;
         }
 
         if (isWithdrawableRequest(request.timelockEndsAt) && request.shares >= _shares) {

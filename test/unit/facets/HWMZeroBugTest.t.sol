@@ -15,14 +15,14 @@ import {console} from "forge-std/console.sol";
 
 /**
  * @title HWMZeroBugTest
- * @notice Test para verificar si el código ACTUAL (con sistema HWM per-user)
- *         tiene vulnerabilidad cuando userHighWaterMarkPerShare = 0
+ * @notice Test to verify if the CURRENT code (with per-user HWM system)
+ *         has vulnerability when userHighWaterMarkPerShare = 0
  *
- * HIPÓTESIS A PROBAR:
- * Si un usuario tiene shares pero su HWM = 0 (por migración desde versión anterior),
- * y hay yield en el vault (currentPricePerShare > 0), entonces:
- * - Toda su posición se considera "profit"
- * - Se cobra 10% fee sobre TODO, no solo sobre ganancias reales
+ * HYPOTHESIS TO TEST:
+ * If a user has shares but their HWM = 0 (due to migration from previous version),
+ * and there is yield in the vault (currentPricePerShare > 0), then:
+ * - Their entire position is considered "profit"
+ * - 10% fee is charged on EVERYTHING, not just on real gains
  */
 contract HWMZeroBugTest is Test {
     using Math for uint256;
@@ -36,6 +36,7 @@ contract HWMZeroBugTest is Test {
     address public asset;
     address public factory = address(1001);
     address public oracleRegistry = address(1002);
+    address public router = address(1003);
 
     string constant VAULT_NAME = "Test Vault";
     string constant VAULT_SYMBOL = "TV";
@@ -105,20 +106,21 @@ contract HWMZeroBugTest is Test {
             abi.encodeWithSelector(IVaultsFactory.getRestrictedFacets.selector),
             abi.encode(new address[](0))
         );
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
     }
 
     /**
-     * @notice TEST: Verifica si el código actual es vulnerable a HWM = 0
+     * @notice TEST: Verify if the current code is vulnerable to HWM = 0
      *
-     * Escenario:
-     * 1. Usuario deposita y obtiene shares (HWM se inicializa)
-     * 2. SIMULAR MIGRACIÓN: Resetear HWM a 0
-     * 3. Simular yield (más assets en el vault)
-     * 4. Usuario hace otra operación
-     * 5. ¿Se cobran fees incorrectas?
+     * Scenario:
+     * 1. User deposits and receives shares (HWM is initialized)
+     * 2. SIMULATE MIGRATION: Reset HWM to 0
+     * 3. Simulate yield (more assets in the vault)
+     * 4. User performs another operation
+     * 5. Are incorrect fees charged?
      */
     function test_CurrentCode_HWMZeroVulnerability() public {
-        console.log("=== TEST: Vulnerabilidad HWM=0 en codigo ACTUAL ===");
+        console.log("=== TEST: HWM=0 Vulnerability in CURRENT code ===");
         console.log("");
 
         // Setup - need a second user to be fee recipient (not curator)
@@ -128,54 +130,54 @@ contract HWMZeroBugTest is Test {
         IERC20(asset).approve(vault, type(uint256).max);
         MoreVaultsStorageHelper.setDepositWhitelist(vault, user, type(uint256).max);
 
-        // PASO 1: User deposita
-        console.log(">>> Paso 1: User deposita 1 token <<<");
+        // STEP 1: User deposits
+        console.log(">>> Step 1: User deposits 1 token <<<");
         vm.prank(user);
         uint256 shares1 = VaultFacet(vault).deposit(1 ether, user);
 
         uint256 userHWM = MoreVaultsStorageHelper.getUserHighWaterMarkPerShare(vault, user);
-        console.log("  Shares recibidas: %s", shares1);
+        console.log("  Shares received: %s", shares1);
         console.log("  Total Assets: %s", VaultFacet(vault).totalAssets());
-        console.log("  User HWM despues de deposito: %s", userHWM);
+        console.log("  User HWM after deposit: %s", userHWM);
         console.log("");
 
-        // Verificar si HWM se inicializó correctamente
+        // Verify if HWM was initialized correctly
         if (userHWM == 0) {
-            console.log("  NOTA: HWM = 0 despues del deposito");
-            console.log("  Esto puede ser un problema del Helper o del codigo");
+            console.log("  NOTE: HWM = 0 after deposit");
+            console.log("  This may be a problem with the Helper or the code");
         } else {
-            console.log("  HWM se inicializo correctamente: %s", userHWM);
+            console.log("  HWM initialized correctly: %s", userHWM);
         }
         console.log("");
 
-        // PASO 2: Simular migración - resetear HWM a 0
-        console.log(">>> Paso 2: SIMULAR MIGRACION - Resetear HWM a 0 <<<");
+        // STEP 2: Simulate migration - reset HWM to 0
+        console.log(">>> Step 2: SIMULATE MIGRATION - Reset HWM to 0 <<<");
         MoreVaultsStorageHelper.setUserHighWaterMarkPerShare(vault, user, 0);
 
         userHWM = MoreVaultsStorageHelper.getUserHighWaterMarkPerShare(vault, user);
-        console.log("  User HWM despues de reset: %s", userHWM);
+        console.log("  User HWM after reset: %s", userHWM);
         console.log("");
 
-        // PASO 3: Simular yield (añadir assets al vault sin deposito)
-        console.log(">>> Paso 3: Simular YIELD de 0.5 tokens <<<");
+        // STEP 3: Simulate yield (add assets to vault without deposit)
+        console.log(">>> Step 3: Simulate YIELD of 0.5 tokens <<<");
         MockERC20(asset).mint(vault, 0.5 ether);
 
-        console.log("  Total Assets ahora: %s", VaultFacet(vault).totalAssets());
-        console.log("  Total Supply (sin cambio): %s", VaultFacet(vault).totalSupply());
+        console.log("  Total Assets now: %s", VaultFacet(vault).totalAssets());
+        console.log("  Total Supply (unchanged): %s", VaultFacet(vault).totalSupply());
         console.log("");
 
-        // Calcular precio actual
+        // Calculate current price
         uint256 totalAssets = VaultFacet(vault).totalAssets();
         uint256 totalSupply = VaultFacet(vault).totalSupply();
         uint256 decimalsOffset = 2;
         uint256 currentPrice = (totalAssets * (10 ** decimalsOffset)) / (totalSupply + 10 ** decimalsOffset);
         console.log("  Current price per share: %s", currentPrice);
         console.log("  User HWM: %s", userHWM);
-        console.log("  currentPrice > HWM? %s", currentPrice > userHWM ? "SI - puede cobrar fees" : "NO");
+        console.log("  currentPrice > HWM? %s", currentPrice > userHWM ? "YES - can charge fees" : "NO");
         console.log("");
 
-        // PASO 4: User hace redeem parcial
-        console.log(">>> Paso 4: User hace redeem de 50 shares <<<");
+        // STEP 4: User performs partial redeem
+        console.log(">>> Step 4: User redeems 50 shares <<<");
 
         uint256 feeRecipientBefore = VaultFacet(vault).balanceOf(feeRecipient);
         uint256 sharePriceBefore = VaultFacet(vault).totalAssets() * 1e18 / VaultFacet(vault).totalSupply();
@@ -187,43 +189,43 @@ contract HWMZeroBugTest is Test {
         uint256 feeSharesMinted = feeRecipientAfter - feeRecipientBefore;
 
         console.log("");
-        console.log("Resultado:");
-        console.log("  Assets recibidos: %s", assetsReceived);
+        console.log("Result:");
+        console.log("  Assets received: %s", assetsReceived);
         console.log("  Fee shares minted: %s", feeSharesMinted);
         console.log("");
 
         uint256 sharePriceAfter = VaultFacet(vault).totalAssets() * 1e18 / VaultFacet(vault).totalSupply();
         console.log("Share Price:");
-        console.log("  Antes: %s", sharePriceBefore);
-        console.log("  Despues: %s", sharePriceAfter);
+        console.log("  Before: %s", sharePriceBefore);
+        console.log("  After: %s", sharePriceAfter);
         console.log("");
 
-        // ANALISIS
+        // ANALYSIS
         if (feeSharesMinted > 0) {
-            console.log(">>> BUG CONFIRMADO EN CODIGO ACTUAL <<<");
-            console.log("Se cobraron fees cuando HWM = 0");
+            console.log(">>> BUG CONFIRMED IN CURRENT CODE <<<");
+            console.log("Fees were charged when HWM = 0");
             console.log("");
-            console.log("El codigo actual ES VULNERABLE a:");
-            console.log("- Usuarios con shares pero HWM = 0 (por migracion)");
-            console.log("- Cualquier yield hace que se cobre fee sobre TODO");
+            console.log("Current code IS VULNERABLE to:");
+            console.log("- Users with shares but HWM = 0 (due to migration)");
+            console.log("- Any yield causes fee to be charged on EVERYTHING");
         } else {
-            console.log(">>> NO HAY BUG <<<");
-            console.log("El codigo actual NO es vulnerable a HWM = 0");
+            console.log(">>> NO BUG <<<");
+            console.log("Current code is NOT vulnerable to HWM = 0");
         }
 
-        // El test PASA si hay bug (para documentar), FALLA si no hay bug
-        // Queremos saber si el bug existe
+        // Test PASSES if bug exists (to document), FAILS if no bug
+        // We want to know if the bug exists
         if (feeSharesMinted > 0) {
             console.log("");
-            console.log("VULNERABILIDAD EXISTE - Fee shares minted: %s", feeSharesMinted);
+            console.log("VULNERABILITY EXISTS - Fee shares minted: %s", feeSharesMinted);
         }
     }
 
     /**
-     * @notice TEST: Comportamiento normal cuando HWM está correctamente inicializado
+     * @notice TEST: Normal behavior when HWM is correctly initialized
      */
     function test_NormalBehavior_HWMCorrectlyInitialized() public {
-        console.log("=== TEST: Comportamiento normal con HWM correcto ===");
+        console.log("=== TEST: Normal behavior with correct HWM ===");
         console.log("");
 
         // Setup
@@ -232,17 +234,17 @@ contract HWMZeroBugTest is Test {
         IERC20(asset).approve(vault, type(uint256).max);
         MoreVaultsStorageHelper.setDepositWhitelist(vault, curator, type(uint256).max);
 
-        // Curator deposita
+        // Curator deposits
         vm.prank(curator);
         VaultFacet(vault).deposit(1 ether, curator);
 
         uint256 curatorHWM = MoreVaultsStorageHelper.getUserHighWaterMarkPerShare(vault, curator);
-        console.log("Curator HWM despues de deposito: %s", curatorHWM);
+        console.log("Curator HWM after deposit: %s", curatorHWM);
 
-        // Simular yield
+        // Simulate yield
         MockERC20(asset).mint(vault, 0.5 ether);
 
-        // Redeem (NO resetear HWM)
+        // Redeem (DO NOT reset HWM)
         uint256 feeRecipientBefore = VaultFacet(vault).balanceOf(feeRecipient);
 
         vm.prank(curator);
@@ -250,15 +252,15 @@ contract HWMZeroBugTest is Test {
 
         uint256 feeSharesMinted = VaultFacet(vault).balanceOf(feeRecipient) - feeRecipientBefore;
 
-        console.log("Fee shares minted (con HWM correcto): %s", feeSharesMinted);
+        console.log("Fee shares minted (with correct HWM): %s", feeSharesMinted);
         console.log("");
 
-        // Con HWM correcto, solo debería cobrar fee sobre el yield real (0.5 tokens)
-        // proporcional a las shares del usuario
+        // With correct HWM, should only charge fee on real yield (0.5 tokens)
+        // proportional to user's shares
         if (feeSharesMinted > 0) {
-            console.log("Fees cobradas sobre yield REAL - comportamiento esperado");
+            console.log("Fees charged on REAL yield - expected behavior");
         } else {
-            console.log("No fees - HWM protege correctamente");
+            console.log("No fees - HWM protects correctly");
         }
     }
 }

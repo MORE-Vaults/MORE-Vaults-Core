@@ -167,7 +167,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             .quoteReadFee(vaults, eids, extraOptions);
         uint256 value;
         if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (,,, value) = abi.decode(actionCallData, (address[], uint256[], address, uint256));
+            (,,,, value) = abi.decode(actionCallData, (address[], uint256[], address, uint256, uint256));
             ds.pendingNative += value;
             if (value + fee.nativeFee > msg.value) {
                 revert NotEnoughMsgValueProvided();
@@ -237,8 +237,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo storage requestInfo = ds.guidToCrossChainRequestInfo[guid];
         if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (, , , uint256 value) =
-                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
+            (, , , , uint256 value) =
+                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256, uint256));
             if (value == 0) {
                 return;
             }
@@ -292,11 +292,11 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             (uint256 assets, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
             (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.deposit.selector, assets, receiver));
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (address[] memory tokens, uint256[] memory assets, address receiver, uint256 value) =
-                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256));
+            (address[] memory tokens, uint256[] memory assets, address receiver, uint256 minAmountOut, uint256 value) =
+                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256, uint256));
             (success, result) = address(this).call{value: value}(
                 abi.encodeWithSelector(
-                    bytes4(keccak256("deposit(address[],uint256[],address)")), tokens, assets, receiver
+                    bytes4(keccak256("deposit(address[],uint256[],address,uint256)")), tokens, assets, receiver, minAmountOut
                 )
             );
             ds.pendingNative -= value;
@@ -327,7 +327,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         if (!success) revert FinalizationCallFailed();
 
         uint256 resultValue = abi.decode(result, (uint256));
-        if (requestInfo.amountLimit != 0 && requestInfo.actionType != MoreVaultsLib.ActionType.ACCRUE_FEES) {
+        if (requestInfo.amountLimit != 0 && requestInfo.actionType != MoreVaultsLib.ActionType.ACCRUE_FEES && requestInfo.actionType != MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW || requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
                 if (amountIn > requestInfo.amountLimit) {
                     revert SlippageExceeded(amountIn, requestInfo.amountLimit);

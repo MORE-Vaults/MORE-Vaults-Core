@@ -230,7 +230,7 @@ contract BridgeFacetTest is Test {
 
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
-        bytes memory callData = abi.encode(tokens, amounts, address(0xCAFE01), 1 ether);
+        bytes memory callData = abi.encode(tokens, amounts, address(0xCAFE01), uint256(0), 1 ether);
         bytes memory opts = bytes("");
         vm.expectRevert(IBridgeFacet.NotEnoughMsgValueProvided.selector);
         facet.initVaultActionRequest{value: 0.99 ether}(
@@ -515,7 +515,8 @@ contract BridgeFacetTest is Test {
         tokens[0] = address(underlying);
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100;
-        bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0));
+        uint256 minAmountOut = 0;
+        bytes memory callData = abi.encode(tokens, amounts, address(this), minAmountOut, uint256(0));
         bytes32 guid =
             facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes(""));
 
@@ -664,7 +665,7 @@ contract BridgeFacetTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100e18;
         uint256 minAmountOut = 150e18; // Expect at least 150 shares
-        bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0));
+        bytes memory callData = abi.encode(tokens, amounts, address(this), minAmountOut, uint256(0));
         bytes32 guid = facet.initVaultActionRequest(
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes("")
         );
@@ -677,7 +678,7 @@ contract BridgeFacetTest is Test {
         facet.updateAccountingInfoForRequest(guid, 0, true);
 
         // Expect revert with SlippageExceeded error
-        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.FinalizationCallFailed.selector));
         facet.executeRequest(guid);
         vm.stopPrank();
     }
@@ -839,7 +840,7 @@ contract BridgeFacetTest is Test {
         uint256 nativeValue = 1 ether;
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
-        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0), nativeValue);
 
         bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
@@ -865,7 +866,7 @@ contract BridgeFacetTest is Test {
         uint256 nativeValue = 1 ether;
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
-        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), 0, nativeValue);
 
         bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
@@ -903,7 +904,7 @@ contract BridgeFacetTest is Test {
         uint256 nativeValue = 1 ether;
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
-        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0), nativeValue);
 
         vm.startPrank(address(owner));
         vm.deal(address(owner), nativeValue + 0.05 ether);
@@ -952,7 +953,7 @@ contract BridgeFacetTest is Test {
         uint256 nativeValue = 1 ether;
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
-        bytes memory callData = abi.encode(tokens, amounts, address(rejectingReceiver), nativeValue);
+        bytes memory callData = abi.encode(tokens, amounts, address(rejectingReceiver), uint256(0), nativeValue);
 
         vm.deal(address(rejectingReceiver), nativeValue + 0.05 ether);
         vm.prank(address(rejectingReceiver));
@@ -1016,7 +1017,7 @@ contract BridgeFacetTest is Test {
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
         uint256 minAmountOut = 150e18;
-        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), minAmountOut, nativeValue);
 
         bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes("")
@@ -1033,7 +1034,7 @@ contract BridgeFacetTest is Test {
         facet.updateAccountingInfoForRequest(guid, 0, true);
 
         // Expect revert with SlippageExceeded error
-        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.SlippageExceeded.selector, actualShares, minAmountOut));
+        vm.expectRevert(abi.encodeWithSelector(IBridgeFacet.FinalizationCallFailed.selector));
         facet.executeRequest(guid);
         vm.stopPrank();
 
@@ -1067,7 +1068,7 @@ contract BridgeFacetTest is Test {
         uint256 nativeValue = 1 ether;
         address[] memory tokens = new address[](0);
         uint256[] memory amounts = new uint256[](0);
-        bytes memory callData = abi.encode(tokens, amounts, address(this), nativeValue);
+        bytes memory callData = abi.encode(tokens, amounts, address(this), uint256(0), nativeValue);
 
         bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
             MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")

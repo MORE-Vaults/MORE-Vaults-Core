@@ -4,46 +4,49 @@ pragma solidity 0.8.28;
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
 
 /// @title ERC4626Router
 /// @notice Adds slippage protection to ERC-4626 vault operations
-/// @dev This router is incompatible with vaults that have deposit whitelist or withdrawal queue enabled.
-///      When whitelist is enabled, the router becomes msg.sender instead of the actual user, failing whitelist checks.
-///      When withdrawal queue is enabled, all users would share a single withdrawal request slot under the router's address.
-///      For permissioned vaults, users must interact directly with the vault.
+/// @dev All operations (deposits, withdrawals, requests) are executed on behalf of msg.sender.
+///      This means that vault shares and assets are credited/debited to/from msg.sender's address,
+///      not the router contract. The router supports vaults with deposit whitelist and withdrawal queue enabled.
 contract ERC4626Router {
     using SafeERC20 for IERC20;
 
     error SlippageExceeded(uint256 actual, uint256 limit);
     error DepositWhitelistEnabled();
     error WithdrawalQueueEnabled();
+    error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed);
+    error MaxDepositExceeded(uint256 assets, uint256 max);
+    error MaxMintExceeded(uint256 shares, uint256 max);
 
-    function depositWithSlippage(IERC4626 vault, uint256 assets, uint256 minShares, address receiver)
+    function depositWithSlippage(IERC4626 vault, uint256 assets, uint256 minShares)
         external
         returns (uint256 shares)
     {
-        if (_isDepositWhitelistEnabled(address(vault))) revert DepositWhitelistEnabled();
-
         IERC20 asset = IERC20(vault.asset());
         asset.safeTransferFrom(msg.sender, address(this), assets);
         asset.forceApprove(address(vault), assets);
 
-        shares = vault.deposit(assets, receiver);
+        uint256 maxDeposit = vault.maxDeposit(msg.sender);
+        if (assets > maxDeposit) revert MaxDepositExceeded(assets, maxDeposit);
+        shares = vault.deposit(assets, msg.sender);
 
         if (shares < minShares) revert SlippageExceeded(shares, minShares);
     }
 
-    function mintWithSlippage(IERC4626 vault, uint256 shares, uint256 maxAssets, address receiver)
+    function mintWithSlippage(IERC4626 vault, uint256 shares, uint256 maxAssets)
         external
         returns (uint256 assets)
     {
-        if (_isDepositWhitelistEnabled(address(vault))) revert DepositWhitelistEnabled();
-
         IERC20 asset = IERC20(vault.asset());
         asset.safeTransferFrom(msg.sender, address(this), maxAssets);
         asset.forceApprove(address(vault), maxAssets);
 
-        assets = vault.mint(shares, receiver);
+        uint256 maxMint = vault.maxMint(msg.sender);
+        if (shares > maxMint) revert MaxMintExceeded(shares, maxMint);
+        assets = vault.mint(shares, msg.sender);
 
         if (assets > maxAssets) revert SlippageExceeded(assets, maxAssets);
 
@@ -51,48 +54,43 @@ contract ERC4626Router {
         if (refund > 0) asset.safeTransfer(msg.sender, refund);
     }
 
-    function withdrawWithSlippage(IERC4626 vault, uint256 assets, uint256 maxShares, address receiver, address owner)
+    function requestWithdraw(IERC4626 vault, uint256 assets) external
+    {
+        if (IERC20(address(vault)).allowance(msg.sender, address(this)) < IERC4626(address(vault)).convertToShares(assets)) {
+            revert ERC20InsufficientAllowance(msg.sender, IERC20(address(vault)).allowance(msg.sender, address(this)), IERC4626(address(vault)).convertToShares(assets));
+        }
+        IVaultFacet(address(vault)).requestWithdraw(assets, msg.sender);
+    }
+
+    function requestRedeem(IERC4626 vault, uint256 shares) external
+    {
+        if (IERC20(address(vault)).allowance(msg.sender, address(this)) < shares) {
+            revert ERC20InsufficientAllowance(msg.sender, IERC20(address(vault)).allowance(msg.sender, address(this)), IERC4626(address(vault)).convertToAssets(shares));
+        }
+        IVaultFacet(address(vault)).requestRedeem(shares, msg.sender);
+    }
+
+    function withdrawWithSlippage(IERC4626 vault, uint256 assets, uint256 maxShares, address receiver)
         external
         returns (uint256 shares)
     {
-        if (_isWithdrawalQueueEnabled(address(vault))) revert WithdrawalQueueEnabled();
-
-        IERC20(address(vault)).safeTransferFrom(owner, address(this), maxShares);
-
-        shares = vault.withdraw(assets, receiver, address(this));
+        if (IERC20(address(vault)).allowance(msg.sender, address(this)) < IERC4626(address(vault)).convertToShares(assets)) {
+            revert ERC20InsufficientAllowance(msg.sender, IERC20(address(vault)).allowance(msg.sender, address(this)), IERC4626(address(vault)).convertToShares(assets));
+        }
+        shares = vault.withdraw(assets, receiver, msg.sender);
 
         if (shares > maxShares) revert SlippageExceeded(shares, maxShares);
-
-        uint256 refund = maxShares - shares;
-        if (refund > 0) IERC20(address(vault)).safeTransfer(owner, refund);
     }
 
-    function redeemWithSlippage(IERC4626 vault, uint256 shares, uint256 minAssets, address receiver, address owner)
+    function redeemWithSlippage(IERC4626 vault, uint256 shares, uint256 minAssets, address receiver)
         external
         returns (uint256 assets)
     {
-        if (_isWithdrawalQueueEnabled(address(vault))) revert WithdrawalQueueEnabled();
-
-        IERC20(address(vault)).safeTransferFrom(owner, address(this), shares);
-
-        assets = vault.redeem(shares, receiver, address(this));
+        if (IERC20(address(vault)).allowance(msg.sender, address(this)) < shares) {
+            revert ERC20InsufficientAllowance(msg.sender, IERC20(address(vault)).allowance(msg.sender, address(this)), IERC4626(address(vault)).convertToAssets(shares));
+        }
+        assets = vault.redeem(shares, receiver, msg.sender);
 
         if (assets < minAssets) revert SlippageExceeded(assets, minAssets);
-    }
-
-    function _isDepositWhitelistEnabled(address vault) internal view returns (bool) {
-        (bool success, bytes memory data) = vault.staticcall(
-            abi.encodeWithSignature("isDepositWhitelistEnabled()")
-        );
-        if (!success || data.length == 0) return false;
-        return abi.decode(data, (bool));
-    }
-
-    function _isWithdrawalQueueEnabled(address vault) internal view returns (bool) {
-        (bool success, bytes memory data) = vault.staticcall(
-            abi.encodeWithSignature("getWithdrawalQueueStatus()")
-        );
-        if (!success || data.length == 0) return false;
-        return abi.decode(data, (bool));
     }
 }
