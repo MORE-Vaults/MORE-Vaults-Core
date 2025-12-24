@@ -72,6 +72,16 @@ contract BridgeFacetHarness is BridgeFacet {
         amountOfTokenToSendIn[guid] = amount;
     }
 
+    function h_setFinalizedByGuid(bytes32 guid, bool finalized) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.guidToCrossChainRequestInfo[guid].finalized = finalized;
+    }
+
+    function h_setRefundedByGuid(bytes32 guid, bool refunded) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        ds.guidToCrossChainRequestInfo[guid].refunded = refunded;
+    }
+
     // Override IERC4626 methods that BridgeFacet.executeRequest calls via address(this)
     function totalAssets() public view returns (uint256) {
         return _totalAssets;

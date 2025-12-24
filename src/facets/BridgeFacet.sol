@@ -188,6 +188,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             actionCallData: actionCallData,
             fulfilled: false,
             finalized: false,
+            refunded: false,
             totalAssets: IVaultFacet(address(this)).totalAssets(),
             finalizationResult: 0,
             amountLimit: amountLimit
@@ -263,11 +264,12 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         if (requestInfo.initiator != vaultComposer) {
             revert InitiatorIsNotVaultComposer();
         }
-        if (requestInfo.timestamp + MAX_DELAY > block.timestamp && !requestInfo.finalized) {
+        if (requestInfo.timestamp + MAX_DELAY > block.timestamp || requestInfo.finalized || requestInfo.refunded) {
             revert RequestNotStuck();
         }
 
         IMoreVaultsComposer(vaultComposer).refundDeposit{value: msg.value}(guid);
+        requestInfo.refunded = true;
     }
 
     function _executeRequest(bytes32 guid) internal returns (bytes memory result) {

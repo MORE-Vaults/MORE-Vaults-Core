@@ -1254,10 +1254,10 @@ contract BridgeFacetTest is Test {
         uint64 requestTimestamp = infoBefore.timestamp;
 
         // Advance time beyond MAX_DELAY (1 hour)
-        vm.warp(requestTimestamp + 1 hours + 1);
+        vm.warp(requestTimestamp + facet.MAX_DELAY() + 1);
         assertEq(infoBefore.initiator, address(composer), "Initiator should be composer");
         assertEq(infoBefore.finalized, false, "Request should not be finalized");
-        assertLt(infoBefore.timestamp + 1 hours, block.timestamp, "Timestamp should be set");
+        assertLt(infoBefore.timestamp + facet.MAX_DELAY(), block.timestamp, "Timestamp should be set");
 
         uint256 refundValue = 0.1 ether;
         vm.deal(address(adapter), refundValue);
@@ -1274,7 +1274,7 @@ contract BridgeFacetTest is Test {
     /**
      * @notice Test that refundStuckDepositInComposer successfully refunds a finalized request
      */
-    function test_refundStuckDepositInComposer_success_finalized() public {
+    function test_refundStuckDepositInComposer_success_notFinalizedAndTimestampIsPastMAX_DELAY() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
         address[] memory spokes = new address[](1);
@@ -1293,26 +1293,25 @@ contract BridgeFacetTest is Test {
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
         facet.h_setDepositResult(guid, 10 * 1e18);
-        facet.executeRequest(guid);
         vm.stopPrank();
 
-        // Verify request is finalized
+        // Verify request isn't finalized
         MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
-        assertTrue(infoBefore.finalized, "Request should be finalized");
+        assertFalse(infoBefore.finalized, "Request should not be finalized");
         assertEq(infoBefore.initiator, address(composer), "Initiator should be composer");
 
-        // Try to refund even though not timed out (should succeed because finalized)
-        uint256 refundValue = 0.1 ether;
-        vm.deal(address(adapter), refundValue);
+        // Try to refund even after MAX_DELAY (should succeed because not finalized)
+        vm.warp(block.timestamp + facet.MAX_DELAY() + 1);
+        uint256 refundAdditionalValue = 0.1 ether;
+        vm.deal(address(adapter), refundAdditionalValue);
 
         vm.startPrank(address(adapter));
-        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        facet.refundStuckDepositInComposer{value: refundAdditionalValue}(guid);
         vm.stopPrank();
 
         // Verify refundDeposit was called on composer
         assertEq(composer.refundDepositCalls(guid), 1, "refundDeposit should be called once");
-        assertEq(composer.refundDepositMsgValues(guid), refundValue, "msg.value should be passed to refundDeposit");
-        vm.warp(block.timestamp + 1 hours + 1);
+        assertEq(composer.refundDepositMsgValues(guid), refundAdditionalValue, "msg.value should be passed to refundDeposit");
     }
 
     /**
@@ -1352,7 +1351,7 @@ contract BridgeFacetTest is Test {
     /**
      * @notice Test that refundStuckDepositInComposer reverts when request is not stuck (not timed out and not finalized)
      */
-    function test_refundStuckDepositInComposer_revert_RequestNotStuck() public {
+    function test_refundStuckDepositInComposer_revert_RequestNotStuck_whenTimestampIsNotPastMAX_DELAY() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
         address[] memory spokes = new address[](1);
@@ -1373,6 +1372,86 @@ contract BridgeFacetTest is Test {
 
         // Advance time but not beyond MAX_DELAY (still within 1 hour)
         vm.warp(requestTimestamp + 30 minutes);
+
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(adapter), refundValue);
+
+        vm.startPrank(address(adapter));
+        vm.expectRevert(IBridgeFacet.RequestNotStuck.selector);
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was NOT called on composer
+        assertEq(composer.refundDepositCalls(guid), 0, "refundDeposit should not be called");
+    }
+
+     /**
+     * @notice Test that refundStuckDepositInComposer reverts when request is not stuck (not timed out and not finalized)
+     */
+    function test_refundStuckDepositInComposer_revert_RequestNotStuck_whenFinalized() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-not-stuck"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+
+        // Set initiator to composer (required for refundStuckDepositInComposer)
+        facet.h_setInitiatorByGuid(guid, address(composer));
+
+        // Get request info to check timestamp
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        uint64 requestTimestamp = infoBefore.timestamp;
+
+        // Set request to finalized
+        facet.h_setFinalizedByGuid(guid, true);
+
+        // Advance time beyond MAX_DELAY (already timed out)
+        vm.warp(requestTimestamp + facet.MAX_DELAY() + 1);
+
+        uint256 refundValue = 0.1 ether;
+        vm.deal(address(adapter), refundValue);
+
+        vm.startPrank(address(adapter));
+        vm.expectRevert(IBridgeFacet.RequestNotStuck.selector);
+        facet.refundStuckDepositInComposer{value: refundValue}(guid);
+        vm.stopPrank();
+
+        // Verify refundDeposit was NOT called on composer
+        assertEq(composer.refundDepositCalls(guid), 0, "refundDeposit should not be called");
+    }
+
+    /**
+     * @notice Test that refundStuckDepositInComposer reverts when request is not stuck (not timed out and not finalized)
+     */
+    function test_refundStuckDepositInComposer_revert_RequestNotStuck_whenRefunded() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-not-stuck"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+
+        // Set initiator to composer (required for refundStuckDepositInComposer)
+        facet.h_setInitiatorByGuid(guid, address(composer));
+
+        // Get request info to check timestamp
+        MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
+        uint64 requestTimestamp = infoBefore.timestamp;
+
+        // Set request to refunded
+        facet.h_setRefundedByGuid(guid, true);
+
+        // Advance time beyond MAX_DELAY (already timed out)
+        vm.warp(requestTimestamp + facet.MAX_DELAY() + 1);
 
         uint256 refundValue = 0.1 ether;
         vm.deal(address(adapter), refundValue);
