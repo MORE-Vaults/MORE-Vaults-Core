@@ -240,16 +240,10 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
         delete _pendingDeposits[_guid];
 
-        // Decrease approve for vault by deposit amount (supports parallel deposits)
-        // If request execution didn't occur, approve wasn't used and should be decreased
-        // If request execution occurred, approve was already automatically decreased via safeTransferFrom
-        uint256 currentAllowance = IERC20(deposit.tokenAddress).allowance(address(this), address(VAULT));
-        if (currentAllowance >= deposit.assetAmount) {
-            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), deposit.assetAmount);
-        } else if (currentAllowance > 0) {
-            // If approve is less than expected (partially used), decrease by available amount
-            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), currentAllowance);
-        }
+        // Tokens are already transferred and locked in vault by _lockFundsForRequest
+        // BridgeFacet.refundStuckDepositInComposer will unlock them via _unlockRequestFunds
+        // and transfer them back to composer via _transferTokensBackToComposer
+        // Tokens should already be in composer at this point
 
         // cross-chain refund back to origin
         SendParam memory refundSendParam;
@@ -414,10 +408,9 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             revert NotATokenOfOFT();
         }
 
-        // Increase approve BEFORE creating request so it's available for request execution
+        // Increase approve BEFORE creating request so tokens can be transferred in _lockFundsForRequest
         // Use safeIncreaseAllowance to support parallel deposits
-        // Request execution occurs in executeRequest and calls deposit,
-        // which takes tokens via safeTransferFrom using approve
+        // Tokens will be transferred and locked in BridgeFacet._lockFundsForRequest
         IERC20(_tokenAddress).safeIncreaseAllowance(address(VAULT), _assetAmount);
 
         MoreVaultsLib.ActionType actionType;
@@ -434,9 +427,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             actionCallData = abi.encode(tokens, assets, address(this));
         }
         // Pass amountLimit for slippage check in _executeRequest
+        // Tokens will be transferred and locked inside initVaultActionRequest -> _lockFundsForRequest
         bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
             actionType, actionCallData, _sendParam.minAmountLD, ""
         );
+        
+        // Decrease allowance after tokens are transferred and locked
+        IERC20(_tokenAddress).safeDecreaseAllowance(address(VAULT), _assetAmount);
         _pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,

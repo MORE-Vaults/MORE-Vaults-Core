@@ -166,6 +166,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 mstore(0x20, _lockedTokens.slot)
                 slot := keccak256(0x00, 0x40)
                 toConvert := add(toConvert, sload(slot))
+                
                 // if the asset is the wrapped native, add the native balance
                 if eq(_wrappedNative, asset) {
                     // if the vault processes native deposits, make sure to exclude msg.value and pendingNative
@@ -177,6 +178,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (!success) {
                 return (0, false);
             }
+            
+            // Subtract cross-chain locked tokens from accounting
+            uint256 crossChainLocked = ds.crossChainLockedTokens[asset];
+            if (toConvert > crossChainLocked) {
+                toConvert -= crossChainLocked;
+            } else {
+                toConvert = 0;
+            }
+            
             // convert to underlying
             // this function will use new free mem ptr
             _totalAssets += MoreVaultsLib.convertToUnderlying(asset, toConvert, Math.Rounding.Floor);
@@ -1203,5 +1213,52 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Update receiver's HWMpS to the weighted average (can be lower than current HWMpS)
         ds.userHighWaterMarkPerShare[to] = newHWMpS;
+    }
+
+    /**
+     * @dev Transfers shares from owner to vault using spender's allowance
+     * @param owner Owner of the shares
+     * @param shares Amount of shares to transfer
+     * @param spender Initiator who has allowance from owner
+     * @notice Uses internal ERC20 functions for transfer within a single call
+     * @notice Can only be called from BridgeFacet via address(this).call()
+     */
+    function transferSharesFromOwner(address owner, uint256 shares, address spender) external {
+        // Can only be called from the vault itself (BridgeFacet calls via address(this))
+        if (msg.sender != address(this)) {
+            revert AccessControlLib.UnauthorizedAccess();
+        }
+        // If spender == owner, just transfer shares directly
+        if (spender == owner) {
+            _update(owner, address(this), shares);
+            return;
+        }
+
+        // Check spender's allowance from owner
+        uint256 currentAllowance = allowance(owner, spender);
+        if (currentAllowance < shares) {
+            revert ERC20InsufficientAllowance(spender, currentAllowance, shares);
+        }
+
+        // Check owner's balance
+        uint256 ownerBalance = balanceOf(owner);
+        if (ownerBalance < shares) {
+            revert ERC20InsufficientBalance(owner, ownerBalance, shares);
+        }
+
+        // Save vault balance before transfer for verification
+        uint256 vaultBalanceBefore = balanceOf(address(this));
+
+        // Decrease spender's allowance from owner using internal ERC20 function
+        _spendAllowance(owner, spender, shares);
+
+        // Transfer shares from owner to vault using internal _update
+        _update(owner, address(this), shares);
+
+        // Verify that transfer was successful
+        uint256 vaultBalanceAfter = balanceOf(address(this));
+        if (vaultBalanceAfter < vaultBalanceBefore + shares) {
+            revert ERC20InsufficientBalance(address(this), vaultBalanceAfter - vaultBalanceBefore, shares);
+        }
     }
 }

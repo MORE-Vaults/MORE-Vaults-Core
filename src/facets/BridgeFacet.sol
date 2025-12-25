@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
+import {VaultFacet} from "./VaultFacet.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
@@ -22,6 +23,8 @@ import {MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfac
 contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Math for uint256;
+
+    error TransferSharesFailed();
 
     event AccountingInfoUpdated(bytes32 indexed guid, uint256 sumOfSpokesUsdValue, bool readSuccess);
     event OracleCrossChainAccountingUpdated(bool indexed isTrue);
@@ -195,6 +198,100 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         });
 
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
+
+        // Lock funds for the request
+        _lockFundsForRequest(actionType, actionCallData);
+    }
+
+    /**
+     * @dev Locks funds for a cross-chain request
+     * @param actionType Type of action (DEPOSIT, WITHDRAW, REDEEM, etc.)
+     * @param actionCallData Encoded action data
+     */
+    function _lockFundsForRequest(
+        MoreVaultsLib.ActionType actionType,
+        bytes calldata actionCallData
+    ) internal {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        address initiator = msg.sender;
+
+        if (actionType == MoreVaultsLib.ActionType.DEPOSIT) {
+            (uint256 assets, address receiver) = abi.decode(actionCallData, (uint256, address));
+            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
+
+            // Always transfer tokens from initiator to vault
+            // Cannot use tokens already in vault - they belong to other users
+            IERC20(assetToken).safeTransferFrom(initiator, address(this), assets);
+
+            // Lock tokens
+            ds.crossChainLockedTokens[assetToken] += assets;
+
+        } else if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+            (address[] memory tokens, uint256[] memory assets,,,) =
+                abi.decode(actionCallData, (address[], uint256[], address, uint256, uint256));
+
+            // Always transfer tokens from initiator for each token
+            for (uint256 i = 0; i < tokens.length; i++) {
+                IERC20(tokens[i]).safeTransferFrom(initiator, address(this), assets[i]);
+                ds.crossChainLockedTokens[tokens[i]] += assets[i];
+            }
+
+        } else if (actionType == MoreVaultsLib.ActionType.WITHDRAW) {
+            (uint256 assets, address receiver, address owner) =
+                abi.decode(actionCallData, (uint256, address, address));
+
+            // Convert assets to shares
+            uint256 shares = IVaultFacet(address(this)).previewWithdraw(assets);
+
+            // Transfer shares from owner to vault using initiator's allowance from owner
+            // Call public function VaultFacet via address(this).call() (both facets in same diamond contract)
+            // Uses internal ERC20 functions for transfer within a single call
+            (bool success, bytes memory returnData) = address(this).call(
+                abi.encodeWithSelector(
+                    VaultFacet.transferSharesFromOwner.selector,
+                    owner,
+                    shares,
+                    initiator
+                )
+            );
+            if (!success) {
+                if (returnData.length > 0) {
+                    assembly {
+                        revert(add(returnData, 0x20), mload(returnData))
+                    }
+                }
+                revert TransferSharesFailed();
+            }
+
+            // Lock shares
+            ds.crossChainLockedTokens[address(this)] += shares;
+
+        } else if (actionType == MoreVaultsLib.ActionType.REDEEM) {
+            (uint256 shares, address receiver, address owner) =
+                abi.decode(actionCallData, (uint256, address, address));
+
+            // Transfer shares from owner to vault using initiator's allowance from owner
+            (bool success, bytes memory returnData) = address(this).call(
+                abi.encodeWithSelector(
+                    VaultFacet.transferSharesFromOwner.selector,
+                    owner,
+                    shares,
+                    initiator
+                )
+            );
+            if (!success) {
+                if (returnData.length > 0) {
+                    assembly {
+                        revert(add(returnData, 0x20), mload(returnData))
+                    }
+                }
+                revert TransferSharesFailed();
+            }
+
+            // Lock shares
+            ds.crossChainLockedTokens[address(this)] += shares;
+        }
+        // For MINT and ACCRUE_FEES locking is not required
     }
 
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external {
@@ -268,8 +365,44 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             revert RequestNotStuck();
         }
 
+        // Unlock funds before refund
+        _unlockRequestFunds(requestInfo);
+        
+        // Transfer tokens back to composer for refund
+        _transferTokensBackToComposer(requestInfo, vaultComposer);
+        
         IMoreVaultsComposer(vaultComposer).refundDeposit{value: msg.value}(guid);
         requestInfo.refunded = true;
+    }
+
+    /**
+     * @dev Transfers tokens back to composer for refund
+     * @param requestInfo Request info containing action type and call data
+     * @param composer Composer address to transfer tokens to
+     */
+    function _transferTokensBackToComposer(
+        MoreVaultsLib.CrossChainRequestInfo memory requestInfo,
+        address composer
+    ) internal {
+        if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
+            (uint256 assets,) = abi.decode(requestInfo.actionCallData, (uint256, address));
+            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
+            IERC20(assetToken).safeTransfer(composer, assets);
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+            (address[] memory tokens, uint256[] memory assets,,,) =
+                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256, uint256));
+            for (uint256 i = 0; i < tokens.length; i++) {
+                IERC20(tokens[i]).safeTransfer(composer, assets[i]);
+            }
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
+            (uint256 assets,,) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
+            uint256 shares = IVaultFacet(address(this)).previewWithdraw(assets);
+            IERC20(address(this)).safeTransfer(composer, shares);
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
+            (uint256 shares,,) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
+            IERC20(address(this)).safeTransfer(composer, shares);
+        }
+        // For MINT and ACCRUE_FEES no transfer needed
     }
 
     function _executeRequest(bytes32 guid) internal returns (bytes memory result) {
@@ -279,6 +412,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             revert RequestWasntFulfilled();
         }
         if (requestInfo.timestamp + MAX_DELAY < block.timestamp) {
+            // Unlock funds before revert on timeout
+            _unlockRequestFunds(requestInfo);
             revert RequestTimedOut();
         }
         if (requestInfo.finalized) {
@@ -342,6 +477,40 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         ds.guidToCrossChainRequestInfo[guid].finalized = true;
         ds.guidToCrossChainRequestInfo[guid].finalizationResult = resultValue;
         ds.finalizationGuid = 0;
+
+        // Unlock funds after successful execution
+        _unlockRequestFunds(requestInfo);
+    }
+
+    /**
+     * @dev Unlocks funds for a cross-chain request
+     * @param requestInfo Request info containing action type and call data
+     */
+    function _unlockRequestFunds(MoreVaultsLib.CrossChainRequestInfo memory requestInfo) internal {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
+            (uint256 assets,) = abi.decode(requestInfo.actionCallData, (uint256, address));
+            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
+            ds.crossChainLockedTokens[assetToken] -= assets;
+
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+            (address[] memory tokens, uint256[] memory assets,,,) =
+                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256, uint256));
+            for (uint256 i = 0; i < tokens.length; i++) {
+                ds.crossChainLockedTokens[tokens[i]] -= assets[i];
+            }
+
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
+            (uint256 assets,,) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
+            uint256 shares = IVaultFacet(address(this)).previewWithdraw(assets);
+            ds.crossChainLockedTokens[address(this)] -= shares;
+
+        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
+            (uint256 shares,,) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
+            ds.crossChainLockedTokens[address(this)] -= shares;
+        }
+        // For MINT and ACCRUE_FEES unlocking is not required
     }
 
     function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory) {
