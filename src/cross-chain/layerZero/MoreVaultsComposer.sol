@@ -424,7 +424,8 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             tokens[0] = _tokenAddress;
             uint256[] memory assets = new uint256[](1);
             assets[0] = _assetAmount;
-            actionCallData = abi.encode(tokens, assets, address(this));
+            uint256 minAmountOut = _sendParam.minAmountLD;
+            actionCallData = abi.encode(tokens, assets, address(this), minAmountOut, 0);
         }
         // Pass amountLimit for slippage check in _executeRequest
         // Tokens will be transferred and locked inside initVaultActionRequest -> _lockFundsForRequest
