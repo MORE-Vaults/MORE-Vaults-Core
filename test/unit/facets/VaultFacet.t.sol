@@ -2234,6 +2234,328 @@ contract VaultFacetTest is Test {
         assertTrue(newMaxMint < maxMint);
     }
 
+    // These tests verify that whitelist-only mode works correctly when global deposit limit is disabled
+
+    /**
+     * @notice Test that maxDeposit returns whitelist limit when whitelist is enabled,
+     *         global capacity is disabled (0), and vault has assets
+     * @dev This was the bug: when depositCapacity = 0 and vault has assets, it would return 0
+     *      instead of checking whitelist limit
+     */
+    function test_maxDeposit_WhitelistEnabled_NoGlobalLimit_WithAssets_ReturnsWhitelistLimit() public {
+        address testUser = address(0xE000);
+        uint256 whitelistLimit = 500 ether;
+        uint256 depositAmount = 100 ether; // Some assets already in vault
+
+        // Setup: Enable whitelist, disable global limit, set whitelist limit
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, 0); // Global limit disabled
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, whitelistLimit);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, whitelistLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit some assets to vault (so totalAssets > 0)
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Test: maxDeposit should return whitelist limit, not 0
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, whitelistLimit, "Should return whitelist limit when whitelist enabled and no global limit");
+    }
+
+    /**
+     * @notice Test that maxDeposit returns whitelist limit when whitelist is enabled,
+     *         global capacity is disabled (0), and vault has no assets
+     */
+    function test_maxDeposit_WhitelistEnabled_NoGlobalLimit_NoAssets_ReturnsWhitelistLimit() public {
+        address testUser = address(0xE001);
+        uint256 whitelistLimit = 500 ether;
+
+        // Setup: Enable whitelist, disable global limit, set whitelist limit
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, 0); // Global limit disabled
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, whitelistLimit);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, whitelistLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Test: maxDeposit should return whitelist limit
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, whitelistLimit, "Should return whitelist limit when whitelist enabled and no global limit");
+    }
+
+    /**
+     * @notice Test that maxDeposit returns minimum of global capacity and whitelist limit
+     *         when both are enabled
+     */
+    function test_maxDeposit_WhitelistEnabled_GlobalLimitEnabled_ReturnsMinimum() public {
+        address testUser = address(0xE002);
+        uint256 whitelistLimit = 500 ether;
+        uint256 globalLimit = 1000 ether;
+        uint256 depositAmount = 200 ether; // Some assets already in vault
+
+        // Setup: Enable whitelist, set global limit, set whitelist limit
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, globalLimit);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, whitelistLimit);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, whitelistLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit some assets to vault
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Test: maxDeposit should return minimum of remaining capacity and whitelist limit
+        uint256 remainingCapacity = globalLimit - depositAmount; // 800 ether
+        uint256 expectedMaxDeposit = Math.min(remainingCapacity, whitelistLimit); // min(800, 500) = 500
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, expectedMaxDeposit, "Should return minimum of remaining capacity and whitelist limit");
+    }
+
+    /**
+     * @notice Test that maxDeposit returns 0 when global capacity is exceeded
+     */
+    function test_maxDeposit_WhitelistEnabled_GlobalLimitExceeded_ReturnsZero() public {
+        address testUser = address(0xE003);
+        uint256 whitelistLimit = 500 ether;
+        uint256 globalLimit = 100 ether;
+        uint256 depositAmount = 100 ether; // Exactly equals global limit
+
+        // Setup: Enable whitelist, set global limit, set whitelist limit
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, globalLimit);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, whitelistLimit);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, whitelistLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit assets to reach global limit
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Test: maxDeposit should return 0 when global limit is exceeded
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, 0, "Should return 0 when global capacity is exceeded");
+    }
+
+    /**
+     * @notice Test that maxDeposit returns unlimited when whitelist is disabled and global limit is disabled
+     */
+    function test_maxDeposit_WhitelistDisabled_NoGlobalLimit_ReturnsUnlimited() public {
+        address testUser = address(0xE004);
+
+        // Setup: Disable whitelist, disable global limit
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, false);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, 0);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Test: maxDeposit should return unlimited
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, type(uint256).max, "Should return unlimited when both limits are disabled");
+    }
+
+    /**
+     * @notice Test that maxDeposit returns remaining capacity when whitelist is disabled but global limit is enabled
+     */
+    function test_maxDeposit_WhitelistDisabled_GlobalLimitEnabled_ReturnsRemainingCapacity() public {
+        address testUser = address(0xE005);
+        uint256 globalLimit = 1000 ether;
+        uint256 depositAmount = 200 ether; // Some assets already in vault
+
+        // Setup: Disable whitelist, set global limit
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, false);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, globalLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit some assets to vault
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Test: maxDeposit should return remaining capacity
+        uint256 expectedMaxDeposit = globalLimit - depositAmount; // 800 ether
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, expectedMaxDeposit, "Should return remaining capacity when only global limit is enabled");
+    }
+
+    /**
+     * @notice Test that maxDeposit correctly handles whitelist limit when it's smaller than remaining capacity
+     */
+    function test_maxDeposit_WhitelistLimitSmallerThanCapacity_ReturnsWhitelistLimit() public {
+        address testUser = address(0xE006);
+        uint256 whitelistLimit = 300 ether;
+        uint256 globalLimit = 1000 ether;
+        uint256 depositAmount = 100 ether; // Some assets already in vault
+
+        // Setup: Enable whitelist, set global limit, set whitelist limit (smaller than remaining capacity)
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, globalLimit);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, whitelistLimit);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, whitelistLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit some assets to vault
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Test: maxDeposit should return whitelist limit (smaller than remaining capacity)
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, whitelistLimit, "Should return whitelist limit when it's smaller than remaining capacity");
+    }
+
+    /**
+     * @notice Test that maxDeposit correctly handles remaining capacity when it's smaller than whitelist limit
+     */
+    function test_maxDeposit_CapacitySmallerThanWhitelistLimit_ReturnsRemainingCapacity() public {
+        address testUser = address(0xE007);
+        uint256 whitelistLimit = 500 ether;
+        uint256 globalLimit = 1000 ether;
+        uint256 depositAmount = 700 ether; // Most of capacity used
+
+        // Setup: Enable whitelist, set global limit, set whitelist limit (larger than remaining capacity)
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositCapacity(facet, globalLimit);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, testUser, whitelistLimit);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(facet, testUser, whitelistLimit);
+
+        // Mock oracle calls
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        // Deposit most of capacity
+        MockERC20(asset).mint(user, depositAmount);
+        vm.startPrank(user);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, user);
+        vm.stopPrank();
+
+        // Test: maxDeposit should return remaining capacity (smaller than whitelist limit)
+        uint256 expectedMaxDeposit = globalLimit - depositAmount; // 300 ether
+        uint256 maxDeposit = VaultFacet(facet).maxDeposit(testUser);
+        assertEq(maxDeposit, expectedMaxDeposit, "Should return remaining capacity when it's smaller than whitelist limit");
+    }
+
     function test_clearRequest_ShouldClearWithdrawalRequest() public {
         // Setup withdrawal queue
         vm.prank(owner);
