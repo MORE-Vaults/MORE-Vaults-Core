@@ -15,7 +15,7 @@ import {
     ERC4626Upgradeable,
     ERC20Upgradeable,
     SafeERC20,
-    LowLevelCall, 
+    LowLevelCall,
     Memory,
     IERC20Metadata
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
@@ -388,7 +388,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function requestRedeem(uint256 _shares, address _onBehalfOf) external {
         MoreVaultsLib.validateNotMulticall();
-        
+
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (!ds.isHub) {
@@ -801,7 +801,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Calculate current price per share (using same formula as _convertToAssets)
         uint256 decimalsMultiplier = 10 ** decimals();
-        uint256 currentPricePerShare = _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
+        uint256 currentPricePerShare =
+            _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
         // Get user's High-Water Mark per Share
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
 
@@ -951,7 +952,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         // Price per share = (totalAssets + 1) / (totalSupply + 10^decimalsOffset)
         uint256 totalSupply_ = totalSupply();
         uint256 decimalsMultiplier = 10 ** decimals();
-        uint256 currentPricePerShare = _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
+        uint256 currentPricePerShare =
+            _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
 
         // Update HWMpS if current price is higher
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
@@ -1088,18 +1090,26 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         _validateERC4626Compatible(ds);
         uint256 assetsInVault = totalAssets();
+
+        // No limits at all
         if (ds.depositCapacity == 0 && !ds.isWhitelistEnabled) {
             return type(uint256).max;
         }
-        if (assetsInVault > ds.depositCapacity) {
+
+        // Global capacity enabled - check if exceeded
+        if (ds.depositCapacity > 0 && assetsInVault >= ds.depositCapacity) {
             return 0;
-        } else {
-            uint256 maxToDeposit = ds.depositCapacity - assetsInVault;
-            if (ds.isWhitelistEnabled) {
-                maxToDeposit = Math.min(maxToDeposit, ds.availableToDeposit[user]);
-            }
-            return maxToDeposit;
         }
+
+        // Calculate max: either remaining capacity or unlimited if capacity is 0
+        uint256 maxToDeposit = ds.depositCapacity == 0 ? type(uint256).max : ds.depositCapacity - assetsInVault;
+
+        // Apply whitelist limit if enabled
+        if (ds.isWhitelistEnabled) {
+            maxToDeposit = Math.min(maxToDeposit, ds.availableToDeposit[user]);
+        }
+
+        return maxToDeposit;
     }
 
     function _validateERC4626Compatible(MoreVaultsLib.MoreVaultsStorage storage ds) internal view {
@@ -1117,7 +1127,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         // Use the same storage location as in ERC4626Upgradeable
         // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC4626")) - 1)) & ~bytes32(uint256(0xff))
         bytes32 storageLocation = 0x0773e532dfede91f04b12a73d3d2acd361424f41f76b4fb79f090161e36b4e00;
-        
+
         (bool success, uint8 assetDecimals) = _tryGetAssetDecimalsLocal(asset_);
 
         ERC4626Upgradeable.ERC4626Storage storage $;
@@ -1137,15 +1147,13 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function _tryGetAssetDecimalsLocal(IERC20 asset_) private view returns (bool ok, uint8 assetDecimals) {
         Memory.Pointer ptr = Memory.getFreeMemoryPointer();
-        (bool success, bytes32 returnedDecimals,) = LowLevelCall.staticcallReturn64Bytes(
-            address(asset_), abi.encodeCall(IERC20Metadata.decimals, ())
-        );
+        (bool success, bytes32 returnedDecimals,) =
+            LowLevelCall.staticcallReturn64Bytes(address(asset_), abi.encodeCall(IERC20Metadata.decimals, ()));
         Memory.setFreeMemoryPointer(ptr);
 
-        return
-            (success && LowLevelCall.returnDataSize() >= 32 && uint256(returnedDecimals) <= type(uint8).max)
-                ? (true, uint8(uint256(returnedDecimals)))
-                : (false, 0);
+        return (success && LowLevelCall.returnDataSize() >= 32 && uint256(returnedDecimals) <= type(uint8).max)
+            ? (true, uint8(uint256(returnedDecimals)))
+            : (false, 0);
     }
 
     /**
@@ -1157,12 +1165,12 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         // Use the same storage location as in ERC20Upgradeable
         // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC20")) - 1)) & ~bytes32(uint256(0xff))
         bytes32 storageLocation = 0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00;
-        
+
         ERC20Upgradeable.ERC20Storage storage $;
         assembly {
             $.slot := storageLocation
         }
-        
+
         $._name = name_;
         $._symbol = symbol_;
     }
@@ -1177,7 +1185,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Get receiver's balance BEFORE transfer
         uint256 balanceOfReceiverBefore = balanceOf(to);
-        
+
         // Get sender's and receiver's HWMpS
         uint256 fromHWMpS = ds.userHighWaterMarkPerShare[from];
         uint256 toHWMpS = ds.userHighWaterMarkPerShare[to];
