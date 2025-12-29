@@ -26,6 +26,15 @@ remappings = [
 
 no_match_test = "test_skip"
 
+additional_compiler_profiles = [
+    { name = "big_contracts", optimizer_runs = 1500, via_ir = true, optimizer = true },
+]
+
+compilation_restrictions = [
+    { paths = "src/facets/VaultFacet.sol", optimizer_runs = 1500 },
+    { paths = "src/factory/VaultsFactory.sol", optimizer_runs = 1500 },
+]
+
 [rpc_endpoints]
 flow_testnet = "${FLOW_TESTNET_RPC_URL}"
 

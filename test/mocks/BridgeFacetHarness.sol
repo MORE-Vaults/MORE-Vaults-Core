@@ -18,6 +18,7 @@ contract BridgeFacetHarness is BridgeFacet {
     mapping(bytes32 => uint256) public accrueFeesResult;
     mapping(bytes32 => uint256) public amountOfTokenToSendIn;
     mapping(address => uint256) private _balances; // Mock balance tracking
+    mapping(address => mapping(address => uint256)) private _allowances; // Mock allowance tracking
     mapping(bytes32 => address) public initiatorByGuid;
     mapping(bytes32 => address) public ownerByGuid;
     
@@ -34,6 +35,10 @@ contract BridgeFacetHarness is BridgeFacet {
             // For underlying token, we'll use MockERC20's balance
             // This is handled by MockERC20 itself
         }
+    }
+
+    function h_setAllowance(address owner, address spender, uint256 amount) external {
+        _allowances[owner][spender] = amount;
     }
 
     function h_setDepositResult(bytes32 guid, uint256 result) external {
@@ -112,11 +117,6 @@ contract BridgeFacetHarness is BridgeFacet {
         // Simulate transfer: reduce balance of msg.sender (facet) and increase balance of address(this) (facet)
         // In real scenario, tokens are transferred from user to vault, but here msg.sender is facet itself
         // So we simulate by directly updating MockERC20 balances
-        if (amount > 0) {
-            // Use MockERC20's transfer function to simulate the transfer
-            // This will update balances correctly for balanceOf checks
-            MockERC20(underlying).transfer(initiatorByGuid[guid], address(this), amount);
-        }
         return mintResult[guid];
     }
 
@@ -127,13 +127,76 @@ contract BridgeFacetHarness is BridgeFacet {
         // In real scenario, share tokens are burned/transferred from user
         // Here we simulate by reducing balance of address(this) (facet) since withdraw is called via address(this).call
         // The balance check in BridgeFacet checks balanceOf(address(this)) before and after
-        _balances[ownerByGuid[guid]] -= amount;
+        _balances[address(this)] -= amount;
         return withdrawResult[guid];
     }
     
     // Mock ERC20 balanceOf for share token (vault itself)
     function balanceOf(address account) external view returns (uint256) {
         return _balances[account];
+    }
+
+    // Mock ERC20 allowance for share token (vault itself)
+    function allowance(address owner, address spender) external view returns (uint256) {
+        return _allowances[owner][spender];
+    }
+
+    // Mock ERC20 approve for share token (vault itself)
+    function approve(address spender, uint256 amount) external returns (bool) {
+        _allowances[msg.sender][spender] = amount;
+        return true;
+    }
+
+    /**
+     * @notice Transfer shares from owner to vault using spender's allowance
+     * @dev This function is called by BridgeFacet via address(this).call for REDEEM and WITHDRAW actions
+     */
+    function transferSharesFromOwner(address owner, uint256 shares, address spender) external {
+        // Can only be called from the vault itself (BridgeFacet calls via address(this))
+        if (msg.sender != address(this)) {
+            revert("Unauthorized");
+        }
+
+        // If spender == owner, just transfer shares directly
+        if (spender == owner) {
+            require(_balances[owner] >= shares, "Insufficient balance");
+            _balances[owner] -= shares;
+            _balances[address(this)] += shares;
+            return;
+        }
+
+        // Check spender's allowance from owner
+        uint256 currentAllowance = _allowances[owner][spender];
+        if (currentAllowance < shares) {
+            revert("Insufficient allowance");
+        }
+
+        // Check owner's balance
+        if (_balances[owner] < shares) {
+            revert("Insufficient balance");
+        }
+
+        // Save vault balance before transfer for verification
+        uint256 vaultBalanceBefore = _balances[address(this)];
+
+        // Decrease spender's allowance from owner
+        _allowances[owner][spender] -= shares;
+
+        // Transfer shares from owner to vault
+        _balances[owner] -= shares;
+        _balances[address(this)] += shares;
+
+        // Verify that transfer was successful
+        uint256 vaultBalanceAfter = _balances[address(this)];
+        if (vaultBalanceAfter < vaultBalanceBefore + shares) {
+            revert("Transfer failed");
+        }
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        _balances[msg.sender] -= amount;
+        _balances[to] += amount;
+        return true;
     }
 
     function redeem(uint256, address, address) external returns (uint256) {

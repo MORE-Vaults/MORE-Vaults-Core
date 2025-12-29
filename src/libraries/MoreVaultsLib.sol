@@ -184,8 +184,8 @@ library MoreVaultsLib {
         mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
         mapping(address => uint256) initialDepositCapPerUser;
         /// @dev Locked tokens for cross-chain requests (excluded from accounting)
-        /// crossChainLockedTokens[token] = total amount locked for all active cross-chain requests
-        mapping(address => uint256) crossChainLockedTokens;
+        /// pendingTokens[token] = total amount locked for all active cross-chain requests
+        mapping(address => uint256) pendingTokens;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -848,5 +848,10 @@ library MoreVaultsLib {
         }
 
         return ds.crossChainAccountingManager;
+    }
+
+    function _availableTokensToManage(address token) internal view returns (uint256) {
+        MoreVaultsStorage storage ds = moreVaultsStorage();
+        return IERC20(token).balanceOf(address(this)) - ds.pendingTokens[token];
     }
 }

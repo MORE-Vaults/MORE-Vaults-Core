@@ -105,11 +105,13 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function executeRequest(bytes32 guid) external;
 
     /**
-     * @dev Send native token back to the initiator of the request if necessary
-     * @notice If initiator cannot receive native token, the funds are sent to the cross-chain accounting manager instead
-     * @param guid Request number to send token back
+     * @dev Refunds all tokens (native and ERC20) back to the initiator (or owner for WITHDRAW/REDEEM) and unlocks them from pending
+     * @param guid Request number to refund
+     * @notice Can only be called by the cross-chain accounting manager
+     * @notice Unlocks tokens and transfers them back to the appropriate recipient
+     * @notice Handles both native tokens (for MULTI_ASSETS_DEPOSIT) and ERC20 tokens/shares
      */
-    function sendNativeTokenBackToInitiator(bytes32 guid) external;
+    function refundRequestTokens(bytes32 guid) external;
 
     /**
      * @dev Refunds the stuck deposit

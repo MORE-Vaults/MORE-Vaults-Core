@@ -121,9 +121,14 @@ contract MockERC7575Vault {
 // Mock vault that returns address(0) for share()
 contract MockVaultReturnsZeroShare {
     address public immutable assetToken;
+    uint256 public balance;
 
     constructor(address _asset) {
         assetToken = _asset;
+    }
+
+    function setBalance(uint256 _balance) external {
+        balance = _balance;
     }
 
     function asset() external view returns (address) {
@@ -136,6 +141,10 @@ contract MockVaultReturnsZeroShare {
 
     function requestRedeem(uint256, address, address) external pure returns (uint256) {
         return 1;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return balance;
     }
 }
 
@@ -1048,6 +1057,7 @@ contract ERC7540FacetTest is Test {
     function test_erc7540RequestRedeem_ShareReturnsAddressZero_ShouldNotApprove() public {
         // Deploy vault that returns address(0) for share()
         MockVaultReturnsZeroShare zeroShareVault = new MockVaultReturnsZeroShare(address(asset));
+        zeroShareVault.setBalance(MINT_SHARES);
 
         vm.startPrank(address(facet));
 
@@ -1621,6 +1631,225 @@ contract ERC7540FacetTest is Test {
         (uint256 accounting,) = facet.accountingERC7540Facet();
         assertEq(accounting, 0, "Accounting should be 0 when vault has total loss");
 
+        vm.stopPrank();
+    }
+
+    // ============ Pending Tokens Tests ============
+
+    /**
+     * @notice Test that erc7540RequestDeposit reverts when trying to use pending tokens
+     */
+    function test_erc7540RequestDeposit_reverts_when_pendingTokens_exceed_available() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 50e18;
+        uint256 pendingAmount = 30e18;
+        
+        // Clear initial balance and set exact balance needed for test
+        deal(address(asset), address(facet), depositAmount);
+        
+        // Set pending tokens directly (simulating cross-chain request)
+        MoreVaultsStorageHelper.setPendingTokens(address(facet), address(asset), pendingAmount);
+        
+        // Verify pending tokens are set
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(asset));
+        assertEq(pendingTokens, pendingAmount, "Pending tokens should be set");
+        
+        // Available tokens = total - pending = depositAmount - pendingAmount = 20e18
+        // Try to request deposit more than available - should revert
+        uint256 requestedAmount = depositAmount; // 50e18 > 20e18 available
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC7540Facet.InsufficientAvailableTokens.selector,
+                depositAmount - pendingAmount, // available (total - pending)
+                requestedAmount // requested
+            )
+        );
+        facet.erc7540RequestDeposit(address(vault), requestedAmount);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that erc7540Deposit reverts when trying to use pending tokens
+     */
+    function test_erc7540Deposit_reverts_when_pendingTokens_exceed_available() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 50e18;
+        uint256 pendingAmount = 30e18;
+        
+        // Clear initial balance and set exact balance needed for test
+        deal(address(asset), address(facet), depositAmount);
+        
+        // Set pending tokens directly (simulating cross-chain request)
+        MoreVaultsStorageHelper.setPendingTokens(address(facet), address(asset), pendingAmount);
+        
+        // Verify pending tokens are set
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(asset));
+        assertEq(pendingTokens, pendingAmount, "Pending tokens should be set");
+        
+        // Available tokens = total - pending = depositAmount - pendingAmount = 20e18
+        // Try to deposit more than available - should revert
+        uint256 requestedAmount = depositAmount; // 50e18 > 20e18 available
+        
+        // Approve vault to transfer tokens (required for deposit)
+        asset.approve(address(vault), requestedAmount);
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC7540Facet.InsufficientAvailableTokens.selector,
+                depositAmount - pendingAmount, // available (total - pending)
+                requestedAmount // requested
+            )
+        );
+        facet.erc7540Deposit(address(vault), requestedAmount);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that erc7540Mint reverts when trying to use pending tokens
+     */
+    function test_erc7540Mint_reverts_when_pendingTokens_exceed_available() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 mintShares = 50e18;
+        uint256 mintAssets = 50e18; // Assuming 1:1 ratio
+        uint256 pendingAmount = 30e18;
+        
+        // Clear initial balance and set exact balance needed for test
+        deal(address(asset), address(facet), mintAssets);
+        
+        // Set pending tokens directly (simulating cross-chain request)
+        MoreVaultsStorageHelper.setPendingTokens(address(facet), address(asset), pendingAmount);
+        
+        // Verify pending tokens are set
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(asset));
+        assertEq(pendingTokens, pendingAmount, "Pending tokens should be set");
+        
+        // Available tokens = total - pending = mintAssets - pendingAmount = 20e18
+        // erc7540Mint will call vault.mint which returns assets used
+        // The check happens after execution, so we need to mock the vault to return more than available
+        // But the check compares availableTokens (before call) with assets returned (after call)
+        // So if vault.mint uses more than available, it will revert
+        
+        // Mock vault.mint to return mintAssets (more than available)
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("mint(uint256,address,address)")), mintShares, address(facet), address(facet)),
+            abi.encode(mintAssets)
+        );
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC7540Facet.InsufficientAvailableTokens.selector,
+                mintAssets - pendingAmount, // available (total - pending, calculated before call)
+                mintAssets // requested (returned from vault.mint)
+            )
+        );
+        facet.erc7540Mint(address(vault), mintShares);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that erc7540Withdraw reverts when trying to use pending shares
+     */
+    function test_erc7540Withdraw_reverts_when_pendingShares_exceed_available() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 withdrawAssets = 50e18;
+        uint256 withdrawShares = 50e18; // Assuming 1:1 ratio
+        uint256 pendingShares = 30e18;
+        
+        // Set pending shares directly (simulating cross-chain request)
+        MoreVaultsStorageHelper.setPendingTokens(address(facet), address(vault), pendingShares);
+        
+        // Add shares to vault (total = pending + available)
+        vault.mintShares(address(facet), withdrawShares);
+        
+        // Verify pending shares are set
+        uint256 pending = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(vault));
+        assertEq(pending, pendingShares, "Pending shares should be set");
+        
+        // Available shares = total - pending = withdrawShares - pendingShares = 20e18
+        // erc7540Withdraw will call vault.withdraw which returns shares used
+        // The check happens after execution, so we need to mock the vault to return more than available
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("withdraw(uint256,address,address)")), withdrawAssets, address(facet), address(facet)),
+            abi.encode(withdrawShares)
+        );
+        
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC7540Facet.InsufficientAvailableTokens.selector,
+                withdrawShares - pendingShares, // available (total - pending, calculated before call)
+                withdrawShares // requested (returned from vault.withdraw)
+            )
+        );
+        facet.erc7540Withdraw(address(vault), withdrawAssets);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that erc7540Redeem reverts when trying to use pending shares
+     */
+    function test_erc7540Redeem_reverts_when_pendingShares_exceed_available() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 redeemShares = 50e18;
+        uint256 pendingShares = 30e18;
+        
+        // Set pending shares directly (simulating cross-chain request)
+        MoreVaultsStorageHelper.setPendingTokens(address(facet), address(vault), pendingShares);
+        
+        // Add shares to vault (total = pending + available)
+        vault.mintShares(address(facet), redeemShares);
+        
+        // Verify pending shares are set
+        uint256 pending = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(vault));
+        assertEq(pending, pendingShares, "Pending shares should be set");
+        
+        // Available shares = total - pending = redeemShares - pendingShares = 20e18
+        // Try to redeem more than available - should revert
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IERC7540Facet.InsufficientAvailableTokens.selector,
+                redeemShares - pendingShares, // available (total - pending)
+                redeemShares // requested
+            )
+        );
+        facet.erc7540Redeem(address(vault), redeemShares);
         vm.stopPrank();
     }
 }

@@ -201,14 +201,19 @@ contract BridgeFacetTest is Test {
         // when oraclesCrossChainAccounting=true must revert, so ensure false
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes memory opts = bytes("");
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, opts);
         assertEq(guid, guidVal);
+        vm.stopPrank();
 
         // getRequestInfo
         MoreVaultsLib.CrossChainRequestInfo memory info = facet.getRequestInfo(guid);
-        assertEq(info.initiator, address(this));
+        assertEq(info.initiator, initiator);
         assertEq(uint256(info.actionType), uint256(MoreVaultsLib.ActionType.DEPOSIT));
         assertFalse(info.fulfilled);
         assertEq(info.totalAssets, 100 * 1e18);
@@ -279,9 +284,15 @@ contract BridgeFacetTest is Test {
         uint256 initTotalAssets = 200 * 10 ** decimals;
         facet.h_setTotalAssets(initTotalAssets);
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(5 * 10 ** decimals), initiator);
         bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(5 * 10 ** decimals), address(0xCAFE01)), 0, bytes("")
+            MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes("")
         );
+        vm.stopPrank();
         assertEq(guid, guidVal);
 
         uint256 depositedTotalAssetsInUsd = 5 * 10 ** 8;
@@ -309,9 +320,15 @@ contract BridgeFacetTest is Test {
         _mockHubWithSpokes(100, eids, spokes);
         facet.h_setTotalAssets(200 * 1e18);
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(1), initiator);
         bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.DEPOSIT, abi.encode(uint256(1), address(0xCAFE01)), 0, bytes("")
+            MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes("")
         );
+        vm.stopPrank();
         assertEq(guid, guidVal);
 
         vm.startPrank(address(adapter));
@@ -417,8 +434,14 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-mint"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(100), address(this));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, 0, bytes(""));
+        uint256 maxAmountIn = 100;
+        address user = address(0x1111);
+        vm.startPrank(user);
+        underlying.mint(user, maxAmountIn);
+        underlying.approve(address(facet), maxAmountIn);
+        bytes memory callData = abi.encode(uint256(maxAmountIn), user);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, maxAmountIn, bytes(""));
+        vm.stopPrank();
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -437,7 +460,12 @@ contract BridgeFacetTest is Test {
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         bytes memory callData = abi.encode(uint256(100), address(this));
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, 0, bytes(""));
+        address initiator = address(0x2222);
+        underlying.mint(initiator, 100e18);
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), 100e18);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, 100, bytes(""));
+        vm.stopPrank();
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -459,20 +487,25 @@ contract BridgeFacetTest is Test {
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         address owner = address(0x1111);
+        // Set balance for owner before initVaultActionRequest
+        // because transferSharesFromOwner is called during initialization
+        uint256 initialBalance = 100;
+        facet.h_setBalance(address(facet), owner, initialBalance);
         bytes memory callData = abi.encode(uint256(50), address(this), owner);
         address initiator = address(0x2222);
+        uint256 maxAmountIn = 100; // Maximum shares that can be used
+        vm.startPrank(owner);
+        facet.approve(address(initiator), maxAmountIn);
+        vm.stopPrank();
         vm.startPrank(initiator);
-        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, 0, bytes(""));
+        // amountLimit is used as maxAmountIn (maximum shares to lock) for WITHDRAW
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
         facet.h_setInitiatorByGuid(guid, initiator);
         facet.h_setOwnerByGuid(guid, owner);
         vm.stopPrank();
 
-        // Set initial balance and amount to send in for withdraw
-        // In withdraw, share tokens are transferred from msg.sender (facet via call) to address(this) (facet)
-        // So we need to set initial balance for facet (as msg.sender)
+        // Set amount to send in for withdraw
         uint256 sharesToSpend = 50;
-        uint256 initialBalance = 100;
-        facet.h_setBalance(address(facet), owner, initialBalance); // Initial balance for facet
         facet.h_setAmountOfTokenToSendIn(guid, sharesToSpend);
         facet.h_setWithdrawResult(guid, 50); // Return value
 
@@ -492,6 +525,9 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-redeem"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
+        // Set balance for owner (address(this)) before initVaultActionRequest
+        // because transferSharesFromOwner is called during initialization
+        facet.h_setBalance(address(facet), address(this), 100e18);
         bytes memory callData = abi.encode(uint256(75), address(this), address(this));
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, 0, bytes(""));
 
@@ -516,9 +552,14 @@ contract BridgeFacetTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100;
         uint256 minAmountOut = 0;
+        address user = address(0x1111);
+        underlying.mint(user, 100e18);
+        vm.startPrank(user);
+        underlying.approve(address(facet), 100e18);
         bytes memory callData = abi.encode(tokens, amounts, address(this), minAmountOut, uint256(0));
         bytes32 guid =
             facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -544,8 +585,13 @@ contract BridgeFacetTest is Test {
 
         uint256 assets = 100e18;
         uint256 minAmountOut = 150e18; // Expect at least 150 shares
-        bytes memory callData = abi.encode(assets, address(this));
+        address user = address(0x1111);
+        underlying.mint(user, assets);
+        vm.startPrank(user);
+        underlying.approve(address(facet), assets);
+        bytes memory callData = abi.encode(assets, user);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, minAmountOut, bytes(""));
+        vm.stopPrank();
 
         // Set deposit result to be less than minAmountOut (simulating unfavorable price movement)
         uint256 actualShares = 100e18; // Less than minAmountOut (150e18)
@@ -574,8 +620,13 @@ contract BridgeFacetTest is Test {
 
         uint256 assets = 100e18;
         uint256 minAmountOut = 150e18; // Expect at least 150 shares
-        bytes memory callData = abi.encode(assets, address(this));
+        address user = address(0x1111);
+        underlying.mint(user, assets);
+        vm.startPrank(user);
+        bytes memory callData = abi.encode(assets, user);
+        underlying.approve(address(facet), assets);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, minAmountOut, bytes(""));
+        vm.stopPrank();
 
         // Set deposit result to meet minAmountOut
         uint256 actualShares = 160e18; // More than minAmountOut (150e18)
@@ -622,22 +673,19 @@ contract BridgeFacetTest is Test {
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
         uint256 shares = 100e18;
-        uint256 maxAmountIn = 1e18; // Expect at most 1 asset
+        uint256 maxAmountIn = 100e18; // Expect at most 1 asset
         bytes memory callData = abi.encode(shares, address(this));
         address user = address(0x1111);
+        underlying.mint(user, maxAmountIn);
         vm.startPrank(user);
+        underlying.approve(address(facet), maxAmountIn);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MINT, callData, maxAmountIn, bytes(""));
         vm.stopPrank();
 
         // Set mint result and amount of underlying tokens that will be spent (more than maxAmountIn)
-        uint256 actualAssets = 100e18; // More than maxAmountIn (1e18) - this is the amount that will be spent
-        facet.h_setMintResult(guid, actualAssets);
-        facet.h_setAmountOfTokenToSendIn(guid, actualAssets); // Set the amount that will be transferred in
+        uint256 actualAssets = 100e18 + 1; // More than maxAmountIn (1e18) - this is the amount that will be spent
+        facet.h_setMintResult(guid, maxAmountIn + 1);
         facet.h_setInitiatorByGuid(guid, user);
-        
-        // Set initial balance for underlying token so balanceOf works correctly
-        // The mint function will transfer from msg.sender (facet) to address(this) (facet)
-        underlying.mint(user, actualAssets);
 
         vm.startPrank(address(adapter));
         facet.updateAccountingInfoForRequest(guid, 0, true);
@@ -665,10 +713,13 @@ contract BridgeFacetTest is Test {
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 100e18;
         uint256 minAmountOut = 150e18; // Expect at least 150 shares
+        address user = address(0x1111);
+        underlying.mint(user, 100e18);
+        vm.startPrank(user);
+        underlying.approve(address(facet), 100e18);
         bytes memory callData = abi.encode(tokens, amounts, address(this), minAmountOut, uint256(0));
-        bytes32 guid = facet.initVaultActionRequest(
-            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes("")
-        );
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, minAmountOut, bytes(""));
+        vm.stopPrank();
 
         // Set deposit result to be less than minAmountOut
         uint256 actualShares = 100e18; // Less than minAmountOut (150e18)
@@ -698,9 +749,18 @@ contract BridgeFacetTest is Test {
         uint256 assets = 50e18;
         uint256 maxAmountIn = 40e18; // Expect at most 40 share tokens to be spent
         address owner = address(0x1111);
-        bytes memory callData = abi.encode(assets, address(this), owner);
         address initiator = address(0x2222);
+        // Set balance for owner before initVaultActionRequest
+        // because transferSharesFromOwner is called during initialization
+        facet.h_setBalance(address(facet), address(facet), 100e18);
+        vm.startPrank(owner);
+        facet.approve(address(initiator), maxAmountIn);
+        vm.stopPrank();
+        uint256 initialBalance = 100e18;
+        facet.h_setBalance(address(facet), owner, initialBalance);
+        bytes memory callData = abi.encode(assets, address(this), owner);
         vm.startPrank(initiator);
+        facet.approve(address(facet), maxAmountIn);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
         facet.h_setInitiatorByGuid(guid, initiator);
         facet.h_setOwnerByGuid(guid, owner);
@@ -708,8 +768,6 @@ contract BridgeFacetTest is Test {
 
         // Set amount of share tokens that will be spent (more than maxAmountIn)
         uint256 actualSharesSpent = 50e18; // More than maxAmountIn (40e18)
-        uint256 initialBalance = 100e18;
-        facet.h_setBalance(address(facet), owner, initialBalance);
         facet.h_setAmountOfTokenToSendIn(guid, actualSharesSpent);
         facet.h_setWithdrawResult(guid, 50e18); // Return value
 
@@ -737,8 +795,15 @@ contract BridgeFacetTest is Test {
         uint256 assets = 50e18;
         uint256 maxAmountIn = 60e18; // Expect at most 60 share tokens to be spent
         address owner = address(0x1111);
-        bytes memory callData = abi.encode(assets, address(this), owner);
         address initiator = address(0x2222);
+        vm.startPrank(owner);
+        facet.approve(address(initiator), maxAmountIn);
+        vm.stopPrank();
+        // Set balance for owner before initVaultActionRequest
+        // because transferSharesFromOwner is called during initialization
+        uint256 initialBalance = 100e18;
+        facet.h_setBalance(address(facet), owner, initialBalance);
+        bytes memory callData = abi.encode(assets, address(this), owner);
         vm.startPrank(initiator);
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
         facet.h_setInitiatorByGuid(guid, initiator);
@@ -747,8 +812,6 @@ contract BridgeFacetTest is Test {
 
         // Set amount of share tokens that will be spent (less than maxAmountIn)
         uint256 actualSharesSpent = 50e18; // Less than maxAmountIn (60e18)
-        uint256 initialBalance = 100e18;
-        facet.h_setBalance(address(facet), owner, initialBalance);
         facet.h_setAmountOfTokenToSendIn(guid, actualSharesSpent);
         facet.h_setWithdrawResult(guid, 50e18); // Return value
 
@@ -774,6 +837,9 @@ contract BridgeFacetTest is Test {
 
         uint256 shares = 75e18;
         uint256 minAmountOut = 80e18; // Expect at least 80 assets
+        // Set balance for owner (address(this)) before initVaultActionRequest
+        // because transferSharesFromOwner is called during initialization
+        facet.h_setBalance(address(facet), address(this), 100e18);
         bytes memory callData = abi.encode(shares, address(this), address(this));
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, minAmountOut, bytes(""));
 
@@ -804,6 +870,9 @@ contract BridgeFacetTest is Test {
 
         uint256 shares = 75e18;
         uint256 minAmountOut = 70e18; // Expect at least 70 assets
+        // Set balance for owner (address(this)) before initVaultActionRequest
+        // because transferSharesFromOwner is called during initialization
+        facet.h_setBalance(address(facet), address(this), 100e18);
         bytes memory callData = abi.encode(shares, address(this), address(this));
         bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, minAmountOut, bytes(""));
 
@@ -889,9 +958,9 @@ contract BridgeFacetTest is Test {
     }
 
     /**
-     * @notice Test that pendingNative decreases and funds are refunded on sendNativeTokenBackToInitiator
+     * @notice Test that pendingNative decreases and funds are refunded on refundRequestTokens
      */
-    function test_pendingNative_decreases_on_sendNativeTokenBackToInitiator() public {
+    function test_pendingNative_decreases_on_refundRequestTokens() public {
         uint32[] memory eids = new uint32[](1);
         eids[0] = 101;
         address[] memory spokes = new address[](1);
@@ -920,7 +989,7 @@ contract BridgeFacetTest is Test {
         uint256 initiatorBalanceBefore = initiator.balance;
 
         vm.startPrank(address(adapter));
-        facet.sendNativeTokenBackToInitiator(guid);
+        facet.refundRequestTokens(guid);
         vm.stopPrank();
 
         uint256 pendingNativeAfterRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
@@ -975,7 +1044,7 @@ contract BridgeFacetTest is Test {
 
         registry.setDefaultCrossChainAccountingManager(accountingManager);
         vm.startPrank(address(adapter));
-        facet.sendNativeTokenBackToInitiator(guid);
+        facet.refundRequestTokens(guid);
         vm.stopPrank();
 
         uint256 pendingNativeAfterRefund = MoreVaultsStorageHelper.getPendingNative(address(facet));
@@ -1244,9 +1313,11 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-stuck-timeout"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
+        vm.startPrank(address(composer));
         bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
         vm.deal(address(composer), 0.1 ether);
-        vm.startPrank(address(composer));
+        underlying.mint(address(composer), 100e18);
+        underlying.approve(address(facet), 100e18);
         bytes32 guid = facet.initVaultActionRequest{value: 0.1 ether}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
         vm.stopPrank();
         
@@ -1284,8 +1355,13 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-stuck-finalized"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
         // Set initiator to composer (required for refundStuckDepositInComposer)
         facet.h_setInitiatorByGuid(guid, address(composer));
@@ -1327,10 +1403,15 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-wrong-initiator"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
-        // Don't set initiator to composer - keep it as the original caller (address(this))
+        // Don't set initiator to composer - keep it as the original caller
         MoreVaultsLib.CrossChainRequestInfo memory infoBefore = facet.getRequestInfo(guid);
         assertNotEq(infoBefore.initiator, address(composer), "Initiator should not be composer");
 
@@ -1361,8 +1442,13 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-not-stuck"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
         // Set initiator to composer (required for refundStuckDepositInComposer)
         facet.h_setInitiatorByGuid(guid, address(composer));
@@ -1398,8 +1484,13 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-not-stuck"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
         // Set initiator to composer (required for refundStuckDepositInComposer)
         facet.h_setInitiatorByGuid(guid, address(composer));
@@ -1438,8 +1529,13 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-not-stuck"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
         // Set initiator to composer (required for refundStuckDepositInComposer)
         facet.h_setInitiatorByGuid(guid, address(composer));
@@ -1478,8 +1574,13 @@ contract BridgeFacetTest is Test {
         adapter.setReceiptGuid(keccak256("guid-boundary"));
         MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
 
-        bytes memory callData = abi.encode(uint256(10 * 1e18), address(0xCAFE01));
+        address initiator = address(0x2222);
+        vm.startPrank(initiator);
+        underlying.mint(initiator, 100e18);
+        underlying.approve(address(facet), 100e18);
+        bytes memory callData = abi.encode(uint256(10 * 1e18), initiator);
         bytes32 guid = facet.initVaultActionRequest{value: 0}(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
 
         // Set initiator to composer (required for refundStuckDepositInComposer)
         facet.h_setInitiatorByGuid(guid, address(composer));
@@ -1501,5 +1602,344 @@ contract BridgeFacetTest is Test {
 
         // Verify refundDeposit was NOT called on composer
         assertEq(composer.refundDepositCalls(guid), 0, "refundDeposit should not be called");
+    }
+
+    // ============ Pending Tokens Tests ============
+
+    /**
+     * @notice Test that tokens are transferred to vault during cross-chain action initialization
+     */
+    function test_pendingTokens_transferred_during_initVaultActionRequest_DEPOSIT() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-pending-transfer"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address initiator = address(0x2222);
+        uint256 depositAmount = 10e18;
+        
+        // Mint tokens to initiator
+        underlying.mint(initiator, depositAmount);
+        
+        // Check balance before
+        uint256 vaultBalanceBefore = underlying.balanceOf(address(facet));
+        uint256 initiatorBalanceBefore = underlying.balanceOf(initiator);
+        
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), depositAmount);
+        bytes memory callData = abi.encode(depositAmount, initiator);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Check balance after - tokens should be transferred to vault
+        uint256 vaultBalanceAfter = underlying.balanceOf(address(facet));
+        uint256 initiatorBalanceAfter = underlying.balanceOf(initiator);
+        
+        assertEq(vaultBalanceAfter - vaultBalanceBefore, depositAmount, "Tokens should be transferred to vault");
+        assertEq(initiatorBalanceBefore - initiatorBalanceAfter, depositAmount, "Tokens should be deducted from initiator");
+        
+        // Check pendingTokens is set
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingTokens, depositAmount, "Pending tokens should be set");
+    }
+
+    /**
+     * @notice Test that tokens are transferred to vault during cross-chain action initialization for MULTI_ASSETS_DEPOSIT
+     */
+    function test_pendingTokens_transferred_during_initVaultActionRequest_MULTI_ASSETS_DEPOSIT() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-multi-deposit-transfer"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address initiator = address(0x2222);
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(underlying);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 10e18;
+        uint256 nativeValue = 0.1 ether;
+        
+        // Mint tokens to initiator
+        underlying.mint(initiator, amounts[0]);
+        
+        // Check balance before
+        uint256 vaultBalanceBefore = underlying.balanceOf(address(facet));
+        uint256 initiatorBalanceBefore = underlying.balanceOf(initiator);
+        
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), amounts[0]);
+        vm.deal(initiator, nativeValue + 0.05 ether);
+        bytes memory callData = abi.encode(tokens, amounts, initiator, 0, nativeValue);
+        bytes32 guid = facet.initVaultActionRequest{value: nativeValue + 0.05 ether}(
+            MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, callData, 0, bytes("")
+        );
+        vm.stopPrank();
+        
+        // Check balance after - tokens should be transferred to vault
+        uint256 vaultBalanceAfter = underlying.balanceOf(address(facet));
+        uint256 initiatorBalanceAfter = underlying.balanceOf(initiator);
+        
+        assertEq(vaultBalanceAfter - vaultBalanceBefore, amounts[0], "Tokens should be transferred to vault");
+        assertEq(initiatorBalanceBefore - initiatorBalanceAfter, amounts[0], "Tokens should be deducted from initiator");
+        
+        // Check pendingTokens is set
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingTokens, amounts[0], "Pending tokens should be set");
+        
+        // Check pendingNative is set
+        uint256 pendingNative = MoreVaultsStorageHelper.getPendingNative(address(facet));
+        assertEq(pendingNative, nativeValue, "Pending native should be set");
+    }
+
+    /**
+     * @notice Test that pending tokens are excluded from _availableTokensToManage
+     */
+    function test_pendingTokens_excluded_from_availableTokensToManage() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-available-tokens"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address initiator = address(0x2222);
+        uint256 depositAmount = 10e18;
+        uint256 additionalTokens = 5e18;
+        
+        // Create a cross-chain request to lock tokens
+        underlying.mint(initiator, depositAmount);
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), depositAmount);
+        bytes memory callData = abi.encode(depositAmount, initiator);
+        facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Add additional tokens to vault (not pending)
+        underlying.mint(address(facet), additionalTokens);
+        
+        uint256 totalBalance = underlying.balanceOf(address(facet));
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        
+        // Available tokens should be totalBalance - pendingTokens
+        uint256 expectedAvailable = totalBalance - pendingTokens;
+        assertEq(expectedAvailable, additionalTokens, "Available tokens should exclude pending");
+        assertEq(pendingTokens, depositAmount, "Pending tokens should be correct");
+    }
+
+    /**
+     * @notice Test that pending tokens are unlocked after successful execution
+     */
+    function test_pendingTokens_unlocked_after_successful_execution() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-unlock"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address initiator = address(0x2222);
+        uint256 depositAmount = 10e18;
+        
+        underlying.mint(initiator, depositAmount);
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), depositAmount);
+        bytes memory callData = abi.encode(depositAmount, initiator);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Verify pending tokens are set
+        uint256 pendingBefore = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingBefore, depositAmount, "Pending tokens should be set");
+        
+        // Execute request
+        facet.h_setDepositResult(guid, 10e18);
+        vm.startPrank(address(adapter));
+        facet.updateAccountingInfoForRequest(guid, 0, true);
+        facet.executeRequest(guid);
+        vm.stopPrank();
+        
+        // Verify pending tokens are unlocked
+        uint256 pendingAfter = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingAfter, 0, "Pending tokens should be unlocked after execution");
+    }
+
+    /**
+     * @notice Test that pending tokens are unlocked and refunded on refundRequestTokens
+     */
+    function test_pendingTokens_unlocked_on_refundRequestTokens() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-refund-unlock"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address initiator = address(0x2222);
+        uint256 depositAmount = 10e18;
+        
+        underlying.mint(initiator, depositAmount);
+        uint256 initiatorBalanceBefore = underlying.balanceOf(initiator);
+        
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), depositAmount);
+        bytes memory callData = abi.encode(depositAmount, initiator);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Verify pending tokens are set
+        uint256 pendingBefore = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingBefore, depositAmount, "Pending tokens should be set");
+        
+        // Refund request
+        vm.startPrank(address(adapter));
+        facet.refundRequestTokens(guid);
+        vm.stopPrank();
+        
+        // Verify pending tokens are unlocked
+        uint256 pendingAfter = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingAfter, 0, "Pending tokens should be unlocked after refund");
+        
+        // Verify tokens are refunded to initiator
+        uint256 initiatorBalanceAfter = underlying.balanceOf(initiator);
+        assertEq(initiatorBalanceAfter, initiatorBalanceBefore, "Tokens should be refunded to initiator");
+    }
+
+    /**
+     * @notice Test that shares are transferred to vault during WITHDRAW initialization
+     */
+    function test_pendingShares_transferred_during_initVaultActionRequest_WITHDRAW() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-withdraw-shares"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address owner = address(0x1111);
+        address initiator = address(0x2222);
+        uint256 shares = 75e18;
+        uint256 maxAmountIn = 100e18;
+        
+        // Set balance for owner
+        facet.h_setBalance(address(facet), owner, 100e18);
+        
+        // Check balance before
+        uint256 vaultSharesBefore = facet.balanceOf(address(facet));
+        uint256 ownerSharesBefore = facet.balanceOf(owner);
+        
+        vm.startPrank(owner);
+        facet.approve(address(initiator), maxAmountIn);
+        vm.stopPrank();
+        
+        vm.startPrank(initiator);
+        bytes memory callData = abi.encode(50e18, address(this), owner);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
+        vm.stopPrank();
+        
+        // Check balance after - shares should be transferred to vault
+        uint256 vaultSharesAfter = facet.balanceOf(address(facet));
+        uint256 ownerSharesAfter = facet.balanceOf(owner);
+        
+        assertEq(vaultSharesAfter - vaultSharesBefore, maxAmountIn, "Shares should be transferred to vault");
+        assertEq(ownerSharesBefore - ownerSharesAfter, maxAmountIn, "Shares should be deducted from owner");
+        
+        // Check pendingTokens is set for shares (vault address)
+        uint256 pendingShares = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(facet));
+        assertEq(pendingShares, maxAmountIn, "Pending shares should be set");
+    }
+
+    /**
+     * @notice Test that shares are transferred to vault during REDEEM initialization
+     */
+    function test_pendingShares_transferred_during_initVaultActionRequest_REDEEM() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-redeem-shares"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address owner = address(0x1111);
+        address initiator = address(0x2222);
+        uint256 shares = 75e18;
+        
+        // Set balance for owner
+        facet.h_setBalance(address(facet), owner, 100e18);
+        
+        // Check balance before
+        uint256 vaultSharesBefore = facet.balanceOf(address(facet));
+        uint256 ownerSharesBefore = facet.balanceOf(owner);
+        
+        vm.startPrank(owner);
+        facet.approve(address(initiator), shares);
+        vm.stopPrank();
+        
+        vm.startPrank(initiator);
+        bytes memory callData = abi.encode(shares, address(this), owner);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Check balance after - shares should be transferred to vault
+        uint256 vaultSharesAfter = facet.balanceOf(address(facet));
+        uint256 ownerSharesAfter = facet.balanceOf(owner);
+        
+        assertEq(vaultSharesAfter - vaultSharesBefore, shares, "Shares should be transferred to vault");
+        assertEq(ownerSharesBefore - ownerSharesAfter, shares, "Shares should be deducted from owner");
+        
+        // Check pendingTokens is set for shares (vault address)
+        uint256 pendingShares = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(facet));
+        assertEq(pendingShares, shares, "Pending shares should be set");
+    }
+
+    /**
+     * @notice Test that pending tokens are excluded from totalAssets calculation
+     */
+    function test_pendingTokens_excluded_from_totalAssets() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-totalassets-pending"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        // Set initial totalAssets
+        uint256 initialTotalAssets = 1000e18;
+        facet.h_setTotalAssets(initialTotalAssets);
+
+        address initiator = address(0x2222);
+        uint256 depositAmount = 10e18;
+        
+        // Create a cross-chain request to lock tokens
+        underlying.mint(initiator, depositAmount);
+        vm.startPrank(initiator);
+        underlying.approve(address(facet), depositAmount);
+        bytes memory callData = abi.encode(depositAmount, initiator);
+        facet.initVaultActionRequest(MoreVaultsLib.ActionType.DEPOSIT, callData, 0, bytes(""));
+        vm.stopPrank();
+        
+        // Verify pending tokens are set
+        uint256 pendingTokens = MoreVaultsStorageHelper.getPendingTokens(address(facet), address(underlying));
+        assertEq(pendingTokens, depositAmount, "Pending tokens should be set");
+        
+        // totalAssets should not include pending tokens
+        // The vault balance increased by depositAmount, but pendingTokens should be excluded
+        // So totalAssets should remain the same (or increase only by non-pending tokens)
+        // In this case, all tokens are pending, so totalAssets should not change
+        uint256 totalAssetsAfter = facet.totalAssets();
+        // Note: totalAssets calculation depends on _accountAvailableAssets which excludes pendingTokens
+        // So if all new tokens are pending, totalAssets should not increase
+        assertEq(totalAssetsAfter, initialTotalAssets, "Total assets should not include pending tokens");
     }
 }

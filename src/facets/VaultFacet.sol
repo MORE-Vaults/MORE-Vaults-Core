@@ -180,7 +180,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             }
             
             // Subtract cross-chain locked tokens from accounting
-            uint256 crossChainLocked = ds.crossChainLockedTokens[asset];
+            uint256 crossChainLocked = ds.pendingTokens[asset];
             if (toConvert > crossChainLocked) {
                 toConvert -= crossChainLocked;
             } else {
@@ -274,10 +274,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         // get free mem ptr for efficient calls
-        uint256 freePtr;
-        assembly {
-            freePtr := 0x60
-        }
+        uint256 freePtr = _getFreeMemoryPointer();
         // account available assets
         (_totalAssets,) = _accountAvailableAssets(
             ds.availableAssets, ds.lockedTokens, ds.wrappedNative, ds.isNativeDeposit, freePtr, true
@@ -291,10 +288,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         _beforeAccounting(ds.beforeAccountingFacets);
         // get free mem ptr for efficient calls
-        uint256 freePtr;
-        assembly {
-            freePtr := 0x60
-        }
+        uint256 freePtr = _getFreeMemoryPointer();
         // account available assets
         (_totalAssets, success) = _accountAvailableAssets(
             ds.availableAssets, ds.lockedTokens, ds.wrappedNative, ds.isNativeDeposit, freePtr, false
@@ -371,9 +365,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function clearRequest() public {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
+        _requireIsHub(ds);
 
         MoreVaultsLib.WithdrawRequest storage request = ds.withdrawalRequests[msg.sender];
 
@@ -391,9 +383,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
+        _requireIsHub(ds);
         if (!ds.isWithdrawalQueueEnabled) {
             revert WithdrawalQueueDisabled();
         }
@@ -431,11 +421,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert InvalidAssetsAmount();
         }
 
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
-        IVaultsFactory factory = IVaultsFactory(ds.factory);
-        if (factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting) {
+        _requireIsHub(ds);
+        if (_isCrossChainWithoutOracle(ds)) {
             revert RequestWithdrawDisabled();
         }
         _beforeAccounting(ds.beforeAccountingFacets);
@@ -488,11 +475,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _deposit(msgSender, receiver, assets, shares);
 
         // Update user's HWMpS after deposit (using new total assets after deposit)
-        uint256 totalAssetsAfterDeposit;
-        unchecked {
-            totalAssetsAfterDeposit = newTotalAssets + assets;
-        }
-        _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
+        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, assets), receiver);
     }
 
     /**
@@ -517,11 +500,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _deposit(msgSender, receiver, assets, shares);
 
         // Update user's HWMpS after mint (using new total assets after deposit)
-        uint256 totalAssetsAfterDeposit;
-        unchecked {
-            totalAssetsAfterDeposit = newTotalAssets + assets;
-        }
-        _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
+        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, assets), receiver);
     }
 
     /**
@@ -558,11 +537,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
 
         // Update user's HWMpS after withdrawal (using calculated total assets after withdrawal)
-        uint256 totalAssetsAfterWithdrawal;
-        unchecked {
-            totalAssetsAfterWithdrawal = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
-        }
-        _updateUserHWMpS(totalAssetsAfterWithdrawal, owner);
+        _updateUserHWMpS(_calculateTotalAssetsAfterWithdrawal(newTotalAssets, netAssets), owner);
     }
 
     /**
@@ -652,11 +627,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // Update user's HWMpS after deposit
-        uint256 totalAssetsAfterDeposit;
-        unchecked {
-            totalAssetsAfterDeposit = newTotalAssets + totalConvertedAmount;
-        }
-        _updateUserHWMpS(totalAssetsAfterDeposit, receiver);
+        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, totalConvertedAmount), receiver);
     }
 
     /**
@@ -713,9 +684,15 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @param shares The shares to mint
      */
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
-        super._deposit(caller, receiver, assets, shares);
-
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        
+        // Check if this is a cross-chain vault deposit where tokens are already in vault
+        if (_isERC4626Compatible(ds)) { // If ERC4626 compatible, transfer tokens from caller to vault
+            SafeERC20.safeTransferFrom(IERC20(asset()), caller, address(this), assets); 
+        }
+        _mint(receiver, shares);
+
+        emit Deposit(caller, receiver, assets, shares);
         _changeDepositCap(ds, caller, assets, true);
     }
 
@@ -736,15 +713,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 shares,
         uint256 totalConvertedAmount
     ) internal {
-        for (uint256 i; i < assets.length;) {
-            SafeERC20.safeTransferFrom(IERC20(tokens[i]), caller, address(this), assets[i]);
-            unchecked {
-                ++i;
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_isERC4626Compatible(ds)) { // If ERC4626 compatible, transfer tokens from caller to vault
+            for (uint256 i; i < assets.length;) {
+                SafeERC20.safeTransferFrom(IERC20(tokens[i]), caller, address(this), assets[i]);
+                unchecked {
+                    ++i;
+                }
             }
         }
         _mint(receiver, shares);
-
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         _changeDepositCap(ds, caller, totalConvertedAmount, true);
 
         emit Deposit(caller, receiver, tokens, assets, shares);
@@ -1027,12 +1005,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         internal
         returns (uint256 totalAssets_, address msgSender_)
     {
-        if (!ds.isHub) {
-            revert NotAHub();
-        }
-        IVaultsFactory factory = IVaultsFactory(ds.factory);
-        bool isCrossChain = factory.isCrossChainVault(factory.localEid(), address(this));
-        if (isCrossChain && !ds.oraclesCrossChainAccounting) {
+        _requireIsHub(ds);
+        if (_isCrossChainWithoutOracle(ds)) {
             bytes32 guid = ds.finalizationGuid;
             if (guid == 0) {
                 revert SyncActionsDisabledInThisVault();
@@ -1086,6 +1060,39 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         emit WithdrawRequestFulfilled(owner, receiver, shares, netAssets);
     }
 
+    /**
+     * @notice Withdraw assets from the vault
+     * @dev Override to skip transfer for cross-chain vaults without oracle accounting
+     * @param caller The address of the caller
+     * @param receiver The address of the receiver
+     * @param owner The address of the owner
+     * @param assets The assets to withdraw
+     * @param shares The shares to burn
+     */
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    ) internal virtual override {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        
+        // Check if this is a cross-chain vault withdrawal where assets should not be transferred
+        bool isERC4626Compatible = _isERC4626Compatible(ds);
+        
+        if (caller != owner) {
+            _spendAllowance(owner, caller, shares);
+        }
+        
+        address burnFrom = isERC4626Compatible ? owner : address(this);
+        _burn(burnFrom, shares);
+        SafeERC20.safeTransfer(IERC20(asset()), receiver, assets);
+        // For cross-chain vaults without oracle accounting, assets are handled by BridgeFacet
+        
+        emit Withdraw(caller, receiver, owner, assets, shares);
+    }
+
     function _maxDepositInAssets(address user) internal view returns (uint256) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         _validateERC4626Compatible(ds);
@@ -1112,9 +1119,89 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         return maxToDeposit;
     }
 
+    /**
+     * @notice Require that vault is a hub
+     * @param ds Storage structure
+     */
+    function _requireIsHub(MoreVaultsLib.MoreVaultsStorage storage ds) internal view {
+        if (!ds.isHub) {
+            revert NotAHub();
+        }
+    }
+
+    /**
+     * @notice Get free memory pointer for efficient calls
+     * @return freePtr Free memory pointer (0x60)
+     */
+    function _getFreeMemoryPointer() internal pure returns (uint256 freePtr) {
+        assembly {
+            freePtr := 0x60
+        }
+    }
+
+    /**
+     * @notice Get the factory contract instance
+     * @param ds Storage structure
+     * @return factory The factory contract instance
+     */
+    function _getFactory(MoreVaultsLib.MoreVaultsStorage storage ds) internal view returns (IVaultsFactory factory) {
+        return IVaultsFactory(ds.factory);
+    }
+
+    /**
+     * @notice Check if vault is ERC4626 compatible (not cross-chain or has oracle accounting)
+     * @param ds Storage structure
+     * @return isCompatible True if vault is ERC4626 compatible
+     */
+    function _isERC4626Compatible(MoreVaultsLib.MoreVaultsStorage storage ds) internal view returns (bool isCompatible) {
+        IVaultsFactory factory = _getFactory(ds);
+        return !factory.isCrossChainVault(factory.localEid(), address(this)) || ds.oraclesCrossChainAccounting;
+    }
+
+    /**
+     * @notice Check if vault is cross-chain without oracle accounting
+     * @param ds Storage structure
+     * @return isCrossChain True if vault is cross-chain without oracle accounting
+     */
+    function _isCrossChainWithoutOracle(MoreVaultsLib.MoreVaultsStorage storage ds) internal view returns (bool isCrossChain) {
+        IVaultsFactory factory = _getFactory(ds);
+        return factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting;
+    }
+
+    /**
+     * @notice Calculate total assets after deposit
+     * @param newTotalAssets Current total assets before deposit
+     * @param depositAmount Amount being deposited
+     * @return totalAssetsAfterDeposit Total assets after deposit
+     */
+    function _calculateTotalAssetsAfterDeposit(uint256 newTotalAssets, uint256 depositAmount)
+        internal
+        pure
+        returns (uint256 totalAssetsAfterDeposit)
+    {
+        unchecked {
+            return newTotalAssets + depositAmount;
+        }
+    }
+
+    /**
+     * @notice Calculate total assets after withdrawal
+     * @param newTotalAssets Current total assets before withdrawal
+     * @param netAssets Net assets being withdrawn (after fees)
+     * @return totalAssetsAfterWithdrawal Total assets after withdrawal
+     */
+    function _calculateTotalAssetsAfterWithdrawal(uint256 newTotalAssets, uint256 netAssets)
+        internal
+        pure
+        returns (uint256 totalAssetsAfterWithdrawal)
+    {
+        unchecked {
+            return newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
+        }
+    }
+
     function _validateERC4626Compatible(MoreVaultsLib.MoreVaultsStorage storage ds) internal view {
-        IVaultsFactory factory = IVaultsFactory(ds.factory);
-        if (factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting) {
+        if (_isCrossChainWithoutOracle(ds)) {
             revert NotAnERC4626CompatibleVault();
         }
     }

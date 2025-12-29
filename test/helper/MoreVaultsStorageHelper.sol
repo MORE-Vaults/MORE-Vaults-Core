@@ -61,6 +61,7 @@ library MoreVaultsStorageHelper {
     uint256 constant MAX_WITHDRAWAL_DELAY = 40;
     uint256 constant LOCKED_TOKENS_PER_CONTRACT = 41;
     uint256 constant INITIAL_DEPOSIT_CAP_PER_USER = 42;
+    uint256 constant PENDING_TOKENS = 43;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -843,5 +844,14 @@ library MoreVaultsStorageHelper {
 
     function getInitialDepositCapPerUser(address contractAddress, address user) internal view returns (uint256) {
         return uint256(getMappingValue(contractAddress, INITIAL_DEPOSIT_CAP_PER_USER, bytes32(uint256(uint160(user)))));
+    }
+
+
+    function getPendingTokens(address contractAddress, address token) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, PENDING_TOKENS, bytes32(uint256(uint160(token)))));
+    }
+
+    function setPendingTokens(address contractAddress, address token, uint256 amount) internal {
+        setMappingValue(contractAddress, PENDING_TOKENS, bytes32(uint256(uint160(token))), bytes32(amount));
     }
 }
