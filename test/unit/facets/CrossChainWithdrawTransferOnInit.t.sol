@@ -154,6 +154,9 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
         assertEq(vault.balanceOf(address(vault)), sharesToWithdraw, "Vault should hold the shares");
 
         // Step 3: Simulate executeRequest calling withdraw
+        // Set finalizationGuid to simulate cross-chain execution context
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), bytes32(uint256(1)));
+
         uint256 receiverBalanceBefore = underlying.balanceOf(shareOwner);
 
         // This should succeed - vault burns its own locked shares
@@ -180,6 +183,9 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
         vault.transferSharesFromOwner(shareOwner, sharesToRedeem, initiator);
 
         assertEq(vault.balanceOf(address(vault)), sharesToRedeem);
+
+        // Set finalizationGuid to simulate cross-chain execution context
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), bytes32(uint256(1)));
 
         uint256 receiverBalanceBefore = underlying.balanceOf(shareOwner);
 
@@ -209,6 +215,9 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
         assertEq(vault.balanceOf(shareOwner), 0, "Owner should have 0 shares");
         assertEq(vault.balanceOf(address(vault)), sharesToWithdraw, "Vault should have all shares");
 
+        // Set finalizationGuid to simulate cross-chain execution context
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), bytes32(uint256(1)));
+
         // Should succeed by burning vault's shares
         vm.prank(address(vault));
         vault.withdraw(assetsToWithdraw, shareOwner, shareOwner);
@@ -231,6 +240,9 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
 
         vm.prank(address(vault));
         vault.transferSharesFromOwner(shareOwner, sharesToWithdraw, initiator);
+
+        // Set finalizationGuid to simulate cross-chain execution context
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), bytes32(uint256(1)));
 
         // Should succeed without vault allowance
         vm.prank(address(vault));
@@ -261,9 +273,50 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
         uint256 totalAssets = vault.totalAssets();
         assertTrue(totalAssets > 0, "totalAssets should be positive");
 
+        // Set finalizationGuid to simulate cross-chain execution context
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), bytes32(uint256(1)));
+
         // Should work correctly
         uint256 assetsToWithdraw = vault.previewRedeem(sharesToLock);
         vm.prank(address(vault));
         vault.withdraw(assetsToWithdraw, shareOwner, shareOwner);
+    }
+
+    /**
+     * @notice Test: Normal (non-cross-chain) withdraw should still work correctly
+     * Ensures the fix doesn't break regular withdrawals
+     */
+    function test_normalWithdraw_shouldStillWork() public {
+        uint256 ownerShares = vault.balanceOf(shareOwner);
+        uint256 sharesToWithdraw = ownerShares / 2;
+        uint256 assetsToWithdraw = vault.previewRedeem(sharesToWithdraw);
+
+        uint256 receiverBalanceBefore = underlying.balanceOf(shareOwner);
+
+        // Normal withdraw (NOT setting finalizationGuid)
+        vm.prank(shareOwner);
+        vault.withdraw(assetsToWithdraw, shareOwner, shareOwner);
+
+        uint256 receiverBalanceAfter = underlying.balanceOf(shareOwner);
+        assertGt(receiverBalanceAfter, receiverBalanceBefore, "Receiver should have received assets");
+        assertEq(vault.balanceOf(shareOwner), ownerShares - sharesToWithdraw, "Owner shares should decrease");
+    }
+
+    /**
+     * @notice Test: Normal (non-cross-chain) redeem should still work correctly
+     */
+    function test_normalRedeem_shouldStillWork() public {
+        uint256 ownerShares = vault.balanceOf(shareOwner);
+        uint256 sharesToRedeem = ownerShares / 2;
+
+        uint256 receiverBalanceBefore = underlying.balanceOf(shareOwner);
+
+        // Normal redeem (NOT setting finalizationGuid)
+        vm.prank(shareOwner);
+        vault.redeem(sharesToRedeem, shareOwner, shareOwner);
+
+        uint256 receiverBalanceAfter = underlying.balanceOf(shareOwner);
+        assertGt(receiverBalanceAfter, receiverBalanceBefore, "Receiver should have received assets");
+        assertEq(vault.balanceOf(shareOwner), ownerShares - sharesToRedeem, "Owner shares should decrease");
     }
 }

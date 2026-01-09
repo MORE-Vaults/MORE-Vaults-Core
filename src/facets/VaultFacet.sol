@@ -528,7 +528,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert CantProcessWithdrawRequest();
         }
 
-        uint256 maxRedeem_ = maxRedeem(owner);
+        // In cross-chain mode, shares are locked in vault, check vault's balance instead
+        uint256 maxRedeem_ = ds.finalizationGuid != 0 ? balanceOf(address(this)) : maxRedeem(owner);
         if (shares > maxRedeem_) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
@@ -561,7 +562,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert CantProcessWithdrawRequest();
         }
 
-        uint256 maxRedeem_ = maxRedeem(owner);
+        // In cross-chain mode, shares are locked in vault, check vault's balance instead
+        uint256 maxRedeem_ = ds.finalizationGuid != 0 ? balanceOf(address(this)) : maxRedeem(owner);
         if (shares > maxRedeem_) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
@@ -1077,19 +1079,26 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 shares
     ) internal virtual override {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        
-        // Check if this is a cross-chain vault withdrawal where assets should not be transferred
-        bool isERC4626Compatible = _isERC4626Compatible(ds);
-        
-        if (caller != owner) {
-            _spendAllowance(owner, caller, shares);
+
+        // Check if this is a cross-chain finalization (shares already locked in vault)
+        if (ds.finalizationGuid != 0) {
+            // Cross-chain mode: shares are already locked in vault, burn from vault
+            // Allowance was already verified/consumed in transferSharesFromOwner
+            _burn(address(this), shares);
+        } else {
+            // Normal flow
+            if (caller != owner) {
+                _spendAllowance(owner, caller, shares);
+            }
+
+            // Check if this is a cross-chain vault withdrawal where assets should not be transferred
+            bool isERC4626Compatible = _isERC4626Compatible(ds);
+            address burnFrom = isERC4626Compatible ? owner : address(this);
+            _burn(burnFrom, shares);
         }
-        
-        address burnFrom = isERC4626Compatible ? owner : address(this);
-        _burn(burnFrom, shares);
+
         SafeERC20.safeTransfer(IERC20(asset()), receiver, assets);
-        // For cross-chain vaults without oracle accounting, assets are handled by BridgeFacet
-        
+
         emit Withdraw(caller, receiver, owner, assets, shares);
     }
 
