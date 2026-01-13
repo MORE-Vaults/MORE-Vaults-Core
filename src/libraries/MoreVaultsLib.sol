@@ -186,6 +186,7 @@ library MoreVaultsLib {
         /// @dev Locked tokens for cross-chain requests (excluded from accounting)
         /// pendingTokens[token] = total amount locked for all active cross-chain requests
         mapping(address => uint256) pendingTokens;
+        mapping(address => uint256) lockedSharesPerUser;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);

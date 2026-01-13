@@ -273,6 +273,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
 
             // Lock shares (maximum amount, excess will be returned after execution)
             ds.pendingTokens[address(this)] += shares;
+            ds.lockedSharesPerUser[owner] += shares;
 
         } else if (actionType == MoreVaultsLib.ActionType.REDEEM) {
             (uint256 shares, address receiver, address owner) =
@@ -298,7 +299,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
 
             // Lock shares
             ds.pendingTokens[address(this)] += shares;
-
+            ds.lockedSharesPerUser[owner] += shares;
         } else if (actionType == MoreVaultsLib.ActionType.MINT) {
             (uint256 shares, address receiver) = abi.decode(actionCallData, (uint256, address));
             

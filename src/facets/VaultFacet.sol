@@ -792,7 +792,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // Calculate user's current position value
-        uint256 userShares = balanceOf(_user);
+        uint256 userShares = balanceOf(_user) + ds.lockedSharesPerUser[_user];
         if (userShares == 0) {
             return 0;
         }
