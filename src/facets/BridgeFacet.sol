@@ -343,7 +343,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
      * @notice Requires the request to be fulfilled
      * @notice Executes the action and performs slippage check
      */
-    function executeRequest(bytes32 guid) external {
+    function executeRequest(bytes32 guid) external nonReentrant {
         if (msg.sender != MoreVaultsLib._getCrossChainAccountingManager()) {
             revert OnlyCrossChainAccountingManager();
         }

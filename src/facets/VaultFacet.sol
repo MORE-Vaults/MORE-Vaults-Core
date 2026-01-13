@@ -1010,7 +1010,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _requireIsHub(ds);
         if (_isCrossChainWithoutOracle(ds)) {
             bytes32 guid = ds.finalizationGuid;
-            if (guid == 0) {
+            // direct interactions with the vault are disabled for anyone except the vault itself
+            // it is additional check to prevent reentrancy attacks, since we can't use nonReentrant modifier because `executeRequest` already has it
+            if (msg.sender != address(this)) {
                 revert SyncActionsDisabledInThisVault();
             }
             totalAssets_ = ds.guidToCrossChainRequestInfo[guid].totalAssets;
