@@ -355,22 +355,24 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
      * @notice Unlocks tokens and transfers them back to the appropriate recipient
      * @notice Handles both native tokens (for MULTI_ASSETS_DEPOSIT) and ERC20 tokens/shares
      */
-    function refundRequestTokens(bytes32 guid) external {
+    function refundRequestTokens(bytes32 guid) external nonReentrant {
         address crossChainAccountingManager = MoreVaultsLib._getCrossChainAccountingManager();
         if (msg.sender != crossChainAccountingManager) {
             revert OnlyCrossChainAccountingManager();
         }
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo storage requestInfo = ds.guidToCrossChainRequestInfo[guid];
-        
+
         // Prevent refund if already finalized (successful execution) or already refunded
         if (requestInfo.finalized || requestInfo.refunded) {
             return;
         }
 
-        // Unlock funds before refund
+        // Mark as refunded FIRST to prevent reentrancy re-refunds (CEI pattern)
+        requestInfo.refunded = true;
+
+        // Copy to memory for _unlockRequestFunds call
         MoreVaultsLib.CrossChainRequestInfo memory requestInfoMem = requestInfo;
-        _unlockRequestFunds(requestInfoMem);
 
         // Return native tokens if any (for MULTI_ASSETS_DEPOSIT)
         if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
@@ -412,7 +414,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         // For ACCRUE_FEES no transfer needed (no tokens were locked)
 
-        requestInfo.refunded = true;
+        // Unlock funds AFTER all transfers (prevents totalAssets inflation during callbacks)
+        _unlockRequestFunds(requestInfoMem);
     }
 
     /**
@@ -421,7 +424,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
      * @notice Can only be called by the cross-chain accounting manager
      * @notice Refunds the request if necessary
      */
-    function refundStuckDepositInComposer(bytes32 guid) external payable {
+    function refundStuckDepositInComposer(bytes32 guid) external payable nonReentrant {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         MoreVaultsLib.CrossChainRequestInfo storage requestInfo = ds.guidToCrossChainRequestInfo[guid];
 
@@ -433,15 +436,20 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             revert RequestNotStuck();
         }
 
-        // Unlock funds before refund (convert storage to memory for function call)
+        // Mark as refunded FIRST to prevent reentrancy re-refunds (CEI pattern)
+        requestInfo.refunded = true;
+
+        // Copy to memory for _unlockRequestFunds call
         MoreVaultsLib.CrossChainRequestInfo memory requestInfoMem = requestInfo;
-        _unlockRequestFunds(requestInfoMem);
-        
+
         // Transfer tokens back to composer for refund
         _transferTokensBackToComposer(requestInfo, vaultComposer);
-        
+
+        // Call composer refund (external call - potential reentrancy point)
         IMoreVaultsComposer(vaultComposer).refundDeposit{value: msg.value}(guid);
-        requestInfo.refunded = true;
+
+        // Unlock funds AFTER all transfers (prevents totalAssets inflation during callbacks)
+        _unlockRequestFunds(requestInfoMem);
     }
 
     /**
