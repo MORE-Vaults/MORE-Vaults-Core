@@ -416,7 +416,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         // For ACCRUE_FEES no transfer needed (no tokens were locked)
 
         // Unlock funds AFTER all transfers (prevents totalAssets inflation during callbacks)
-        _unlockRequestFunds(requestInfoMem);
+        _unlockRequestFunds(requestInfoMem, false);
     }
 
     /**
@@ -450,7 +450,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         IMoreVaultsComposer(vaultComposer).refundDeposit{value: msg.value}(guid);
 
         // Unlock funds AFTER all transfers (prevents totalAssets inflation during callbacks)
-        _unlockRequestFunds(requestInfoMem);
+        _unlockRequestFunds(requestInfoMem, false);
     }
 
     /**
@@ -588,7 +588,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         ds.finalizationGuid = 0;
 
         // Unlock funds after successful execution
-        _unlockRequestFunds(requestInfo);
+        _unlockRequestFunds(requestInfo, true);
     }
 
     /**
@@ -596,7 +596,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
      * @param requestInfo Request info containing action type and call data
      * @notice For MINT/WITHDRAW unlocks amountLimit (used funds are deposited/burned, excess returned to user)
      */
-    function _unlockRequestFunds(MoreVaultsLib.CrossChainRequestInfo memory requestInfo) internal {
+    function _unlockRequestFunds(MoreVaultsLib.CrossChainRequestInfo memory requestInfo, bool isFinalized) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
@@ -614,11 +614,18 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
             // Unlock amountLimit - excess shares already returned to owner in _executeRequest
             // Used shares are burned, excess returned, so all locked shares are no longer pending
+            (,, address owner) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
             ds.pendingTokens[address(this)] -= requestInfo.amountLimit;
+            if (!isFinalized) {
+                ds.lockedSharesPerUser[owner] -= requestInfo.amountLimit;
+            }
 
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
-            (uint256 shares,,) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
+            (uint256 shares,, address owner) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
             ds.pendingTokens[address(this)] -= shares;
+            if (!isFinalized) {
+                ds.lockedSharesPerUser[owner] -= shares;
+            }
 
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
             // Unlock amountLimit - excess assets already returned to initiator in _executeRequest

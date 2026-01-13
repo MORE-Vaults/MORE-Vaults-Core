@@ -166,7 +166,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 mstore(0x20, _lockedTokens.slot)
                 slot := keccak256(0x00, 0x40)
                 toConvert := add(toConvert, sload(slot))
-                
+
                 // if the asset is the wrapped native, add the native balance
                 if eq(_wrappedNative, asset) {
                     // if the vault processes native deposits, make sure to exclude msg.value and pendingNative
@@ -178,7 +178,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (!success) {
                 return (0, false);
             }
-            
+
             // Subtract cross-chain locked tokens from accounting
             uint256 crossChainLocked = ds.pendingTokens[asset];
             if (toConvert > crossChainLocked) {
@@ -186,7 +186,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             } else {
                 toConvert = 0;
             }
-            
+
             // convert to underlying
             // this function will use new free mem ptr
             _totalAssets += MoreVaultsLib.convertToUnderlying(asset, toConvert, Math.Rounding.Floor);
@@ -335,7 +335,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
-        _validateERC4626Compatible(MoreVaultsLib.moreVaultsStorage());
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return super.maxRedeem(owner);
     }
 
@@ -687,10 +687,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        
+
         // Check if this is a cross-chain vault deposit where tokens are already in vault
-        if (_isERC4626Compatible(ds)) { // If ERC4626 compatible, transfer tokens from caller to vault
-            SafeERC20.safeTransferFrom(IERC20(asset()), caller, address(this), assets); 
+        if (_isERC4626Compatible(ds)) {
+            // If ERC4626 compatible, transfer tokens from caller to vault
+            SafeERC20.safeTransferFrom(IERC20(asset()), caller, address(this), assets);
         }
         _mint(receiver, shares);
 
@@ -716,7 +717,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 totalConvertedAmount
     ) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (_isERC4626Compatible(ds)) { // If ERC4626 compatible, transfer tokens from caller to vault
+        if (_isERC4626Compatible(ds)) {
+            // If ERC4626 compatible, transfer tokens from caller to vault
             for (uint256 i; i < assets.length;) {
                 SafeERC20.safeTransferFrom(IERC20(tokens[i]), caller, address(this), assets[i]);
                 unchecked {
@@ -923,7 +925,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function _updateUserHWMpS(uint256 _totalAssets, address _user) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (balanceOf(_user) == 0) {
+        // Check both balance and locked shares - reset HWMpS only if user has no position at all
+        uint256 userTotalShares = balanceOf(_user) + ds.lockedSharesPerUser[_user];
+        if (userTotalShares == 0) {
             ds.userHighWaterMarkPerShare[_user] = 0;
             return;
         }
@@ -1073,13 +1077,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @param assets The assets to withdraw
      * @param shares The shares to burn
      */
-    function _withdraw(
-        address caller,
-        address receiver,
-        address owner,
-        uint256 assets,
-        uint256 shares
-    ) internal virtual override {
+    function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares)
+        internal
+        virtual
+        override
+    {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         // Check if this is a cross-chain finalization (shares already locked in vault)
@@ -1087,6 +1089,19 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             // Cross-chain mode: shares are already locked in vault, burn from vault
             // Allowance was already verified/consumed in transferSharesFromOwner
             _burn(address(this), shares);
+
+            // Get request info to determine correct amount to unlock
+            MoreVaultsLib.CrossChainRequestInfo storage requestInfo =
+                ds.guidToCrossChainRequestInfo[ds.finalizationGuid];
+
+            // For WITHDRAW: unlock amountLimit (includes excess that will be returned)
+            // For REDEEM: unlock shares (they match exactly)
+            if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
+                ds.lockedSharesPerUser[owner] -= requestInfo.amountLimit;
+            } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
+                ds.lockedSharesPerUser[owner] -= shares; // shares match exactly for REDEEM
+            }
+            // For other action types (DEPOSIT, MINT) no shares are locked, so nothing to unlock
         } else {
             // Normal flow
             if (caller != owner) {
@@ -1160,7 +1175,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @param ds Storage structure
      * @return isCompatible True if vault is ERC4626 compatible
      */
-    function _isERC4626Compatible(MoreVaultsLib.MoreVaultsStorage storage ds) internal view returns (bool isCompatible) {
+    function _isERC4626Compatible(MoreVaultsLib.MoreVaultsStorage storage ds)
+        internal
+        view
+        returns (bool isCompatible)
+    {
         IVaultsFactory factory = _getFactory(ds);
         return !factory.isCrossChainVault(factory.localEid(), address(this)) || ds.oraclesCrossChainAccounting;
     }
@@ -1170,7 +1189,11 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @param ds Storage structure
      * @return isCrossChain True if vault is cross-chain without oracle accounting
      */
-    function _isCrossChainWithoutOracle(MoreVaultsLib.MoreVaultsStorage storage ds) internal view returns (bool isCrossChain) {
+    function _isCrossChainWithoutOracle(MoreVaultsLib.MoreVaultsStorage storage ds)
+        internal
+        view
+        returns (bool isCrossChain)
+    {
         IVaultsFactory factory = _getFactory(ds);
         return factory.isCrossChainVault(factory.localEid(), address(this)) && !ds.oraclesCrossChainAccounting;
     }

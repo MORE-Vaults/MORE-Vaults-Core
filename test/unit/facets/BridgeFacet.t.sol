@@ -1942,4 +1942,157 @@ contract BridgeFacetTest is Test {
         // So if all new tokens are pending, totalAssets should not increase
         assertEq(totalAssetsAfter, initialTotalAssets, "Total assets should not include pending tokens");
     }
+
+    // ============ lockedSharesPerUser tests ============
+
+    /**
+     * @notice Test that lockedSharesPerUser is correctly incremented when locking shares for WITHDRAW
+     */
+    function test_lockedSharesPerUser_incremented_on_WITHDRAW_lock() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-withdraw-lock"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address owner = address(0x3333);
+        address initiator = address(0x4444);
+        uint256 assets = 100e18;
+        uint256 maxAmountIn = 120e18; // amountLimit - maximum shares to lock
+
+        // Set balance for owner before initVaultActionRequest
+        facet.h_setBalance(address(facet), owner, maxAmountIn);
+        facet.h_setAllowance(owner, initiator, maxAmountIn);
+
+        bytes memory callData = abi.encode(assets, owner, owner);
+        
+        vm.startPrank(initiator);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.WITHDRAW, callData, maxAmountIn, bytes(""));
+        vm.stopPrank();
+
+        // Check that lockedSharesPerUser was incremented
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerUser(address(facet), owner);
+        assertEq(lockedShares, maxAmountIn, "lockedSharesPerUser should equal amountLimit");
+    }
+
+    /**
+     * @notice Test that lockedSharesPerUser is correctly incremented when locking shares for REDEEM
+     */
+    function test_lockedSharesPerUser_incremented_on_REDEEM_lock() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-redeem-lock"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address owner = address(0x5555);
+        address initiator = address(0x6666);
+        uint256 shares = 75e18;
+
+        // Set balance for owner before initVaultActionRequest
+        facet.h_setBalance(address(facet), owner, shares);
+        facet.h_setAllowance(owner, initiator, shares);
+
+        bytes memory callData = abi.encode(shares, owner, owner);
+        
+        vm.startPrank(initiator);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, 0, bytes(""));
+        vm.stopPrank();
+
+        // Check that lockedSharesPerUser was incremented
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerUser(address(facet), owner);
+        assertEq(lockedShares, shares, "lockedSharesPerUser should equal shares");
+    }
+
+    /**
+     * @notice Test that lockedSharesPerUser is correctly decremented on refund
+     */
+    function test_lockedSharesPerUser_decremented_on_refund() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        adapter.setReceiptGuid(keccak256("guid-refund"));
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address owner = address(0xBBBB);
+        address initiator = address(0xCCCC);
+        uint256 shares = 50e18;
+
+        // Set balance for owner before initVaultActionRequest
+        facet.h_setBalance(address(facet), owner, shares);
+        facet.h_setBalance(address(facet), address(facet), shares); // Vault balance for locked shares
+        facet.h_setAllowance(owner, initiator, shares);
+
+        bytes memory callData = abi.encode(shares, owner, owner);
+        
+        vm.startPrank(initiator);
+        bytes32 guid = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData, 0, bytes(""));
+        vm.stopPrank();
+
+        // Verify shares are locked
+        uint256 lockedBefore = MoreVaultsStorageHelper.getLockedSharesPerUser(address(facet), owner);
+        assertEq(lockedBefore, shares, "Shares should be locked");
+
+        // Refund request
+        vm.startPrank(address(adapter));
+        facet.refundRequestTokens(guid);
+        vm.stopPrank();
+
+        // Check that lockedSharesPerUser was decremented
+        uint256 lockedAfter = MoreVaultsStorageHelper.getLockedSharesPerUser(address(facet), owner);
+        assertEq(lockedAfter, 0, "lockedSharesPerUser should be decremented to 0 on refund");
+    }
+
+    /**
+     * @notice Test that multiple parallel requests correctly accumulate lockedSharesPerUser
+     */
+    function test_lockedSharesPerUser_accumulates_for_multiple_requests() public {
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = 101;
+        address[] memory spokes = new address[](1);
+        spokes[0] = address(0xBEEF01);
+        _mockHubWithSpokes(100, eids, spokes);
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(facet), false);
+
+        address owner = address(0xEEEE);
+        address initiator1 = address(0xF111);
+        address initiator2 = address(0xF222);
+        uint256 shares1 = 30e18;
+        uint256 shares2 = 40e18;
+
+        // Set balances and allowances
+        facet.h_setBalance(address(facet), owner, shares1 + shares2);
+        facet.h_setAllowance(owner, initiator1, shares1);
+        facet.h_setAllowance(owner, initiator2, shares2);
+
+        // First request
+        adapter.setReceiptGuid(keccak256("guid-parallel-1"));
+        bytes memory callData1 = abi.encode(shares1, owner, owner);
+        vm.startPrank(initiator1);
+        bytes32 guid1 = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData1, 0, bytes(""));
+        vm.stopPrank();
+
+        // After first request, owner's balance decreased, but vault balance increased
+        // Update owner balance for second request (owner still has shares2 available)
+        facet.h_setBalance(address(facet), owner, shares2);
+        // Vault now has shares1 locked
+        facet.h_setBalance(address(facet), address(facet), shares1);
+
+        // Second request
+        adapter.setReceiptGuid(keccak256("guid-parallel-2"));
+        bytes memory callData2 = abi.encode(shares2, owner, owner);
+        vm.startPrank(initiator2);
+        bytes32 guid2 = facet.initVaultActionRequest(MoreVaultsLib.ActionType.REDEEM, callData2, 0, bytes(""));
+        vm.stopPrank();
+
+        // Check that lockedSharesPerUser accumulated both amounts
+        uint256 totalLocked = MoreVaultsStorageHelper.getLockedSharesPerUser(address(facet), owner);
+        assertEq(totalLocked, shares1 + shares2, "lockedSharesPerUser should accumulate for multiple requests");
+    }
 }

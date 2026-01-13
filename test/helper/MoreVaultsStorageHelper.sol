@@ -62,6 +62,7 @@ library MoreVaultsStorageHelper {
     uint256 constant LOCKED_TOKENS_PER_CONTRACT = 41;
     uint256 constant INITIAL_DEPOSIT_CAP_PER_USER = 42;
     uint256 constant PENDING_TOKENS = 43;
+    uint256 constant LOCKED_SHARES_PER_USER = 44;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -853,5 +854,52 @@ library MoreVaultsStorageHelper {
 
     function setPendingTokens(address contractAddress, address token, uint256 amount) internal {
         setMappingValue(contractAddress, PENDING_TOKENS, bytes32(uint256(uint160(token))), bytes32(amount));
+    }
+
+    function getLockedSharesPerUser(address contractAddress, address user) internal view returns (uint256) {
+        return uint256(getMappingValue(contractAddress, LOCKED_SHARES_PER_USER, bytes32(uint256(uint160(user)))));
+    }
+
+    function setLockedSharesPerUser(address contractAddress, address user, uint256 amount) internal {
+        setMappingValue(contractAddress, LOCKED_SHARES_PER_USER, bytes32(uint256(uint160(user))), bytes32(amount));
+    }
+
+    /**
+     * @notice Set CrossChainRequestInfo in storage
+     * @param contractAddress The vault contract address
+     * @param guid The request GUID
+     * @param initiator The initiator address
+     * @param timestamp The timestamp
+     * @param actionType The action type
+     * @param actionCallData The action call data (will be hashed)
+     * @param totalAssets The total assets at request time
+     * @param amountLimit The amount limit
+     */
+    function setCrossChainRequestInfo(
+        address contractAddress,
+        bytes32 guid,
+        address initiator,
+        uint64 timestamp,
+        uint8 actionType,
+        bytes memory actionCallData,
+        uint256 totalAssets,
+        uint256 amountLimit
+    ) internal {
+        bytes32 requestInfoSlot = keccak256(abi.encode(guid, bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + GUID_TO_CROSS_CHAIN_REQUEST_INFO)));
+        
+        // Slot 0: Pack initiator (160 bits) + timestamp (64 bits) + actionType (8 bits)
+        bytes32 slot0 = bytes32(uint256(uint160(initiator))) | 
+                        (bytes32(uint256(timestamp)) << 160) |
+                        (bytes32(uint256(actionType)) << 224);
+        vm.store(contractAddress, requestInfoSlot, slot0);
+        
+        // Slot 1: actionCallData hash (bytes stored as keccak256 hash if > 31 bytes)
+        vm.store(contractAddress, bytes32(uint256(requestInfoSlot) + 1), keccak256(actionCallData));
+        
+        // Slot 3: totalAssets
+        vm.store(contractAddress, bytes32(uint256(requestInfoSlot) + 3), bytes32(totalAssets));
+        
+        // Slot 5: amountLimit
+        vm.store(contractAddress, bytes32(uint256(requestInfoSlot) + 5), bytes32(amountLimit));
     }
 }
