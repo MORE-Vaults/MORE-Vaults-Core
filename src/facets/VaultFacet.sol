@@ -1090,11 +1090,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (caller != owner) {
                 _spendAllowance(owner, caller, shares);
             }
-
-            // Check if this is a cross-chain vault withdrawal where assets should not be transferred
-            bool isERC4626Compatible = _isERC4626Compatible(ds);
-            address burnFrom = isERC4626Compatible ? owner : address(this);
-            _burn(burnFrom, shares);
+            _burn(owner, shares);
         }
 
         SafeERC20.safeTransfer(IERC20(asset()), receiver, assets);
