@@ -408,10 +408,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             revert NotATokenOfOFT();
         }
 
-        // Increase approve BEFORE creating request so tokens can be transferred in _lockFundsForRequest
-        // Use safeIncreaseAllowance to support parallel deposits
-        // Tokens will be transferred and locked in BridgeFacet._lockFundsForRequest
-        IERC20(_tokenAddress).safeIncreaseAllowance(address(VAULT), _assetAmount);
+        IERC20(_tokenAddress).forceApprove(address(VAULT), _assetAmount);
 
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
@@ -433,8 +430,7 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             actionType, actionCallData, _sendParam.minAmountLD, ""
         );
         
-        // Decrease allowance after tokens are transferred and locked
-        IERC20(_tokenAddress).safeDecreaseAllowance(address(VAULT), _assetAmount);
+        IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
         _pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,
