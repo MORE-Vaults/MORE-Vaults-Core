@@ -335,7 +335,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return super.maxRedeem(owner);
     }
 
@@ -529,7 +528,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // In cross-chain mode, shares are locked in vault, check vault's balance instead
-        uint256 maxRedeem_ = ds.finalizationGuid != 0 ? balanceOf(address(this)) : maxRedeem(owner);
+        uint256 maxRedeem_ = ds.finalizationGuid != 0 ? ds.lockedSharesPerUser[owner] : maxRedeem(owner);
         if (shares > maxRedeem_) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
@@ -563,7 +562,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // In cross-chain mode, shares are locked in vault, check vault's balance instead
-        uint256 maxRedeem_ = ds.finalizationGuid != 0 ? balanceOf(address(this)) : maxRedeem(owner);
+        uint256 maxRedeem_ = ds.finalizationGuid != 0 ? ds.lockedSharesPerUser[owner] : maxRedeem(owner);
         if (shares > maxRedeem_) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }

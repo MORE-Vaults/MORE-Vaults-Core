@@ -149,6 +149,7 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
         // Step 2: Simulate transferSharesFromOwner (called via address(this).call in BridgeFacet)
         vm.prank(address(vault));
         vault.transferSharesFromOwner(shareOwner, sharesToWithdraw, initiator);
+        MoreVaultsStorageHelper.setLockedSharesPerUser(address(vault), shareOwner, sharesToWithdraw);
 
         // Verify shares moved to vault
         assertEq(vault.balanceOf(address(vault)), sharesToWithdraw, "Vault should hold the shares");
@@ -181,6 +182,7 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
 
         vm.prank(address(vault));
         vault.transferSharesFromOwner(shareOwner, sharesToRedeem, initiator);
+        MoreVaultsStorageHelper.setLockedSharesPerUser(address(vault), shareOwner, sharesToRedeem);
 
         assertEq(vault.balanceOf(address(vault)), sharesToRedeem);
 
@@ -210,7 +212,8 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
 
         vm.prank(address(vault));
         vault.transferSharesFromOwner(shareOwner, sharesToWithdraw, initiator);
-
+        MoreVaultsStorageHelper.setLockedSharesPerUser(address(vault), shareOwner, sharesToWithdraw);
+        
         // Owner now has 0 shares, vault has all of them
         assertEq(vault.balanceOf(shareOwner), 0, "Owner should have 0 shares");
         assertEq(vault.balanceOf(address(vault)), sharesToWithdraw, "Vault should have all shares");
@@ -240,6 +243,7 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
 
         vm.prank(address(vault));
         vault.transferSharesFromOwner(shareOwner, sharesToWithdraw, initiator);
+        MoreVaultsStorageHelper.setLockedSharesPerUser(address(vault), shareOwner, sharesToWithdraw);
 
         // Set finalizationGuid to simulate cross-chain execution context
         MoreVaultsStorageHelper.setFinalizationGuid(address(vault), bytes32(uint256(1)));
@@ -265,6 +269,7 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
 
         vm.prank(address(vault));
         vault.transferSharesFromOwner(shareOwner, sharesToLock, initiator);
+        MoreVaultsStorageHelper.setLockedSharesPerUser(address(vault), shareOwner, sharesToLock);
 
         assertEq(vault.totalSupply(), initialTotalSupply, "TotalSupply should not change");
 

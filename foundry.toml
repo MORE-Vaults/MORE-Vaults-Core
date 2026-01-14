@@ -27,12 +27,12 @@ remappings = [
 no_match_test = "test_skip"
 
 additional_compiler_profiles = [
-    { name = "big_contracts", optimizer_runs = 800, via_ir = true, optimizer = true },
+    { name = "big_contracts", optimizer_runs = 900, via_ir = true, optimizer = true },
 ]
 
 compilation_restrictions = [
-    { paths = "src/facets/VaultFacet.sol", optimizer_runs = 800 },
-    { paths = "src/factory/VaultsFactory.sol", optimizer_runs = 800 },
+    { paths = "src/facets/VaultFacet.sol", optimizer_runs = 900 },
+    { paths = "src/factory/VaultsFactory.sol", optimizer_runs = 900 },
 ]
 
 [rpc_endpoints]

@@ -28,7 +28,6 @@ import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
-import {console} from "forge-std/console.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -4328,7 +4327,6 @@ contract VaultFacetTest is Test {
 
         // Step 8: Setup requestInfo for WITHDRAW finalization
         bytes32 withdrawGuid = keccak256("test-withdraw-guid");
-        console.log("totalAssets", VaultFacet(facet).totalAssets());
         MoreVaultsStorageHelper.setCrossChainRequestInfo(
             facet,
             withdrawGuid,
@@ -4432,77 +4430,91 @@ contract VaultFacetTest is Test {
         assertEq(lockedAfter, 0, "lockedSharesPerUser should be decremented to 0");
     }
 
-    // /**
-    //  * @notice Test that accrueInterest correctly uses balanceOf + lockedSharesPerUser for fee calculation
-    //  */
-    // function test_accrueInterest_includes_lockedSharesPerUser() public {
-    //     address userWithoutLocked = address(0xAAAA);
-    //     address userWithLocked = address(0xBBBB);
-    //     uint256 depositAmount = 1000e18;
-    //     uint256 lockedShares = 200e18 * 1e2;
+    /**
+     * @notice Test that accrueInterest correctly uses balanceOf + lockedSharesPerUser for fee calculation
+     */
+    function test_accrueInterest_includes_lockedSharesPerUser() public {
+        address userWithoutLocked = address(0xAAAA);
+        address userWithLocked = address(0xBBBB);
+        uint256 depositAmount = 1000e18;
+        uint256 lockedShares = 200e18 * 1e2;
 
-    //     // Setup mocks for oracle
-    //     vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
-    //     vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
-    //     vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
-    //     vm.mockCall(
-    //         oracle,
-    //         abi.encodeWithSignature("latestRoundData()"),
-    //         abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
-    //     );
-    //     vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
-    //     vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
-    //     uint32[] memory eids = new uint32[](0);
-    //     address[] memory vaults = new address[](0);
-    //     vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+        // Setup mocks for oracle
+        vm.mockCall(registry, abi.encodeWithSignature("oracle()"), abi.encode(oracleRegistry));
+        vm.mockCall(registry, abi.encodeWithSignature("getDenominationAsset()"), abi.encode(asset));
+        vm.mockCall(oracleRegistry, abi.encodeWithSignature("getSourceOfAsset(address)"), abi.encode(oracle));
+        vm.mockCall(
+            oracle,
+            abi.encodeWithSignature("latestRoundData()"),
+            abi.encode(0, 1 ether, block.timestamp, block.timestamp, 0)
+        );
+        vm.mockCall(oracle, abi.encodeWithSignature("decimals()"), abi.encode(8));
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
 
-    //     // Set fee to enable fee accrual (setFee requires diamond to call itself)
-    //     vm.prank(facet);
-    //     VaultFacet(facet).setFee(1000); // 10% fee
+        // Set fee to enable fee accrual (setFee requires diamond to call itself)
+        vm.prank(facet);
+        VaultFacet(facet).setFee(1000); // 10% fee
 
-    //     // Setup: both users deposit same amount
-    //     MockERC20(asset).mint(userWithoutLocked, depositAmount);
-    //     MockERC20(asset).mint(userWithLocked, depositAmount);
+        // Setup: both users deposit same amount
+        MockERC20(asset).mint(userWithoutLocked, depositAmount);
+        MockERC20(asset).mint(userWithLocked, depositAmount);
         
-    //     vm.startPrank(userWithoutLocked);
-    //     IERC20(asset).approve(facet, type(uint256).max);
-    //     VaultFacet(facet).deposit(depositAmount, userWithoutLocked);
-    //     vm.stopPrank();
+        vm.startPrank(userWithoutLocked);
+        IERC20(asset).approve(facet, type(uint256).max);
+        VaultFacet(facet).deposit(depositAmount, userWithoutLocked);
+        vm.stopPrank();
 
-    //     vm.startPrank(userWithLocked);
-    //     IERC20(asset).approve(facet, type(uint256).max);
-    //     VaultFacet(facet).deposit(depositAmount, userWithLocked);
-    //     vm.stopPrank();
+        vm.startPrank(userWithLocked);
+        IERC20(asset).approve(facet, type(uint256).max);
+        VaultFacet(facet).deposit(depositAmount, userWithLocked);
+        vm.stopPrank();
 
-    //     uint256 balanceWithoutLocked = IERC20(facet).balanceOf(userWithoutLocked);
-    //     uint256 balanceWithLocked = IERC20(facet).balanceOf(userWithLocked);
-    //     assertEq(balanceWithoutLocked, balanceWithLocked, "Both users should have same balance");
+        uint256 balanceWithoutLocked = IERC20(facet).balanceOf(userWithoutLocked);
+        uint256 balanceWithLocked = IERC20(facet).balanceOf(userWithLocked);
+        assertEq(balanceWithoutLocked, balanceWithLocked, "Both users should have same balance");
 
-    //     vm.prank(userWithLocked);
-    //     IERC20(facet).approve(address(this), lockedShares);
-    //     // Transfer shares from owner to vault (simulating BridgeFacet.transferSharesFromOwner)
-    //     vm.prank(facet);
-    //     VaultFacet(facet).transferSharesFromOwner(userWithLocked, lockedShares, address(this));
-    //     // Set locked shares for second user (simulating cross-chain lock)
-    //     MoreVaultsStorageHelper.setLockedSharesPerUser(facet, userWithLocked, lockedShares);
+        vm.prank(userWithLocked);
+        IERC20(facet).approve(address(this), lockedShares);
+        // Transfer shares from owner to vault (simulating BridgeFacet.transferSharesFromOwner)
+        vm.prank(facet);
+        VaultFacet(facet).transferSharesFromOwner(userWithLocked, lockedShares, address(this));
+        // Set locked shares for second user (simulating cross-chain lock)
+        MoreVaultsStorageHelper.setLockedSharesPerUser(facet, userWithLocked, lockedShares);
 
-    //     // Move time forward and add profit to vault
-    //     vm.warp(block.timestamp + 1 days);
-    //     uint256 profit = 100e18; // 10% profit
-    //     MockERC20(asset).mint(facet, profit);
+        uint256 oneShare = 10 ** IVaultFacet(facet).decimals();
+        uint256 pricePerShareAtHwM = oneShare.mulDiv(IERC4626(facet).totalAssets() + 1, IERC20(facet).totalSupply() + 1e2, Math.Rounding.Floor);
 
-    //     // Accrue interest for both users
-    //     uint256 feeSharesBefore = IERC20(facet).balanceOf(feeRecipient);
+        // Move time forward and add profit to vault
+        vm.warp(block.timestamp + 1 days);
+        uint256 profit = 100e18; // 10% profit
+        MockERC20(asset).mint(facet, profit);
+
+        assertEq(IERC20(facet).balanceOf(feeRecipient), 0);
+        // Accrue interest for both users
+        uint256 feeSharesBefore = IERC20(facet).balanceOf(feeRecipient);
         
-    //     vm.prank(userWithoutLocked);
-    //     VaultFacet(facet).accrueFees(userWithoutLocked);
-    //     uint256 firstFeeShares = IERC20(facet).balanceOf(feeRecipient);
+        uint256 totalSupplyBeforeFirstAccrue = IERC20(facet).totalSupply();
+        uint256 totalAssetsBeforeFirstAccrue = IERC4626(facet).totalAssets();
+        uint256 pricePerShareBeforeFirstAccrue = oneShare.mulDiv(totalAssetsBeforeFirstAccrue + 1, totalSupplyBeforeFirstAccrue + 1e2, Math.Rounding.Floor);
+        vm.prank(userWithoutLocked);
+        VaultFacet(facet).accrueFees(userWithoutLocked);
+        uint256 firstFeeShares = IERC20(facet).balanceOf(feeRecipient);
         
-    //     vm.prank(userWithLocked);
-    //     VaultFacet(facet).accrueFees(userWithLocked);
-    //     uint256 secondFeeShares = IERC20(facet).balanceOf(feeRecipient) - firstFeeShares;
-        
-    //     // Should be equal even if second user's shares are locked
-    //     assertEq(firstFeeShares, secondFeeShares, "Fees should be equal even if second user's shares are locked");
-    // }
+        uint256 currentPricePerShare = oneShare.mulDiv(totalAssetsBeforeFirstAccrue + 1, totalSupplyBeforeFirstAccrue + firstFeeShares + 1e2, Math.Rounding.Floor);
+        uint256 secondUserBalanceWithLocked = IERC20(facet).balanceOf(userWithLocked) + MoreVaultsStorageHelper.getLockedSharesPerUser(facet, userWithLocked);
+        uint256 secondUserAssetsAtHWM = secondUserBalanceWithLocked.mulDiv(pricePerShareAtHwM, 10 ** IVaultFacet(facet).decimals(), Math.Rounding.Floor);
+        uint256 secondUserCurrentAssets = secondUserBalanceWithLocked.mulDiv(currentPricePerShare, 10 ** IVaultFacet(facet).decimals(), Math.Rounding.Floor);
+
+        uint256 feeAssets = (secondUserCurrentAssets - secondUserAssetsAtHWM).mulDiv(1000, 10000);
+        uint256 expectedSecondFeeShares = feeAssets.mulDiv(totalSupplyBeforeFirstAccrue + firstFeeShares + 1e2, totalAssetsBeforeFirstAccrue - feeAssets, Math.Rounding.Floor);
+
+
+        vm.prank(userWithLocked);
+        VaultFacet(facet).accrueFees(userWithLocked);
+        uint256 secondFeeShares = IERC20(facet).balanceOf(feeRecipient) - firstFeeShares;
+        assertEq(expectedSecondFeeShares, secondFeeShares, "Fees should be equal even if second user's shares are locked");
+    }
 }
