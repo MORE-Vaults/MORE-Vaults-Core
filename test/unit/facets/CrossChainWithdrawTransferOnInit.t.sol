@@ -324,4 +324,197 @@ contract CrossChainWithdrawTransferOnInitTest is Test {
         assertGt(receiverBalanceAfter, receiverBalanceBefore, "Receiver should have received assets");
         assertEq(vault.balanceOf(shareOwner), ownerShares - sharesToRedeem, "Owner shares should decrease");
     }
+
+    // ============ msg.sender != address(this) reentrancy protection tests ============
+    // Issue #37 - Prevent direct vault interactions in cross-chain mode to block reentrancy
+
+    /**
+     * @notice Test: External users cannot call deposit directly in cross-chain mode
+     * @dev Issue #37 - In cross-chain mode without oracle, direct interactions must be blocked
+     *      to prevent reentrancy attacks via callbacks during finalization
+     */
+    function test_crossChainMode_externalUserCannotCallDeposit() public {
+        // Enable cross-chain mode WITHOUT oracle accounting
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), address(vault)),
+            abi.encode(true)
+        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(vault), false);
+
+        uint256 depositAmount = 100 ether;
+
+        // Fund user
+        underlying.mint(shareOwner, depositAmount);
+        vm.startPrank(shareOwner);
+        IERC20(address(underlying)).approve(address(vault), depositAmount);
+
+        // Attempt to deposit directly - should revert with SyncActionsDisabledInThisVault
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.SyncActionsDisabledInThisVault.selector));
+        vault.deposit(depositAmount, shareOwner);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test: External users cannot call withdraw directly in cross-chain mode
+     * @dev Issue #37 - Direct withdraw calls could be used in reentrancy attacks
+     */
+    function test_crossChainMode_externalUserCannotCallWithdraw() public {
+        // Calculate assets to withdraw BEFORE enabling cross-chain mode
+        // (previewRedeem doesn't work in cross-chain mode without oracle)
+        uint256 ownerShares = vault.balanceOf(shareOwner);
+        uint256 assetsToWithdraw = vault.previewRedeem(ownerShares / 2);
+
+        // Enable cross-chain mode WITHOUT oracle accounting
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), address(vault)),
+            abi.encode(true)
+        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(vault), false);
+
+        // Attempt to withdraw directly - should revert with SyncActionsDisabledInThisVault
+        vm.prank(shareOwner);
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.SyncActionsDisabledInThisVault.selector));
+        vault.withdraw(assetsToWithdraw, shareOwner, shareOwner);
+    }
+
+    /**
+     * @notice Test: External users cannot call redeem directly in cross-chain mode
+     * @dev Issue #37 - Direct redeem calls could be used in reentrancy attacks
+     */
+    function test_crossChainMode_externalUserCannotCallRedeem() public {
+        // Enable cross-chain mode WITHOUT oracle accounting
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), address(vault)),
+            abi.encode(true)
+        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(vault), false);
+
+        uint256 ownerShares = vault.balanceOf(shareOwner);
+        uint256 sharesToRedeem = ownerShares / 2;
+
+        // Attempt to redeem directly - should revert with SyncActionsDisabledInThisVault
+        vm.prank(shareOwner);
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.SyncActionsDisabledInThisVault.selector));
+        vault.redeem(sharesToRedeem, shareOwner, shareOwner);
+    }
+
+    /**
+     * @notice Test: External users cannot call mint directly in cross-chain mode
+     * @dev Issue #37 - Direct mint calls could be used in reentrancy attacks
+     */
+    function test_crossChainMode_externalUserCannotCallMint() public {
+        // Enable cross-chain mode WITHOUT oracle accounting
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), address(vault)),
+            abi.encode(true)
+        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(vault), false);
+
+        uint256 sharesToMint = 100 ether;
+
+        // Fund user
+        underlying.mint(shareOwner, 1000 ether);
+        vm.startPrank(shareOwner);
+        IERC20(address(underlying)).approve(address(vault), type(uint256).max);
+
+        // Attempt to mint directly - should revert with SyncActionsDisabledInThisVault
+        vm.expectRevert(abi.encodeWithSelector(IVaultFacet.SyncActionsDisabledInThisVault.selector));
+        vault.mint(sharesToMint, shareOwner);
+        vm.stopPrank();
+    }
+
+    /**
+     * @notice Test: Vault itself CAN call deposit in cross-chain mode (via executeRequest)
+     * @dev The vault calling itself (msg.sender == address(this)) should be allowed
+     *      This is how BridgeFacet.executeRequest works via address(this).call()
+     */
+    function test_crossChainMode_vaultCanCallDeposit() public {
+        // Enable cross-chain mode WITHOUT oracle accounting
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), address(vault)),
+            abi.encode(true)
+        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(vault), false);
+
+        uint256 depositAmount = 100 ether;
+
+        // Setup: Create request info with valid guid
+        bytes32 guid = keccak256("test-vault-deposit");
+        MoreVaultsStorageHelper.setCrossChainRequestInfo(
+            address(vault),
+            guid,
+            address(this),
+            uint64(block.timestamp),
+            uint8(MoreVaultsLib.ActionType.DEPOSIT),
+            abi.encode(depositAmount, shareOwner, shareOwner),
+            vault.totalAssets(),
+            0
+        );
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), guid);
+
+        // Mint assets to vault (simulating tokens already transferred during init)
+        underlying.mint(address(vault), depositAmount);
+
+        // Vault calling itself should succeed
+        vm.prank(address(vault));
+        uint256 shares = vault.deposit(depositAmount, shareOwner);
+
+        assertGt(shares, 0, "Vault should be able to deposit in cross-chain mode");
+    }
+
+    /**
+     * @notice Test: Vault itself CAN call withdraw in cross-chain mode (via executeRequest)
+     * @dev The vault calling itself (msg.sender == address(this)) should be allowed
+     */
+    function test_crossChainMode_vaultCanCallWithdraw() public {
+        // First do a normal deposit while in ERC4626 compatible mode
+        uint256 ownerShares = vault.balanceOf(shareOwner);
+        require(ownerShares > 0, "Owner should have shares from setUp");
+
+        // Calculate values BEFORE enabling cross-chain mode
+        uint256 sharesToWithdraw = ownerShares / 2;
+        uint256 assetsToWithdraw = vault.previewRedeem(sharesToWithdraw);
+        uint256 currentTotalAssets = vault.totalAssets();
+
+        // Enable cross-chain mode WITHOUT oracle accounting
+        vm.mockCall(
+            factory,
+            abi.encodeWithSelector(IVaultsFactory.isCrossChainVault.selector, uint32(block.chainid), address(vault)),
+            abi.encode(true)
+        );
+        MoreVaultsStorageHelper.setOraclesCrossChainAccounting(address(vault), false);
+
+        // Transfer shares to vault (simulating transferSharesFromOwner in BridgeFacet)
+        vm.prank(shareOwner);
+        IERC20(address(vault)).transfer(address(vault), sharesToWithdraw);
+        MoreVaultsStorageHelper.setLockedSharesPerUser(address(vault), shareOwner, sharesToWithdraw);
+
+        // Setup: Create request info with valid guid
+        bytes32 guid = keccak256("test-vault-withdraw");
+        MoreVaultsStorageHelper.setCrossChainRequestInfo(
+            address(vault),
+            guid,
+            address(this),
+            uint64(block.timestamp),
+            uint8(MoreVaultsLib.ActionType.WITHDRAW),
+            abi.encode(assetsToWithdraw, shareOwner, shareOwner),
+            currentTotalAssets,
+            sharesToWithdraw
+        );
+        MoreVaultsStorageHelper.setFinalizationGuid(address(vault), guid);
+
+        uint256 balanceBefore = underlying.balanceOf(shareOwner);
+
+        // Vault calling itself should succeed
+        vm.prank(address(vault));
+        vault.withdraw(assetsToWithdraw, shareOwner, shareOwner);
+
+        uint256 balanceAfter = underlying.balanceOf(shareOwner);
+        assertGt(balanceAfter, balanceBefore, "Vault should be able to withdraw in cross-chain mode");
+    }
 }
