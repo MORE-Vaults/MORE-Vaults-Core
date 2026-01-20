@@ -113,9 +113,12 @@ contract MoreEscrow is ReentrancyGuard {
     /**
      * @dev Sets the cross-chain accounting manager address
      * @param _manager Manager address
+     * @notice Only the vault can set the manager to prevent unauthorized access
      */
     function setCrossChainAccountingManager(address _manager) external {
-        // Access control checks can be added here if needed
+        if (msg.sender != vault) {
+            revert OnlyVault();
+        }
         crossChainAccountingManager = _manager;
     }
 
