@@ -474,10 +474,17 @@ contract MoreEscrow is ReentrancyGuard {
                 totalLockedPerVault[vault][token] -= released;
             }
 
-            // For WITHDRAW/REDEEM update lockedSharesPerUser
+            // For WITHDRAW/REDEEM update lockedSharesPerUser and totalLockedPerVault
+            // Note: For WITHDRAW/REDEEM, shares are locked in the vault immediately in lockTokens,
+            // so we need to decrease totalLockedPerVault even if releaseTokensForExecution was never called
             if (token == vault && (info.actionType == MoreVaultsLib.ActionType.WITHDRAW
                 || info.actionType == MoreVaultsLib.ActionType.REDEEM)) {
                 lockedSharesPerUser[vault][info.owner] -= info.requiredAmount[token];
+                // Decrease totalLockedPerVault by the required amount (what was locked in lockTokens)
+                // Only if it wasn't already decreased above (released == 0 means never executed)
+                if (released == 0) {
+                    totalLockedPerVault[vault][token] -= info.requiredAmount[token];
+                }
             }
 
             if (token == vault) {
@@ -534,9 +541,14 @@ contract MoreEscrow is ReentrancyGuard {
                 totalLockedPerVault[vault][token] -= released;
             }
 
+            // For WITHDRAW/REDEEM update lockedSharesPerUser and totalLockedPerVault
             if (token == vault && (info.actionType == MoreVaultsLib.ActionType.WITHDRAW
                 || info.actionType == MoreVaultsLib.ActionType.REDEEM)) {
                 lockedSharesPerUser[vault][info.owner] -= info.requiredAmount[token];
+                // Decrease totalLockedPerVault if never executed (same fix as refundTokens)
+                if (released == 0) {
+                    totalLockedPerVault[vault][token] -= info.requiredAmount[token];
+                }
             }
 
             if (token == vault) {
