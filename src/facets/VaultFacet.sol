@@ -32,6 +32,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     using Math for uint256;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
+    error AccountingOverflow();
+
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
         return keccak256("MoreVaults.storage.initializable.VaultFacetV1.0.1");
     }
@@ -180,14 +182,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 return (0, false);
             }
 
-            // Subtract cross-chain locked tokens from accounting
-            uint256 crossChainLocked = ds.pendingTokens[asset];
-            if (toConvert > crossChainLocked) {
-                toConvert -= crossChainLocked;
-            } else {
-                toConvert = 0;
-            }
-
             // convert to underlying
             // this function will use new free mem ptr
             _totalAssets += MoreVaultsLib.convertToUnderlying(asset, toConvert, Math.Rounding.Floor);
@@ -203,6 +197,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         returns (uint256 newTotalAssets, bool success)
     {
         success = true;
+        bytes4 overflowSelector = AccountingOverflow.selector;
         assembly {
             // put a debt variable on the stack
             let debt := 0
@@ -239,24 +234,18 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 if isPositive {
                     let newTotal := add(_totalAssets, decodedAmount)
                     if lt(newTotal, _totalAssets) {
-                        // Accounting overflow error
-                        mstore(0, 0x08c379a0)
-                        mstore(4, 0x20)
-                        mstore(36, 17)
-                        mstore(68, "Accounting overflow")
-                        revert(0, 100)
+                        // AccountingOverflow()
+                        mstore(0, shl(224, overflowSelector))
+                        revert(0, 4)
                     }
                     _totalAssets := newTotal
                 }
                 if iszero(isPositive) {
                     let newDebt := add(debt, decodedAmount)
                     if lt(newDebt, debt) {
-                        // Accounting overflow error (reuse same error format)
-                        mstore(0, 0x08c379a0)
-                        mstore(4, 0x20)
-                        mstore(36, 17)
-                        mstore(68, "Accounting overflow")
-                        revert(0, 100)
+                        // AccountingOverflow()
+                        mstore(0, shl(224, overflowSelector))
+                        revert(0, 4)
                     }
                     debt := newDebt
                 }
@@ -528,14 +517,14 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert CantProcessWithdrawRequest();
         }
 
-        // In cross-chain mode, shares are locked in vault, check vault's balance instead
+        // In cross-chain finalization mode, shares are locked in escrow, so use escrow's lockedShares for limits.
         uint256 maxRedeem_;
         if (ds.finalizationGuid != 0) {
             address escrow = MoreVaultsLib._getEscrow();
             if (escrow == address(0)) {
                 revert MoreVaultsLib.EscrowNotSet();
             }
-            maxRedeem_ = IMoreEscrow(escrow).getLockedShares(owner);
+            maxRedeem_ = IMoreEscrow(escrow).getLockedShares(address(this), owner);
         } else {
             maxRedeem_ = maxRedeem(owner);
         }
@@ -571,14 +560,14 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             revert CantProcessWithdrawRequest();
         }
 
-        // In cross-chain mode, shares are locked in vault, check vault's balance instead
+        // In cross-chain finalization mode, shares are locked in escrow, so use escrow's lockedShares for limits.
         uint256 maxRedeem_;
         if (ds.finalizationGuid != 0) {
             address escrow = MoreVaultsLib._getEscrow();
             if (escrow == address(0)) {
                 revert MoreVaultsLib.EscrowNotSet();
             }
-            maxRedeem_ = IMoreEscrow(escrow).getLockedShares(owner);
+            maxRedeem_ = IMoreEscrow(escrow).getLockedShares(address(this), owner);
         } else {
             maxRedeem_ = maxRedeem(owner);
         }
@@ -706,10 +695,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        // Check if this is a cross-chain vault deposit where tokens are already in vault
         if (_isERC4626Compatible(ds)) {
-            // If ERC4626 compatible, transfer tokens from caller to vault
-            SafeERC20.safeTransferFrom(IERC20(asset()), caller, address(this), assets);
+            // ERC4626-compatible: transfer assets into the vault.
+            // In cross-chain finalization mode, assets are held by escrow, but caller remains the user/initiator
+            // for caps/whitelist and events.
+            address payer = caller;
+            address escrow_ = MoreVaultsLib._getEscrow();
+            if (ds.finalizationGuid != 0 && escrow_ != address(0)) {
+                payer = escrow_;
+            }
+            SafeERC20.safeTransferFrom(IERC20(asset()), payer, address(this), assets);
         }
         _mint(receiver, shares);
 
@@ -736,9 +731,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     ) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (_isERC4626Compatible(ds)) {
-            // If ERC4626 compatible, transfer tokens from caller to vault
+            // ERC4626-compatible: transfer assets into the vault.
+            // In cross-chain finalization mode, assets are held by escrow, but caller remains the user/initiator
+            // for caps/whitelist and events.
+            address payer = caller;
+            address escrow_ = MoreVaultsLib._getEscrow();
+            if (ds.finalizationGuid != 0 && escrow_ != address(0)) {
+                payer = escrow_;
+            }
             for (uint256 i; i < assets.length;) {
-                SafeERC20.safeTransferFrom(IERC20(tokens[i]), caller, address(this), assets[i]);
+                SafeERC20.safeTransferFrom(IERC20(tokens[i]), payer, address(this), assets[i]);
                 unchecked {
                     ++i;
                 }
@@ -816,7 +818,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
-        uint256 lockedShares = IMoreEscrow(escrow).getLockedShares(_user);
+        uint256 lockedShares = IMoreEscrow(escrow).getLockedShares(address(this), _user);
         uint256 userShares = balanceOf(_user) + lockedShares;
         if (userShares == 0) {
             return 0;
@@ -953,7 +955,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
-        uint256 lockedShares = IMoreEscrow(escrow).getLockedShares(_user);
+        uint256 lockedShares = IMoreEscrow(escrow).getLockedShares(address(this), _user);
         uint256 userTotalShares = balanceOf(_user) + lockedShares;
         if (userTotalShares == 0) {
             ds.userHighWaterMarkPerShare[_user] = 0;
@@ -1112,23 +1114,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        // Check if this is a cross-chain finalization (shares already locked in vault)
+        // Check if this is a cross-chain finalization
         if (ds.finalizationGuid != 0) {
-            // Cross-chain mode: shares are already locked in vault, burn from vault
-            // Allowance was already verified/consumed in transferSharesFromOwner
-            _burn(address(this), shares);
-
-            // Get request info to determine correct amount to unlock
-            MoreVaultsLib.CrossChainRequestInfo storage requestInfo =
-                ds.guidToCrossChainRequestInfo[ds.finalizationGuid];
-
-            // For WITHDRAW: unlock amountLimit (includes excess that will be returned)
-            // For REDEEM: unlock shares (they match exactly)
-            if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
-                ds.lockedSharesPerUser[owner] -= requestInfo.amountLimit;
-            } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
-                ds.lockedSharesPerUser[owner] -= shares; // shares match exactly for REDEEM
+            // Cross-chain mode: shares are held by escrow; burn directly from escrow to avoid moving shares into the vault.
+            address escrow = MoreVaultsLib._getEscrow();
+            if (escrow == address(0)) {
+                revert MoreVaultsLib.EscrowNotSet();
             }
+            _burn(escrow, shares);
+
+            // For WITHDRAW/REDEEM, locked shares accounting is handled in escrow.
             // For other action types (DEPOSIT, MINT) no shares are locked, so nothing to unlock
         } else {
             // Normal flow
@@ -1368,65 +1363,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         ds.userHighWaterMarkPerShare[to] = newHWMpS;
     }
 
-    /**
-     * @dev Transfers shares from owner to vault using spender's allowance
-     * @param owner Owner of the shares
-     * @param shares Amount of shares to transfer
-     * @param spender Initiator who has allowance from owner
-     * @notice Uses internal ERC20 functions for transfer within a single call
-     * @notice Can only be called from BridgeFacet via address(this).call()
-     */
-    function transferSharesFromOwner(address owner, uint256 shares, address spender) external {
-        // Can only be called from the vault itself (BridgeFacet calls via address(this))
-        // or from escrow contract (MoreEscrow locks shares on behalf of cross-chain requests)
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (msg.sender != address(this) && msg.sender != ds.escrow) {
-            revert AccessControlLib.UnauthorizedAccess();
-        }
-        // If spender == owner, just transfer shares directly
-        if (spender == owner) {
-            _update(owner, address(this), shares);
-            return;
-        }
-
-        // Check spender's allowance from owner
-        uint256 currentAllowance = allowance(owner, spender);
-        if (currentAllowance < shares) {
-            revert ERC20InsufficientAllowance(spender, currentAllowance, shares);
-        }
-
-        // Check owner's balance
-        uint256 ownerBalance = balanceOf(owner);
-        if (ownerBalance < shares) {
-            revert ERC20InsufficientBalance(owner, ownerBalance, shares);
-        }
-
-        // Save vault balance before transfer for verification
-        uint256 vaultBalanceBefore = balanceOf(address(this));
-
-        // Decrease spender's allowance from owner using internal ERC20 function
-        _spendAllowance(owner, spender, shares);
-
-        // Transfer shares from owner to vault using internal _update
-        _update(owner, address(this), shares);
-
-        // Verify that transfer was successful
-        uint256 vaultBalanceAfter = balanceOf(address(this));
-        if (vaultBalanceAfter < vaultBalanceBefore + shares) {
-            revert ERC20InsufficientBalance(address(this), vaultBalanceAfter - vaultBalanceBefore, shares);
-        }
-    }
-
-    /**
-     * @dev Transfers shares from vault balance to `to`.
-     * @notice Used by escrow to refund excess shares after cross-chain execution/refund.
-     */
-    function transferSharesFromVault(address to, uint256 shares) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        // Allow either internal call (address(this)) or escrow
-        if (msg.sender != address(this) && msg.sender != ds.escrow) {
-            revert AccessControlLib.UnauthorizedAccess();
-        }
-        _update(address(this), to, shares);
-    }
+    // NOTE: cross-chain share locking/refunds are handled via standard ERC20 allowances
+    // (owner approves escrow; escrow pulls shares via transferFrom), so no special share-transfer helpers are needed.
 }

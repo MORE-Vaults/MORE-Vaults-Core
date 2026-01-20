@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {IVaultFacet} from "../interfaces/facets/IVaultFacet.sol";
-import {VaultFacet} from "./VaultFacet.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
@@ -25,8 +24,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     using SafeERC20 for IERC20;
     using Math for uint256;
 
-    error TransferSharesFailed();
     error InvalidAmountLimit();
+    error OnlyEscrow();
 
     event AccountingInfoUpdated(bytes32 indexed guid, uint256 sumOfSpokesUsdValue, bool readSuccess);
     event OracleCrossChainAccountingUpdated(bool indexed isTrue);
@@ -191,7 +190,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
-        IMoreEscrow(escrow).lockTokens(guid, actionType, actionCallData, amountLimit, msg.sender);
+        IMoreEscrow(escrow).lockTokens{value: value}(guid, actionType, actionCallData, amountLimit, msg.sender);
         
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
@@ -207,124 +206,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         });
 
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
-
     }
 
-    /**
-     * @dev Locks funds for a cross-chain request
-     * @param actionType Type of action (DEPOSIT, WITHDRAW, REDEEM, etc.)
-     * @param actionCallData Encoded action data
-     * @param amountLimit Maximum amount to lock (for MINT/WITHDRAW) or exact amount (for DEPOSIT/REDEEM)
-     */
-    function _lockFundsForRequest(
-        MoreVaultsLib.ActionType actionType,
-        bytes calldata actionCallData,
-        uint256 amountLimit
-    ) internal {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        address initiator = msg.sender;
-
-        if (actionType == MoreVaultsLib.ActionType.DEPOSIT) {
-            (uint256 assets,) = abi.decode(actionCallData, (uint256, address));
-            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
-
-            // Always transfer tokens from initiator to vault
-            // Cannot use tokens already in vault - they belong to other users
-            IERC20(assetToken).safeTransferFrom(initiator, address(this), assets);
-
-            // Lock tokens
-            ds.pendingTokens[assetToken] += assets;
-
-        } else if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (address[] memory tokens, uint256[] memory assets,,,) =
-                abi.decode(actionCallData, (address[], uint256[], address, uint256, uint256));
-
-            // Always transfer tokens from initiator for each token
-            for (uint256 i = 0; i < tokens.length; i++) {
-                IERC20(tokens[i]).safeTransferFrom(initiator, address(this), assets[i]);
-                ds.pendingTokens[tokens[i]] += assets[i];
-            }
-
-        } else if (actionType == MoreVaultsLib.ActionType.WITHDRAW) {
-            (, , address owner) =
-                abi.decode(actionCallData, (uint256, address, address));
-
-            // Use amountLimit as maximum shares to lock (instead of previewWithdraw)
-            // amountLimit represents maxAmountIn (maximum shares that can be used)
-            if (amountLimit == 0) {
-                revert InvalidAmountLimit();
-            }
-            uint256 shares = amountLimit;
-
-            // Transfer shares from owner to vault using initiator's allowance from owner
-            // Call public function VaultFacet via address(this).call() (both facets in same diamond contract)
-            // Uses internal ERC20 functions for transfer within a single call
-            (bool success, bytes memory returnData) = address(this).call(
-                abi.encodeWithSelector(
-                    VaultFacet.transferSharesFromOwner.selector,
-                    owner,
-                    shares,
-                    initiator
-                )
-            );
-            if (!success) {
-                if (returnData.length > 0) {
-                    assembly {
-                        revert(add(returnData, 0x20), mload(returnData))
-                    }
-                }
-                revert TransferSharesFailed();
-            }
-
-            // Lock shares (maximum amount, excess will be returned after execution)
-            ds.pendingTokens[address(this)] += shares;
-            ds.lockedSharesPerUser[owner] += shares;
-
-        } else if (actionType == MoreVaultsLib.ActionType.REDEEM) {
-            (uint256 shares, , address owner) =
-                abi.decode(actionCallData, (uint256, address, address));
-
-            // Transfer shares from owner to vault using initiator's allowance from owner
-            (bool success, bytes memory returnData) = address(this).call(
-                abi.encodeWithSelector(
-                    VaultFacet.transferSharesFromOwner.selector,
-                    owner,
-                    shares,
-                    initiator
-                )
-            );
-            if (!success) {
-                if (returnData.length > 0) {
-                    assembly {
-                        revert(add(returnData, 0x20), mload(returnData))
-                    }
-                }
-                revert TransferSharesFailed();
-            }
-
-            // Lock shares
-            ds.pendingTokens[address(this)] += shares;
-            ds.lockedSharesPerUser[owner] += shares;
-        } else if (actionType == MoreVaultsLib.ActionType.MINT) {
-            abi.decode(actionCallData, (uint256, address)); // shares, receiver - not used
-            
-            // Use amountLimit as maximum assets to lock (instead of previewMint)
-            // amountLimit represents maxAmountIn (maximum assets that can be used)
-            if (amountLimit == 0) {
-                revert InvalidAmountLimit();
-            }
-            uint256 assets = amountLimit;
-            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
-
-            // Always transfer tokens from initiator to vault
-            // Cannot use tokens already in vault - they belong to other users
-            IERC20(assetToken).safeTransferFrom(initiator, address(this), assets);
-
-            // Lock tokens (maximum amount, excess will be returned after execution)
-            ds.pendingTokens[assetToken] += assets;
-        }
-        // For ACCRUE_FEES locking is not required
-    }
 
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
@@ -357,9 +240,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
 
     /**
      * @inheritdoc IBridgeFacet
-     * @dev Refunds all tokens (native and ERC20) back to the initiator (or owner for WITHDRAW/REDEEM) and unlocks them from pending
-     * @notice Unlocks tokens and transfers them back to the appropriate recipient
-     * @notice Handles both native tokens (for MULTI_ASSETS_DEPOSIT) and ERC20 tokens/shares
+     * @dev Refunds a cross-chain request via escrow (native and ERC20 are held/refunded by escrow).
      */
     function refundRequestTokens(bytes32 guid) external nonReentrant {
         address crossChainAccountingManager = MoreVaultsLib._getCrossChainAccountingManager();
@@ -383,42 +264,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             revert MoreVaultsLib.EscrowNotSet();
         }
 
-        // If tokens were already released from escrow into vault (e.g. executeRequest reverted after release),
-        // return them back to escrow so it can safely refund to the user.
-        _returnReleasedAssetsToEscrow(requestInfo, escrow);
-
         IMoreEscrow(escrow).refundTokens(guid);
-    }
-
-    function _returnReleasedAssetsToEscrow(MoreVaultsLib.CrossChainRequestInfo storage requestInfo, address escrow)
-        internal
-    {
-        if (
-            requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT
-            || requestInfo.actionType == MoreVaultsLib.ActionType.MINT
-        ) {
-            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
-            uint256 amount;
-            if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
-                (uint256 assets,) = abi.decode(requestInfo.actionCallData, (uint256, address));
-                amount = assets;
-            } else {
-                amount = requestInfo.amountLimit;
-            }
-            if (amount > 0) {
-                IERC20(assetToken).safeTransfer(escrow, amount);
-            }
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (address[] memory tokens, uint256[] memory assets,,,) =
-                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256, uint256));
-            for (uint256 i = 0; i < tokens.length; i++) {
-                if (assets[i] > 0) {
-                    IERC20(tokens[i]).safeTransfer(escrow, assets[i]);
-                }
-            }
-        }
-        // WITHDRAW/REDEEM: shares are handled by escrow via transferSharesFromVault()
-        // ACCRUE_FEES: nothing to return
     }
 
     /**
@@ -532,7 +378,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             );
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
             (uint256 shares, address receiver) = abi.decode(requestInfo.actionCallData, (uint256, address));
-            // Tokens already transferred from escrow to vault
+            // Vault pulls required assets from escrow via transferFrom during mint/deposit flow
             (success, result) = address(this).call(abi.encodeWithSelector(IERC4626.mint.selector, shares, receiver));
             if (success) {
                 amountIn = abi.decode(result, (uint256));
@@ -540,7 +386,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
             (uint256 assets, address receiver, address owner) =
                 abi.decode(requestInfo.actionCallData, (uint256, address, address));
-            // Shares already in vault (transferred during lockTokens)
             (success, result) =
                 address(this).call(abi.encodeWithSelector(IERC4626.withdraw.selector, assets, receiver, owner));
             if (success) {
@@ -606,64 +451,13 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             }
         }
 
-        // Return unused amounts (excess) back to escrow so it can refund to the owner.
-        // This is critical for MINT/WITHDRAW where escrow releases max amount upfront.
-        for (uint256 i = 0; i < escrowTokens.length; i++) {
-            address token = escrowTokens[i];
-            if (usedAmounts[i] < escrowAmounts[i] && token != address(this)) {
-                uint256 excess = escrowAmounts[i] - usedAmounts[i];
-                if (excess > 0) {
-                    IERC20(token).safeTransfer(escrow, excess);
-                }
-            }
-        }
+        // Nothing to return from the vault:
+        // - ERC20 assets remain in escrow (vault pulls only what it needs via transferFrom)
+        // - shares remain in escrow too (vault burns directly from escrow during finalization)
 
         IMoreEscrow(escrow).unlockTokensAfterExecution(guid, escrowTokens, usedAmounts);
     }
 
-    /**
-     * @dev Unlocks funds for a cross-chain request
-     * @param requestInfo Request info containing action type and call data
-     * @notice For MINT/WITHDRAW unlocks amountLimit (used funds are deposited/burned, excess returned to user)
-     */
-    function _unlockRequestFunds(MoreVaultsLib.CrossChainRequestInfo memory requestInfo, bool isFinalized) internal {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
-        if (requestInfo.actionType == MoreVaultsLib.ActionType.DEPOSIT) {
-            (uint256 assets,) = abi.decode(requestInfo.actionCallData, (uint256, address));
-            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
-            ds.pendingTokens[assetToken] -= assets;
-
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
-            (address[] memory tokens, uint256[] memory assets,,,) =
-                abi.decode(requestInfo.actionCallData, (address[], uint256[], address, uint256, uint256));
-            for (uint256 i = 0; i < tokens.length; i++) {
-                ds.pendingTokens[tokens[i]] -= assets[i];
-            }
-
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.WITHDRAW) {
-            // Unlock amountLimit - excess shares already returned to owner in _executeRequest
-            // Used shares are burned, excess returned, so all locked shares are no longer pending
-            (,, address owner) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
-            ds.pendingTokens[address(this)] -= requestInfo.amountLimit;
-            if (!isFinalized) {
-                ds.lockedSharesPerUser[owner] -= requestInfo.amountLimit;
-            }
-
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.REDEEM) {
-            (uint256 shares,, address owner) = abi.decode(requestInfo.actionCallData, (uint256, address, address));
-            ds.pendingTokens[address(this)] -= shares;
-            if (!isFinalized) {
-                ds.lockedSharesPerUser[owner] -= shares;
-            }
-
-        } else if (requestInfo.actionType == MoreVaultsLib.ActionType.MINT) {
-            // Unlock amountLimit - excess assets already returned to initiator in _executeRequest
-            // Used assets are deposited into vault, excess returned, so all locked assets are no longer pending
-            address assetToken = MoreVaultsLib.getUnderlyingTokenAddress();
-            ds.pendingTokens[assetToken] -= requestInfo.amountLimit;
-        }
-    }
 
     function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
@@ -673,5 +467,17 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     function getFinalizationResult(bytes32 guid) external view returns (uint256 result) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.guidToCrossChainRequestInfo[guid].finalizationResult;
+    }
+
+    /**
+     * @dev Allows escrow to update stored actionCallData for a request (used for fee-on-transfer deposits).
+     * @notice Only escrow can call.
+     */
+    function updateCrossChainRequestActionCallData(bytes32 guid, bytes calldata newActionCallData) external {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (msg.sender != MoreVaultsLib._getEscrow()) {
+            revert OnlyEscrow();
+        }
+        ds.guidToCrossChainRequestInfo[guid].actionCallData = newActionCallData;
     }
 }

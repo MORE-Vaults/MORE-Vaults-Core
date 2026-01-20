@@ -14,7 +14,7 @@ interface IMoreEscrow {
         bytes calldata actionCallData,
         uint256 amountLimit,
         address initiator
-    ) external;
+    ) external payable;
 
     function releaseTokensForExecution(bytes32 guid)
         external
@@ -35,7 +35,5 @@ interface IMoreEscrow {
         view
         returns (address[] memory tokens, uint256[] memory amounts, uint256 nativeAmount);
 
-    function getTotalLocked(address token) external view returns (uint256);
-
-    function getLockedShares(address user) external view returns (uint256);
+    function getLockedShares(address vault, address user) external view returns (uint256);
 }

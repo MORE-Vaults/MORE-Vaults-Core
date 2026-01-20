@@ -408,7 +408,11 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             revert NotATokenOfOFT();
         }
 
-        IERC20(_tokenAddress).forceApprove(address(VAULT), _assetAmount);
+        // Escrow pulls tokens from initiator (this composer) during BridgeFacet.initVaultActionRequest -> escrow.lockTokens().
+        // Therefore, approval must be granted to escrow (spender), not the VAULT.
+        address escrow = IConfigurationFacet(address(VAULT)).getEscrow();
+        if (escrow == address(0)) revert MoreVaultsLib.EscrowNotSet();
+        IERC20(_tokenAddress).forceApprove(escrow, _assetAmount);
 
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
@@ -425,12 +429,13 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             actionCallData = abi.encode(tokens, assets, address(this), minAmountOut, 0);
         }
         // Pass amountLimit for slippage check in _executeRequest
-        // Tokens will be transferred and locked inside initVaultActionRequest -> _lockFundsForRequest
+        // Tokens will be transferred and locked inside initVaultActionRequest via escrow.lockTokens()
         bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
             actionType, actionCallData, _sendParam.minAmountLD, ""
         );
         
-        IERC20(_tokenAddress).forceApprove(address(VAULT), 0);
+        // Clear approval to minimize token approvals surface area.
+        IERC20(_tokenAddress).forceApprove(escrow, 0);
         _pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,

@@ -15,7 +15,6 @@ import {
     IGenericMoreVaultFacet,
     IGenericMoreVaultFacetInitializable
 } from "../interfaces/facets/IGenericMoreVaultFacetInitializable.sol";
-import {IMoreEscrow} from "../interfaces/IMoreEscrow.sol";
 
 bytes32 constant BEFORE_ACCOUNTING_SELECTOR = 0xa85367f800000000000000000000000000000000000000000000000000000000;
 bytes32 constant BEFORE_ACCOUNTING_FAILED_ERROR = 0xc5361f8d00000000000000000000000000000000000000000000000000000000;
@@ -186,14 +185,11 @@ library MoreVaultsLib {
         mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
         mapping(address => uint256) initialDepositCapPerUser;
         /// @dev Escrow contract for cross-chain token locking
-        /// @notice Replaces pendingTokens and lockedSharesPerUser - all locked tokens are now in escrow
+        /// @notice All cross-chain locks are held in escrow.
         address escrow;
-        /// @dev Locked tokens for cross-chain requests (excluded from accounting)
-        /// @notice DEPRECATED: Use escrow.getTotalLocked() instead
-        /// pendingTokens[token] = total amount locked for all active cross-chain requests
-        mapping(address => uint256) pendingTokens;
-        /// @dev DEPRECATED: Use escrow.getLockedShares() instead
-        mapping(address => uint256) lockedSharesPerUser;
+        /// @dev Allows fee-on-transfer handling for deposits (DEPOSIT / MULTI_ASSETS_DEPOSIT) by executing with actualReceived.
+        /// @notice Default is false (strict mode).
+        mapping(address => bool) isFeeOnTransferDepositAllowed;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -859,25 +855,18 @@ library MoreVaultsLib {
     }
 
     function _availableTokensToManage(address token) internal view returns (uint256) {
-        MoreVaultsStorage storage ds = moreVaultsStorage();
-        uint256 lockedAmount;
-        if (ds.escrow != address(0)) {
-            // Use escrow if available
-            lockedAmount = IMoreEscrow(ds.escrow).getTotalLocked(token);
-        } else {
-            // Fallback to old storage for backward compatibility
-            lockedAmount = ds.pendingTokens[token];
-        }
-        return IERC20(token).balanceOf(address(this)) - lockedAmount;
+        // Cross-chain locks are held in escrow (not in the vault), so the vault's own balance is fully available.
+        return IERC20(token).balanceOf(address(this));
     }
 
     function _getEscrow() internal view returns (address) {
-        MoreVaultsStorage storage ds = moreVaultsStorage();
-        return ds.escrow;
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        return IMoreVaultsRegistry(acs.moreVaultsRegistry).escrow();
     }
 
     function _setEscrow(address _escrow) internal {
-        MoreVaultsStorage storage ds = moreVaultsStorage();
-        ds.escrow = _escrow;
+        // Deprecated: escrow is stored protocol-wide in the registry.
+        // Kept only to preserve compilation for any legacy code paths.
+        _escrow;
     }
 }

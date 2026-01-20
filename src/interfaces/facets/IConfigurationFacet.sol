@@ -36,10 +36,14 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event WithdrawalTimelockSet(uint64 duration);
     /// @notice Emitted when the cross chain accounting manager is set
     event CrossChainAccountingManagerSet(address indexed manager);
+    /// @notice Emitted when the escrow contract is set
+    event EscrowSet(address indexed escrow);
     /// @notice Emitted when the max slippage percent is set
     event MaxSlippagePercentSet(uint256 percent);
     /// @notice Emitted when the max withdrawal delay is set
     event MaxWithdrawalDelaySet(uint32 delay);
+    /// @notice Emitted when fee-on-transfer deposit handling is toggled for an asset
+    event FeeOnTransferDepositAllowedSet(address indexed asset, bool allowed);
 
     /**
      * @notice Sets fee recipient address, callable by owner
@@ -108,6 +112,11 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function disableAssetToDeposit(address asset) external;
 
     /**
+     * @notice Returns whether fee-on-transfer deposit handling is allowed for the asset.
+     */
+    function isFeeOnTransferDepositAllowed(address asset) external view returns (bool);
+
+    /**
      * @notice Set the withdrawal fee, callable by owner through `submitActions` and timelocked
      * @param _fee New withdrawal fee
      */
@@ -156,6 +165,18 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param manager New cross chain accounting manager
      */
     function setCrossChainAccountingManager(address manager) external;
+
+    /**
+     * @notice Sets escrow contract address used for cross-chain locking (shared escrow supported).
+     * @param escrow Escrow contract address
+     */
+    function setEscrow(address escrow) external;
+
+    /**
+     * @notice Returns escrow contract address used for cross-chain locking.
+     * @return escrow Escrow contract address
+     */
+    function getEscrow() external view returns (address escrow);
 
     /**
      * @notice Get the current withdrawal fee
