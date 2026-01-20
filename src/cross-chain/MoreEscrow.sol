@@ -35,6 +35,7 @@ contract MoreEscrow is ReentrancyGuard {
     error TransferFailed();
     error InsufficientTokensReceived();
     error EscrowNotSet();
+    error TokenNotWhitelisted(address token);
 
     event TokensLocked(
         bytes32 indexed guid,
@@ -168,6 +169,8 @@ contract MoreEscrow is ReentrancyGuard {
                 abi.decode(actionCallData, (address[], uint256[], address, uint256, uint256));
 
             for (uint256 i = 0; i < tokens.length; i++) {
+                // Validate token is whitelisted BEFORE transfer to prevent arbitrary code execution
+                _validateAssetDepositable(tokens[i]);
                 // Fee-on-transfer/rebasing: use balanceBefore/After to get the actual received amount
                 uint256 balanceBefore = IERC20(tokens[i]).balanceOf(address(this));
                 IERC20(tokens[i]).safeTransferFrom(initiator, address(this), amounts[i]);
@@ -592,6 +595,20 @@ contract MoreEscrow is ReentrancyGuard {
      */
     function getLockedShares(address user) external view returns (uint256) {
         return lockedSharesPerUser[vault][user];
+    }
+
+    /**
+     * @dev Validates that a token is whitelisted for deposit in the vault
+     * @param token Token address to validate
+     * @notice Reverts if token is not whitelisted, preventing arbitrary code execution via transferFrom
+     */
+    function _validateAssetDepositable(address token) internal view {
+        (bool success, bytes memory data) = vault.staticcall(
+            abi.encodeWithSelector(bytes4(keccak256("isAssetDepositable(address)")), token)
+        );
+        if (!success || (data.length > 0 && !abi.decode(data, (bool)))) {
+            revert TokenNotWhitelisted(token);
+        }
     }
 
     /**
