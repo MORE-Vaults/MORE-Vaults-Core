@@ -46,6 +46,7 @@ contract MoreVaultsEscrow is ReentrancyGuard {
     error EscrowNotSet();
     error TokenNotWhitelisted(address token);
     error ArraysLengthMismatch();
+    error TokensMismatch();
     error NativeTransferFailed();
     error NativeRefundFailed();
     error UsedAmountExceedsReleased(uint256 usedAmount, uint256 releasedAmount);
@@ -409,9 +410,14 @@ contract MoreVaultsEscrow is ReentrancyGuard {
 
         info.finalized = true;
 
-        // Unlock tokens and return excess
+        // Validate tokens array matches stored tokens
         if (tokens.length != usedAmounts.length) revert ArraysLengthMismatch();
-        
+        if (tokens.length != info.tokens.length) revert ArraysLengthMismatch();
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] != info.tokens[i]) revert TokensMismatch();
+        }
+
+        // Unlock tokens and return excess
         for (uint256 i = 0; i < tokens.length; i++) {
             address token = tokens[i];
             // Cache storage reads for gas optimization
