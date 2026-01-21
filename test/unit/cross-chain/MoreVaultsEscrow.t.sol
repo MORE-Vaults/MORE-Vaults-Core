@@ -1494,4 +1494,204 @@ contract MoreVaultsEscrowTest is Test {
 
         assertEq(escrow.getLockedShares(address(vault), user), shares1 + shares2);
     }
+
+    // ============ VULNERABILITY TESTS ============
+
+    /**
+     * @notice Test: Can release be called twice? (double release attack)
+     * @dev This tests if escrow properly handles multiple release calls
+     */
+    function test_vulnerability_DoubleRelease() public {
+        uint256 amount = 100 ether;
+
+        underlyingToken.mint(user, amount);
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        bytes32 guid = keccak256("double_release");
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(guid, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+
+        // First release
+        vm.prank(address(vault));
+        (, uint256[] memory amounts1,) = escrow.releaseTokensForExecution(guid);
+        assertEq(amounts1[0], amount);
+
+        // Vault pulls tokens
+        vm.prank(address(vault));
+        underlyingToken.transferFrom(address(escrow), address(vault), amount);
+        assertEq(underlyingToken.balanceOf(address(escrow)), 0);
+
+        // Second release - succeeds but escrow has no tokens
+        vm.prank(address(vault));
+        (, uint256[] memory amounts2,) = escrow.releaseTokensForExecution(guid);
+        assertEq(amounts2[0], amount);
+
+        // But vault can't actually pull more tokens
+        vm.prank(address(vault));
+        vm.expectRevert();
+        underlyingToken.transferFrom(address(escrow), address(vault), amount);
+    }
+
+    /**
+     * @notice Test: Double release with native tokens fails on second call
+     */
+    function test_vulnerability_DoubleReleaseNative() public {
+        uint256 amount = 100 ether;
+        uint256 nativeAmount = 1 ether;
+
+        underlyingToken.mint(user, amount);
+        vm.deal(address(vault), nativeAmount);
+
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(underlyingToken);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+
+        bytes memory actionCallData = abi.encode(tokens, amounts, user, 0, nativeAmount);
+        bytes32 guid = keccak256("double_release_native");
+
+        vm.prank(address(vault));
+        escrow.lockTokens{value: nativeAmount}(guid, MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT, actionCallData, 0, user);
+
+        // First release - sends native to vault
+        vm.prank(address(vault));
+        escrow.releaseTokensForExecution(guid);
+
+        // Second release - should fail because no native balance
+        vm.prank(address(vault));
+        vm.expectRevert(MoreVaultsEscrow.NativeTransferFailed.selector);
+        escrow.releaseTokensForExecution(guid);
+    }
+
+    /**
+     * @notice Test: Flash loan attack scenario
+     * @dev User locks tokens and tries to get immediate refund in same context
+     */
+    function test_vulnerability_FlashLoanScenario() public {
+        uint256 amount = 100 ether;
+
+        underlyingToken.mint(user, amount);
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        bytes32 guid = keccak256("flashloan");
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        // Lock tokens
+        vm.prank(address(vault));
+        escrow.lockTokens(guid, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+
+        // Immediate refund - only vault can call, not user
+        uint256 userBalanceBefore = underlyingToken.balanceOf(user);
+        vm.prank(address(vault));
+        escrow.refundTokens(guid);
+        uint256 userBalanceAfter = underlyingToken.balanceOf(user);
+
+        assertEq(userBalanceAfter - userBalanceBefore, amount);
+    }
+
+    /**
+     * @notice Test: Donation attack - donating tokens to escrow
+     */
+    function test_vulnerability_DonationAttack() public {
+        uint256 lockAmount = 100 ether;
+        uint256 donationAmount = 50 ether;
+
+        underlyingToken.mint(user, lockAmount);
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), lockAmount);
+
+        bytes32 guid = keccak256("donation");
+        bytes memory actionCallData = abi.encode(lockAmount, user);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(guid, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+
+        // Attacker donates tokens directly to escrow
+        address attacker = makeAddr("attacker");
+        underlyingToken.mint(attacker, donationAmount);
+        vm.prank(attacker);
+        underlyingToken.transfer(address(escrow), donationAmount);
+
+        assertEq(underlyingToken.balanceOf(address(escrow)), lockAmount + donationAmount);
+
+        // Release and vault pulls
+        vm.prank(address(vault));
+        escrow.releaseTokensForExecution(guid);
+
+        vm.prank(address(vault));
+        underlyingToken.transferFrom(address(escrow), address(vault), lockAmount);
+
+        // Unlock
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(underlyingToken);
+        uint256[] memory usedAmounts = new uint256[](1);
+        usedAmounts[0] = lockAmount;
+
+        vm.prank(address(vault));
+        escrow.unlockTokensAfterExecution(guid, tokens, usedAmounts);
+
+        // Donated tokens remain stuck (lost to donator)
+        assertEq(underlyingToken.balanceOf(address(escrow)), donationAmount);
+    }
+
+    /**
+     * @notice Test: Release then refund works if vault didn't use tokens
+     */
+    function test_vulnerability_ReleaseThenRefund() public {
+        uint256 amount = 100 ether;
+
+        underlyingToken.mint(user, amount);
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        bytes32 guid = keccak256("release_then_refund");
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(guid, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+
+        // Release
+        vm.prank(address(vault));
+        escrow.releaseTokensForExecution(guid);
+
+        // Vault doesn't pull tokens, then refund
+        uint256 userBalanceBefore = underlyingToken.balanceOf(user);
+        vm.prank(address(vault));
+        escrow.refundTokens(guid);
+        uint256 userBalanceAfter = underlyingToken.balanceOf(user);
+
+        assertEq(userBalanceAfter - userBalanceBefore, amount);
+    }
+
+    /**
+     * @notice Test: Vault cannot pull more than approved
+     */
+    function test_vulnerability_VaultPullsMoreThanReleased() public {
+        uint256 amount = 100 ether;
+
+        underlyingToken.mint(user, amount);
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        bytes32 guid = keccak256("overpull");
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(guid, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+
+        vm.prank(address(vault));
+        escrow.releaseTokensForExecution(guid);
+
+        // Vault tries to pull more than approved
+        vm.prank(address(vault));
+        vm.expectRevert();
+        underlyingToken.transferFrom(address(escrow), address(vault), amount + 1);
+    }
 }
