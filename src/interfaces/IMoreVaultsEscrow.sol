@@ -4,10 +4,10 @@ pragma solidity 0.8.28;
 import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
 
 /**
- * @title IMoreEscrow
- * @dev Interface for MoreEscrow contract
+ * @title IMoreVaultsEscrow
+ * @dev Interface for MoreVaultsEscrow contract
  */
-interface IMoreEscrow {
+interface IMoreVaultsEscrow {
     function lockTokens(
         bytes32 guid,
         MoreVaultsLib.ActionType actionType,

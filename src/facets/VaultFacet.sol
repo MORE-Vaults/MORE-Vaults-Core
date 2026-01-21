@@ -26,7 +26,7 @@ import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {IMoreVaultsRegistry} from "../interfaces/IMoreVaultsRegistry.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IMoreEscrow} from "../interfaces/IMoreEscrow.sol";
+import {IMoreVaultsEscrow} from "../interfaces/IMoreVaultsEscrow.sol";
 
 contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, BaseFacetInitializer {
     using Math for uint256;
@@ -138,7 +138,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     ) private view returns (uint256 _totalAssets, bool success) {
         success = true;
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        uint256 pendingNative = ds.pendingNative;
         assembly {
             mstore(_freePtr, BALANCE_OF_SELECTOR)
         }
@@ -172,10 +171,10 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
                 // if the asset is the wrapped native, add the native balance
                 if eq(_wrappedNative, asset) {
-                    // if the vault processes native deposits, make sure to exclude msg.value and pendingNative
+                    // if the vault processes native deposits, make sure to exclude msg.value
                     switch iszero(_isNativeDeposit)
-                    case 1 { toConvert := add(toConvert, sub(selfbalance(), pendingNative)) }
-                    default { toConvert := add(toConvert, sub(sub(selfbalance(), callvalue()), pendingNative)) }
+                    case 1 { toConvert := add(toConvert, selfbalance()) }
+                    default { toConvert := add(toConvert, sub(selfbalance(), callvalue())) }
                 }
             }
             if (!success) {
@@ -524,7 +523,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (escrow == address(0)) {
                 revert MoreVaultsLib.EscrowNotSet();
             }
-            maxRedeem_ = IMoreEscrow(escrow).getLockedShares(address(this), owner);
+            maxRedeem_ = IMoreVaultsEscrow(escrow).getLockedShares(address(this), owner);
         } else {
             maxRedeem_ = maxRedeem(owner);
         }
@@ -567,7 +566,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (escrow == address(0)) {
                 revert MoreVaultsLib.EscrowNotSet();
             }
-            maxRedeem_ = IMoreEscrow(escrow).getLockedShares(address(this), owner);
+            maxRedeem_ = IMoreVaultsEscrow(escrow).getLockedShares(address(this), owner);
         } else {
             maxRedeem_ = maxRedeem(owner);
         }
@@ -818,7 +817,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
-        uint256 lockedShares = IMoreEscrow(escrow).getLockedShares(address(this), _user);
+        uint256 lockedShares = IMoreVaultsEscrow(escrow).getLockedShares(address(this), _user);
         uint256 userShares = balanceOf(_user) + lockedShares;
         if (userShares == 0) {
             return 0;
@@ -955,7 +954,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
-        uint256 lockedShares = IMoreEscrow(escrow).getLockedShares(address(this), _user);
+        uint256 lockedShares = IMoreVaultsEscrow(escrow).getLockedShares(address(this), _user);
         uint256 userTotalShares = balanceOf(_user) + lockedShares;
         if (userTotalShares == 0) {
             ds.userHighWaterMarkPerShare[_user] = 0;

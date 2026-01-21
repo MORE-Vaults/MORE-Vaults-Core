@@ -11,6 +11,7 @@ import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
+import {MockMoreVaultsEscrow} from "../../mocks/MockMoreVaultsEscrow.sol";
 import {console} from "forge-std/console.sol";
 
 /**
@@ -37,6 +38,7 @@ contract HWMZeroBugTest is Test {
     address public factory = address(1001);
     address public oracleRegistry = address(1002);
     address public router = address(1003);
+    MockMoreVaultsEscrow public escrow;
 
     string constant VAULT_NAME = "Test Vault";
     string constant VAULT_SYMBOL = "TV";
@@ -51,6 +53,10 @@ contract HWMZeroBugTest is Test {
 
         MockERC20 mockToken = new MockERC20("Test Token", "TT");
         asset = address(mockToken);
+
+        // Deploy mock escrow
+        escrow = new MockMoreVaultsEscrow();
+        escrow.setUnderlyingToken(vault, asset);
 
         feeRecipient = owner;
 
@@ -107,6 +113,7 @@ contract HWMZeroBugTest is Test {
             abi.encode(new address[](0))
         );
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector), abi.encode(address(escrow)));
     }
 
     /**

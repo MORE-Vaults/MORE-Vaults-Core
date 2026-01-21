@@ -137,10 +137,6 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(asset);
-        if (availableTokens < assets) {
-            revert InsufficientAvailableTokens(availableTokens, assets);
-        }
 
         IERC20(asset).forceApprove(vault, assets);
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
@@ -167,15 +163,11 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
 
         address asset = IERC4626(vault).asset();
         assets = IERC4626(vault).previewMint(shares);
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(asset);
 
         IERC20(asset).forceApprove(vault, assets);
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         assets = IERC4626(vault).mint(shares, address(this));
-        if (availableTokens < assets) {
-            revert InsufficientAvailableTokens(availableTokens, assets);
-        }
         uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceAfter = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
         // If shares balance or assets balance didn't change, it means that action is async and should be executed with genericAsyncActionExecution or ERC7540Facet
@@ -196,14 +188,10 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(vault);
 
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceBefore = IERC20(asset).balanceOf(address(this));
         shares = IERC4626(vault).withdraw(assets, address(this), address(this));
-        if (availableTokens < shares) {
-            revert InsufficientAvailableTokens(availableTokens, shares);
-        }
         uint256 sharesBalanceAfter = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceAfter = IERC20(asset).balanceOf(address(this));
         // If shares balance or assets balance didn't change, it means that action is async and should be executed with genericAsyncActionExecution or ERC7540Facet
@@ -223,10 +211,6 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(vault);
-        if (availableTokens < shares) {
-            revert InsufficientAvailableTokens(availableTokens, shares);
-        }
 
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceBefore = IERC20(asset).balanceOf(address(this));

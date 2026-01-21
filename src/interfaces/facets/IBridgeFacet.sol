@@ -26,6 +26,9 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error InitiatorIsNotVaultComposer();
     error NotEnoughMsgValueProvided();
     error SlippageExceeded(uint256 amount, uint256 limit);
+    error NotCrossChainVault();
+    /// @dev For WITHDRAW/REDEEM, the request initiator must match the share owner to prevent abuse via escrow approvals.
+    error OwnerMustBeInitiator();
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD

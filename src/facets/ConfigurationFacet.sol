@@ -211,16 +211,6 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function setEscrow(address escrow) external {
-        AccessControlLib.validateDiamond(msg.sender);
-        if (escrow == address(0)) revert InvalidAddress();
-        MoreVaultsLib._setEscrow(escrow);
-        emit EscrowSet(escrow);
-    }
-
-    /**
-     * @inheritdoc IConfigurationFacet
-     */
     function getEscrow() external view returns (address escrow) {
         return MoreVaultsLib._getEscrow();
     }
@@ -254,16 +244,6 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function isAssetDepositable(address asset) external view returns (bool) {
         return MoreVaultsLib.moreVaultsStorage().isAssetDepositable[asset];
-    }
-
-    /**
-     * @inheritdoc IConfigurationFacet
-     */
-    function isFeeOnTransferDepositAllowed(address asset) external view returns (bool) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (asset == address(0)) asset = ds.wrappedNative;
-        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
-        return IMoreVaultsRegistry(acs.moreVaultsRegistry).isFeeOnTransferDepositAllowed(asset);
     }
 
     /**

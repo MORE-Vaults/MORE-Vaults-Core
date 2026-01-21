@@ -28,6 +28,7 @@ import {AccessControlLib} from "../../../src/libraries/AccessControlLib.sol";
 import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
+import {MockMoreVaultsEscrow} from "../../mocks/MockMoreVaultsEscrow.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -57,6 +58,7 @@ contract VaultFacetTest is Test {
     address public protocolFeeRecipient = address(1003);
     uint96 public protocolFee = 1000; // 10%
     uint8 public decimalsOffset = 2;
+    MockMoreVaultsEscrow public escrow;
 
     function setUp() public {
         vm.warp(block.timestamp + 1 days);
@@ -68,6 +70,10 @@ contract VaultFacetTest is Test {
         // Deploy mock asset
         MockERC20 mockAsset = new MockERC20("Test Asset", "TA");
         asset = address(mockAsset);
+
+        // Deploy mock escrow
+        escrow = new MockMoreVaultsEscrow();
+        escrow.setUnderlyingToken(facet, asset);
 
         MoreVaultsStorageHelper.setMoreVaultsRegistry(facet, registry);
         MoreVaultsStorageHelper.setOwner(facet, owner);
@@ -104,6 +110,7 @@ contract VaultFacetTest is Test {
             abi.encode(false)
         );
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector), abi.encode(address(escrow)));
 
         // Mint some assets to user for testing
         MockERC20(asset).mint(user, 1000 ether);

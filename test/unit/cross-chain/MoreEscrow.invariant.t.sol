@@ -3,17 +3,17 @@
 
 // import {Test, console} from "forge-std/Test.sol";
 // import {StdInvariant} from "forge-std/StdInvariant.sol";
-// import {MoreEscrow} from "../../../src/cross-chain/MoreEscrow.sol";
+// import {MoreVaultsEscrow} from "../../../src/cross-chain/MoreVaultsEscrow.sol";
 // import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 // import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 // import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 // /**
 //  * @title EscrowHandler
-//  * @notice Handler contract that the fuzzer will call to interact with MoreEscrow
+//  * @notice Handler contract that the fuzzer will call to interact with MoreVaultsEscrow
 //  */
 // contract EscrowHandler is Test {
-//     MoreEscrow public escrow;
+//     MoreVaultsEscrow public escrow;
 //     ERC20Mock public token;
 //     address public vault;
 //     address public manager;
@@ -33,7 +33,7 @@
 //     uint256 public ghost_releaseCalls;
 //     uint256 public ghost_successfulRefunds;
 
-//     constructor(MoreEscrow _escrow, ERC20Mock _token, address _vault, address _manager) {
+//     constructor(MoreVaultsEscrow _escrow, ERC20Mock _token, address _vault, address _manager) {
 //         escrow = _escrow;
 //         token = _token;
 //         vault = _vault;
@@ -161,11 +161,11 @@
 // }
 
 // /**
-//  * @title MoreEscrowInvariantTest
-//  * @notice Invariant tests for MoreEscrow contract
+//  * @title MoreVaultsEscrowInvariantTest
+//  * @notice Invariant tests for MoreVaultsEscrow contract
 //  */
-// contract MoreEscrowInvariantTest is StdInvariant, Test {
-//     MoreEscrow public escrow;
+// contract MoreVaultsEscrowInvariantTest is StdInvariant, Test {
+//     MoreVaultsEscrow public escrow;
 //     ERC20Mock public token;
 //     MockVaultForEscrow public vault;
 //     EscrowHandler public handler;
@@ -181,7 +181,7 @@
 
 //         // Deploy escrow
 //         vm.prank(address(vault));
-//         escrow = new MoreEscrow(address(vault));
+//         escrow = new MoreVaultsEscrow(address(vault));
 
 //         // Set manager
 //         vm.prank(address(vault));
@@ -252,11 +252,11 @@
 // }
 
 // /**
-//  * @title MoreEscrowAccessControlInvariantTest
+//  * @title MoreVaultsEscrowAccessControlInvariantTest
 //  * @notice Focused invariant test for access control
 //  */
-// contract MoreEscrowAccessControlInvariantTest is StdInvariant, Test {
-//     MoreEscrow public escrow;
+// contract MoreVaultsEscrowAccessControlInvariantTest is StdInvariant, Test {
+//     MoreVaultsEscrow public escrow;
 //     address public vault = makeAddr("vault");
 //     address public manager = makeAddr("manager");
 
@@ -266,7 +266,7 @@
 
 //     function setUp() public {
 //         vm.prank(vault);
-//         escrow = new MoreEscrow(vault);
+//         escrow = new MoreVaultsEscrow(vault);
 
 //         vm.prank(vault);
 //         escrow.setCrossChainAccountingManager(manager);
@@ -290,7 +290,7 @@
 //             fail("CRITICAL: Unauthorized manager change!");
 //         } catch (bytes memory reason) {
 //             // Expected - verify it's the right error
-//             assertEq(bytes4(reason), MoreEscrow.OnlyVault.selector);
+//             assertEq(bytes4(reason), MoreVaultsEscrow.OnlyVault.selector);
 //         }
 //     }
 

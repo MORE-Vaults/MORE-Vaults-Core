@@ -177,19 +177,12 @@ library MoreVaultsLib {
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
         mapping(address => uint256) userHighWaterMarkPerShare;
-        uint256 pendingNative;
         uint32 maxWithdrawalDelay;
         /// @dev Locked tokens per external contract per token address
         /// For deposits: lockedTokensPerContract[vault][asset] = amount
         /// For redeems: lockedTokensPerContract[vault][shareToken] = shares
         mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
         mapping(address => uint256) initialDepositCapPerUser;
-        /// @dev Escrow contract for cross-chain token locking
-        /// @notice All cross-chain locks are held in escrow.
-        address escrow;
-        /// @dev Allows fee-on-transfer handling for deposits (DEPOSIT / MULTI_ASSETS_DEPOSIT) by executing with actualReceived.
-        /// @notice Default is false (strict mode).
-        mapping(address => bool) isFeeOnTransferDepositAllowed;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -862,11 +855,5 @@ library MoreVaultsLib {
     function _getEscrow() internal view returns (address) {
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
         return IMoreVaultsRegistry(acs.moreVaultsRegistry).escrow();
-    }
-
-    function _setEscrow(address _escrow) internal {
-        // Deprecated: escrow is stored protocol-wide in the registry.
-        // Kept only to preserve compilation for any legacy code paths.
-        _escrow;
     }
 }

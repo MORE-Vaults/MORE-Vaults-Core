@@ -2,14 +2,14 @@
 // pragma solidity 0.8.28;
 
 // import {Test, console} from "forge-std/Test.sol";
-// import {MoreEscrow} from "../../../src/cross-chain/MoreEscrow.sol";
+// import {MoreVaultsEscrow} from "../../../src/cross-chain/MoreVaultsEscrow.sol";
 
 // /**
-//  * @title MoreEscrowAccessControlTest
+//  * @title MoreVaultsEscrowAccessControlTest
 //  * @notice Tests for access control on setCrossChainAccountingManager
 //  */
-// contract MoreEscrowAccessControlTest is Test {
-//     MoreEscrow public escrow;
+// contract MoreVaultsEscrowAccessControlTest is Test {
+//     MoreVaultsEscrow public escrow;
 
 //     address public vault = makeAddr("vault");
 //     address public legitimateManager = makeAddr("legitimateManager");
@@ -19,7 +19,7 @@
 //     function setUp() public {
 //         // Deploy escrow with vault as the authorized caller
 //         vm.prank(vault);
-//         escrow = new MoreEscrow(vault);
+//         escrow = new MoreVaultsEscrow(vault);
 
 //         // Set legitimate manager (only vault can do this)
 //         vm.prank(vault);
@@ -35,7 +35,7 @@
 
 //         // Attacker tries to set themselves as manager - SHOULD REVERT
 //         vm.prank(attacker);
-//         vm.expectRevert(MoreEscrow.OnlyVault.selector);
+//         vm.expectRevert(MoreVaultsEscrow.OnlyVault.selector);
 //         escrow.setCrossChainAccountingManager(attacker);
 
 //         // Manager should still be the legitimate one
@@ -47,7 +47,7 @@
 //      */
 //     function test_RandomUserCannotSetManager() public {
 //         vm.prank(randomUser);
-//         vm.expectRevert(MoreEscrow.OnlyVault.selector);
+//         vm.expectRevert(MoreVaultsEscrow.OnlyVault.selector);
 //         escrow.setCrossChainAccountingManager(randomUser);
 
 //         assertEq(escrow.crossChainAccountingManager(), legitimateManager);
@@ -87,13 +87,13 @@
 //     function test_AttackerCannotHijackManagerToCallProtectedFunctions() public {
 //         // Attacker tries to set themselves as manager - REVERTS
 //         vm.prank(attacker);
-//         vm.expectRevert(MoreEscrow.OnlyVault.selector);
+//         vm.expectRevert(MoreVaultsEscrow.OnlyVault.selector);
 //         escrow.setCrossChainAccountingManager(attacker);
 
 //         // Attacker tries to call protected function directly - REVERTS
 //         bytes32 fakeGuid = keccak256("fake");
 //         vm.prank(attacker);
-//         vm.expectRevert(MoreEscrow.OnlyCrossChainAccountingManager.selector);
+//         vm.expectRevert(MoreVaultsEscrow.OnlyCrossChainAccountingManager.selector);
 //         escrow.refundTokens(fakeGuid);
 //     }
 
@@ -104,7 +104,7 @@
 //         vm.assume(caller != vault);
 
 //         vm.prank(caller);
-//         vm.expectRevert(MoreEscrow.OnlyVault.selector);
+//         vm.expectRevert(MoreVaultsEscrow.OnlyVault.selector);
 //         escrow.setCrossChainAccountingManager(caller);
 
 //         assertEq(escrow.crossChainAccountingManager(), legitimateManager);

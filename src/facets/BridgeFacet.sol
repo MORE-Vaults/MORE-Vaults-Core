@@ -18,14 +18,13 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {MessagingFee} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
-import {IMoreEscrow} from "../interfaces/IMoreEscrow.sol";
+import {IMoreVaultsEscrow} from "../interfaces/IMoreVaultsEscrow.sol";
 
 contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Math for uint256;
 
     error InvalidAmountLimit();
-    error OnlyEscrow();
 
     event AccountingInfoUpdated(bytes32 indexed guid, uint256 sumOfSpokesUsdValue, bool readSuccess);
     event OracleCrossChainAccountingUpdated(bool indexed isTrue);
@@ -155,6 +154,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
                 revert AccountingViaOracles();
             }
             guid = _createCrossChainRequest(ds, vaults, eids, actionType, actionCallData, amountLimit, extraOptions);
+        } else {
+            revert NotCrossChainVault();
         }
     }
 
@@ -172,7 +173,6 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         uint256 value;
         if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
             (,,,, value) = abi.decode(actionCallData, (address[], uint256[], address, uint256, uint256));
-            ds.pendingNative += value;
             if (value + fee.nativeFee > msg.value) {
                 revert NotEnoughMsgValueProvided();
             }
@@ -185,12 +185,14 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         )
         .guid;
 
-        // Lock funds for the request using escrow
-        address escrow = MoreVaultsLib._getEscrow();
-        if (escrow == address(0)) {
-            revert MoreVaultsLib.EscrowNotSet();
+        // Lock funds for the request using escrow (ACCRUE_FEES doesn't lock anything)
+        if (actionType != MoreVaultsLib.ActionType.ACCRUE_FEES) {
+            address escrow = MoreVaultsLib._getEscrow();
+            if (escrow == address(0)) {
+                revert MoreVaultsLib.EscrowNotSet();
+            }
+            IMoreVaultsEscrow(escrow).lockTokens{value: value}(guid, actionType, actionCallData, amountLimit, msg.sender);
         }
-        IMoreEscrow(escrow).lockTokens{value: value}(guid, actionType, actionCallData, amountLimit, msg.sender);
         
         MoreVaultsLib.CrossChainRequestInfo memory requestInfo = MoreVaultsLib.CrossChainRequestInfo({
             initiator: msg.sender,
@@ -258,13 +260,18 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         // Mark as refunded FIRST to prevent reentrancy re-refunds (CEI pattern)
         requestInfo.refunded = true;
 
+        // ACCRUE_FEES doesn't lock anything in escrow, nothing to refund.
+        if (requestInfo.actionType == MoreVaultsLib.ActionType.ACCRUE_FEES) {
+            return;
+        }
+
         // Use escrow - required
         address escrow = MoreVaultsLib._getEscrow();
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
 
-        IMoreEscrow(escrow).refundTokens(guid);
+        IMoreVaultsEscrow(escrow).refundTokens(guid);
     }
 
     /**
@@ -293,7 +300,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
-        IMoreEscrow(escrow).refundToComposer(guid, vaultComposer);
+        IMoreVaultsEscrow(escrow).refundToComposer(guid, vaultComposer);
 
         // Call composer refund (external call - potential reentrancy point)
         IMoreVaultsComposer(vaultComposer).refundDeposit{value: msg.value}(guid);
@@ -349,16 +356,15 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         }
         ds.finalizationGuid = guid;
 
-        // Release tokens from escrow for execution
+        // Release tokens from escrow for execution (ACCRUE_FEES doesn't use escrow)
         address escrow = MoreVaultsLib._getEscrow();
         address[] memory escrowTokens;
         uint256[] memory escrowAmounts;
         uint256 escrowNativeAmount;
-        if (escrow != address(0)) {
-            (escrowTokens, escrowAmounts, escrowNativeAmount) = IMoreEscrow(escrow).releaseTokensForExecution(guid);
-            // For MULTI_ASSETS_DEPOSIT, native token is handled separately
-            if (requestInfo.actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT && escrowNativeAmount > 0) {
-                ds.pendingNative -= escrowNativeAmount;
+        if (requestInfo.actionType != MoreVaultsLib.ActionType.ACCRUE_FEES) {
+            if (escrow != address(0)) {
+                (escrowTokens, escrowAmounts, escrowNativeAmount) =
+                    IMoreVaultsEscrow(escrow).releaseTokensForExecution(guid);
             }
         }
 
@@ -425,7 +431,10 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         ds.guidToCrossChainRequestInfo[guid].finalizationResult = resultValue;
         ds.finalizationGuid = 0;
 
-        // Unlock funds after successful execution using escrow - required
+        // Unlock funds after successful execution using escrow - required (except ACCRUE_FEES)
+        if (requestInfo.actionType == MoreVaultsLib.ActionType.ACCRUE_FEES) {
+            return result;
+        }
         if (escrow == address(0)) {
             revert MoreVaultsLib.EscrowNotSet();
         }
@@ -455,7 +464,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         // - ERC20 assets remain in escrow (vault pulls only what it needs via transferFrom)
         // - shares remain in escrow too (vault burns directly from escrow during finalization)
 
-        IMoreEscrow(escrow).unlockTokensAfterExecution(guid, escrowTokens, usedAmounts);
+        IMoreVaultsEscrow(escrow).unlockTokensAfterExecution(guid, escrowTokens, usedAmounts);
     }
 
 
@@ -467,17 +476,5 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
     function getFinalizationResult(bytes32 guid) external view returns (uint256 result) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.guidToCrossChainRequestInfo[guid].finalizationResult;
-    }
-
-    /**
-     * @dev Allows escrow to update stored actionCallData for a request (used for fee-on-transfer deposits).
-     * @notice Only escrow can call.
-     */
-    function updateCrossChainRequestActionCallData(bytes32 guid, bytes calldata newActionCallData) external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (msg.sender != MoreVaultsLib._getEscrow()) {
-            revert OnlyEscrow();
-        }
-        ds.guidToCrossChainRequestInfo[guid].actionCallData = newActionCallData;
     }
 }

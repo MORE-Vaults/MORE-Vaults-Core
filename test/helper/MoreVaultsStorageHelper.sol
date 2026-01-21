@@ -57,12 +57,9 @@ library MoreVaultsStorageHelper {
     uint256 constant IS_WITHDRAWAL_QUEUE_ENABLED = 37;
     uint256 constant WITHDRAWAL_FEE = 37;
     uint256 constant USER_HIGH_WATER_MARK_PER_SHARE = 38;
-    uint256 constant NATIVE_PENDING = 39;
-    uint256 constant MAX_WITHDRAWAL_DELAY = 40;
-    uint256 constant LOCKED_TOKENS_PER_CONTRACT = 41;
-    uint256 constant INITIAL_DEPOSIT_CAP_PER_USER = 42;
-    uint256 constant PENDING_TOKENS = 43;
-    uint256 constant LOCKED_SHARES_PER_USER = 44;
+    uint256 constant MAX_WITHDRAWAL_DELAY = 39;
+    uint256 constant LOCKED_TOKENS_PER_CONTRACT = 40;
+    uint256 constant INITIAL_DEPOSIT_CAP_PER_USER = 41;
     uint256 constant SCRATCH_SPACE = 10_000;
 
     uint256 constant OWNER = 0;
@@ -827,15 +824,6 @@ library MoreVaultsStorageHelper {
         return uint256(getStorageValue(contractAddress, LAST_TOTAL_ASSETS));
     }
 
-    // Functions for pendingNative (slot 39) - uint256
-    function setPendingNative(address contractAddress, uint256 value) internal {
-        setStorageValue(contractAddress, NATIVE_PENDING, bytes32(value));
-    }
-
-    function getPendingNative(address contractAddress) internal view returns (uint256) {
-        return uint256(getStorageValue(contractAddress, NATIVE_PENDING));
-    }
-
     // Functions for INITIAL_DEPOSIT_CAP_PER_USER (slot 43) - mapping(address => uint256)
     function setInitialDepositCapPerUser(address contractAddress, address user, uint256 value) internal {
         setMappingValue(
@@ -845,23 +833,6 @@ library MoreVaultsStorageHelper {
 
     function getInitialDepositCapPerUser(address contractAddress, address user) internal view returns (uint256) {
         return uint256(getMappingValue(contractAddress, INITIAL_DEPOSIT_CAP_PER_USER, bytes32(uint256(uint160(user)))));
-    }
-
-
-    function getPendingTokens(address contractAddress, address token) internal view returns (uint256) {
-        return uint256(getMappingValue(contractAddress, PENDING_TOKENS, bytes32(uint256(uint160(token)))));
-    }
-
-    function setPendingTokens(address contractAddress, address token, uint256 amount) internal {
-        setMappingValue(contractAddress, PENDING_TOKENS, bytes32(uint256(uint160(token))), bytes32(amount));
-    }
-
-    function getLockedSharesPerUser(address contractAddress, address user) internal view returns (uint256) {
-        return uint256(getMappingValue(contractAddress, LOCKED_SHARES_PER_USER, bytes32(uint256(uint160(user)))));
-    }
-
-    function setLockedSharesPerUser(address contractAddress, address user, uint256 amount) internal {
-        setMappingValue(contractAddress, LOCKED_SHARES_PER_USER, bytes32(uint256(uint160(user))), bytes32(amount));
     }
 
     /**

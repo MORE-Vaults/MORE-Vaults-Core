@@ -6,6 +6,7 @@ import {IVaultFacet} from "../../src/interfaces/facets/IVaultFacet.sol";
 import {MoreVaultsLib} from "../../src/libraries/MoreVaultsLib.sol";
 import {SafeERC20, IERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MockERC20} from "./MockERC20.sol";
+import {console} from "forge-std/console.sol";
 
 contract BridgeFacetHarness is BridgeFacet {
     using SafeERC20 for IERC20;
@@ -120,14 +121,14 @@ contract BridgeFacetHarness is BridgeFacet {
         return mintResult[guid];
     }
 
-    function withdraw(uint256, address, address) external returns (uint256) {
+    function withdraw(uint256, address receiver, address owner) external returns (uint256) {
         bytes32 guid = MoreVaultsLib.moreVaultsStorage().finalizationGuid;
         uint256 amount = amountOfTokenToSendIn[guid];
-        // Simulate transfer of share tokens (vault tokens)
-        // In real scenario, share tokens are burned/transferred from user
-        // Here we simulate by reducing balance of address(this) (facet) since withdraw is called via address(this).call
-        // The balance check in BridgeFacet checks balanceOf(address(this)) before and after
-        _balances[address(this)] -= amount;
+        // In real scenario, vault calls transferSharesFromOwner which transfers shares from escrow to vault
+        // In the mock, shares remain in escrow and are used via transferFrom
+        // We simulate the usage by not changing balances here (shares stay in escrow)
+        // The actual transferFrom from escrow happens elsewhere in the flow
+        // We just return the result to simulate shares being used
         return withdrawResult[guid];
     }
     
@@ -194,7 +195,16 @@ contract BridgeFacetHarness is BridgeFacet {
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {
+        console.log("transfer", msg.sender, to, amount);
+        console.log("balances", _balances[msg.sender], _balances[to]);
         _balances[msg.sender] -= amount;
+        _balances[to] += amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        _allowances[from][msg.sender] -= amount;
+        _balances[from] -= amount;
         _balances[to] += amount;
         return true;
     }

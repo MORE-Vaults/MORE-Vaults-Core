@@ -28,17 +28,14 @@ abstract contract BaseVaultsRegistry is IMoreVaultsRegistry, AccessControlUpgrad
     /// @dev USD stable token address
     address public usdStableTokenAddress;
 
-    /// @dev Protocol-wide escrow contract address (shared escrow)
-    address public escrow;
-
-    /// @dev Protocol-wide fee-on-transfer deposit handling allowlist
-    mapping(address => bool) public isFeeOnTransferDepositAllowed;
-
     /// @dev Protocol fee info
     mapping(address => ProtocolFeeInfo) internal _protocolFeeInfo;
 
     /// @dev Whitelisted addresses of protocols that vault can interact with
     mapping(address => bool) private _whitelisted;
+
+    /// @dev Protocol-wide escrow contract address (shared escrow)
+    address public escrow;
 
     /// @dev Initialize function
     function initialize(address _owner, address _oracle, address _usdStableTokenAddress) external virtual initializer {
@@ -77,15 +74,6 @@ abstract contract BaseVaultsRegistry is IMoreVaultsRegistry, AccessControlUpgrad
         if (newEscrow == address(0)) revert ZeroAddress();
         escrow = newEscrow;
         emit EscrowSet(newEscrow);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function setFeeOnTransferDepositAllowed(address asset, bool allowed) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (asset == address(0)) revert ZeroAddress();
-        isFeeOnTransferDepositAllowed[asset] = allowed;
-        emit FeeOnTransferDepositAllowedSet(asset, allowed);
     }
 
     /**

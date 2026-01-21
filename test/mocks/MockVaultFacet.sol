@@ -5,6 +5,7 @@ import {IVaultFacet} from "../../src/interfaces/facets/IVaultFacet.sol";
 import {IConfigurationFacet} from "../../src/interfaces/facets/IConfigurationFacet.sol";
 import {IBridgeFacet} from "../../src/interfaces/facets/IBridgeFacet.sol";
 import {MoreVaultsLib} from "../../src/libraries/MoreVaultsLib.sol";
+import {IMoreVaultsEscrow} from "../../src/interfaces/IMoreVaultsEscrow.sol";
 
 contract MockVaultFacet {
     address public assetToken;
@@ -26,6 +27,7 @@ contract MockVaultFacet {
     bytes32 public lastGuid;
     bool public revertOnInit;
     bool public oracleAccountingEnabled;
+    address public escrow;
 
     constructor(address _asset, uint32 _eid) {
         assetToken = _asset;
@@ -83,7 +85,12 @@ contract MockVaultFacet {
         lastAccountingFeeQuote = v;
     }
 
-    function initVaultActionRequest(MoreVaultsLib.ActionType, bytes calldata, uint256 minAmountOut, bytes calldata)
+    function initVaultActionRequest(
+        MoreVaultsLib.ActionType actionType,
+        bytes calldata actionCallData,
+        uint256 minAmountOut,
+        bytes calldata
+    )
         external
         payable
         returns (bytes32 guid)
@@ -93,6 +100,15 @@ contract MockVaultFacet {
         guid = bytes32(uint256(0x1));
         lastGuid = guid;
         minAmountOutByGuid[guid] = minAmountOut; // Store minAmountOut for slippage check
+        
+        // Call escrow.lockTokens() if escrow is set (matching real BridgeFacet behavior)
+        if (escrow != address(0)) {
+            uint256 value;
+            if (actionType == MoreVaultsLib.ActionType.MULTI_ASSETS_DEPOSIT) {
+                (,,,, value) = abi.decode(actionCallData, (address[], uint256[], address, uint256, uint256));
+            }
+            IMoreVaultsEscrow(escrow).lockTokens{value: value}(guid, actionType, actionCallData, minAmountOut, msg.sender);
+        }
     }
 
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sum, bool) external {
@@ -163,5 +179,14 @@ contract MockVaultFacet {
 
     function getFinalizationResult(bytes32 guid) external view returns (uint256) {
         return finalizeSharesByGuid[guid];
+    }
+
+    // IConfigurationFacet.getEscrow
+    function getEscrow() external view returns (address) {
+        return escrow;
+    }
+
+    function setEscrow(address _escrow) external {
+        escrow = _escrow;
     }
 }

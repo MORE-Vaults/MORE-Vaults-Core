@@ -88,8 +88,6 @@ interface IMoreVaultsRegistry {
     event RouterSet(address indexed router);
     /// @notice Emitted when protocol-wide escrow is set
     event EscrowSet(address indexed escrow);
-    /// @notice Emitted when fee-on-transfer deposit handling is toggled for an asset (protocol-wide)
-    event FeeOnTransferDepositAllowedSet(address indexed asset, bool allowed);
 
     /**
      * @notice Get router address
@@ -106,16 +104,6 @@ interface IMoreVaultsRegistry {
      * @notice Sets protocol-wide escrow address (admin-only)
      */
     function setEscrow(address escrow) external;
-
-    /**
-     * @notice Returns whether fee-on-transfer deposits are allowed for a token (protocol-wide).
-     */
-    function isFeeOnTransferDepositAllowed(address asset) external view returns (bool);
-
-    /**
-     * @notice Sets whether fee-on-transfer deposits are allowed for a token (protocol-wide, admin-only).
-     */
-    function setFeeOnTransferDepositAllowed(address asset, bool allowed) external;
 
     /**
      * @notice Initialize the registry

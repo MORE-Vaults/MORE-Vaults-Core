@@ -114,10 +114,6 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(asset);
-        if (availableTokens < assets) {
-            revert InsufficientAvailableTokens(availableTokens, assets);
-        }
 
         // Only allow one pending deposit request per vault/asset
         if (ds.lockedTokensPerContract[vault][asset] > 0) revert PendingOperationExists();
@@ -141,10 +137,6 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
         // Get share token address (vault itself for standard ERC-4626, external for ERC-7575)
         address shareToken = _getShareToken(vault);
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(shareToken);
-        if (availableTokens < shares) {
-            revert InsufficientAvailableTokens(availableTokens, shares);
-        }
 
         // Only allow one pending redeem request per vault
         if (ds.lockedTokensPerContract[vault][shareToken] > 0) revert PendingOperationExists();
@@ -170,10 +162,6 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(asset);
-        if (availableTokens < assets) {
-            revert InsufficientAvailableTokens(availableTokens, assets);
-        }
 
         shares = IERC7540(vault).deposit(assets, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
@@ -193,14 +181,8 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(asset);
 
         assets = IERC7540(vault).mint(shares, address(this), address(this));
-        // Check after execution - if more tokens were used than available (including pending), revert
-        // This protects against using pending tokens that should be locked for cross-chain operations
-        if (availableTokens < assets) {
-            revert InsufficientAvailableTokens(availableTokens, assets);
-        }
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
@@ -218,14 +200,8 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address shareToken = _getShareToken(vault);
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(shareToken);
 
         shares = IERC7540(vault).withdraw(assets, address(this), address(this));
-        // Check after execution - if more shares were used than available (including pending), revert
-        // This protects against using pending shares that should be locked for cross-chain operations
-        if (availableTokens < shares) {
-            revert InsufficientAvailableTokens(availableTokens, shares);
-        }
 
         // Unlock shares that were locked during requestRedeem
         ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
@@ -245,10 +221,6 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address shareToken = _getShareToken(vault);
-        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(shareToken);
-        if (availableTokens < shares) {
-            revert InsufficientAvailableTokens(availableTokens, shares);
-        }
         assets = IERC7540(vault).redeem(shares, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem

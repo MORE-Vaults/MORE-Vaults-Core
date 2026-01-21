@@ -3,7 +3,7 @@
 
 // import {Test, console} from "forge-std/Test.sol";
 // import {StdInvariant} from "forge-std/StdInvariant.sol";
-// import {MoreEscrow} from "../../../src/cross-chain/MoreEscrow.sol";
+// import {MoreVaultsEscrow} from "../../../src/cross-chain/MoreVaultsEscrow.sol";
 // import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 // import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 // import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
@@ -98,7 +98,7 @@
 //  * @notice Handler for testing rebasing token behavior in escrow
 //  */
 // contract RebasingTokenHandler is Test {
-//     MoreEscrow public escrow;
+//     MoreVaultsEscrow public escrow;
 //     MockRebasingToken public token;
 //     MockVaultWithShares public vault;
 //     address public manager;
@@ -118,7 +118,7 @@
 //     uint256 public totalRefundedOriginal;
 
 //     constructor(
-//         MoreEscrow _escrow,
+//         MoreVaultsEscrow _escrow,
 //         MockRebasingToken _token,
 //         MockVaultWithShares _vault,
 //         address _manager
@@ -203,8 +203,8 @@
 //     }
 // }
 
-// contract MoreEscrowRebasingInvariantTest is StdInvariant, Test {
-//     MoreEscrow public escrow;
+// contract MoreVaultsEscrowRebasingInvariantTest is StdInvariant, Test {
+//     MoreVaultsEscrow public escrow;
 //     MockRebasingToken public token;
 //     MockVaultWithShares public vault;
 //     RebasingTokenHandler public handler;
@@ -219,7 +219,7 @@
 
 //         // Deploy escrow
 //         vm.prank(address(vault));
-//         escrow = new MoreEscrow(address(vault));
+//         escrow = new MoreVaultsEscrow(address(vault));
 
 //         // Set manager
 //         vm.prank(address(vault));
@@ -282,7 +282,7 @@
 //  * @notice Handler for testing WITHDRAW/REDEEM and lockedSharesPerUser tracking
 //  */
 // contract WithdrawRedeemHandler is Test {
-//     MoreEscrow public escrow;
+//     MoreVaultsEscrow public escrow;
 //     MockVaultWithShares public vault;
 //     ERC20Mock public underlyingToken;
 //     address public manager;
@@ -297,7 +297,7 @@
 //     address[] public users;
 
 //     constructor(
-//         MoreEscrow _escrow,
+//         MoreVaultsEscrow _escrow,
 //         MockVaultWithShares _vault,
 //         ERC20Mock _underlying,
 //         address _manager
@@ -398,8 +398,8 @@
 //     }
 // }
 
-// contract MoreEscrowWithdrawRedeemInvariantTest is StdInvariant, Test {
-//     MoreEscrow public escrow;
+// contract MoreVaultsEscrowWithdrawRedeemInvariantTest is StdInvariant, Test {
+//     MoreVaultsEscrow public escrow;
 //     MockVaultWithShares public vault;
 //     ERC20Mock public underlyingToken;
 //     WithdrawRedeemHandler public handler;
@@ -414,7 +414,7 @@
 
 //         // Deploy escrow
 //         vm.prank(address(vault));
-//         escrow = new MoreEscrow(address(vault));
+//         escrow = new MoreVaultsEscrow(address(vault));
 
 //         // Set manager
 //         vm.prank(address(vault));
@@ -484,8 +484,8 @@
 // // TEST 3: Fuzz Tests for releaseTokensForExecution
 // // ============================================================================
 
-// contract MoreEscrowReleaseFuzzTest is Test {
-//     MoreEscrow public escrow;
+// contract MoreVaultsEscrowReleaseFuzzTest is Test {
+//     MoreVaultsEscrow public escrow;
 //     MockVaultWithShares public vault;
 //     ERC20Mock public token;
 //     address public manager = makeAddr("manager");
@@ -495,7 +495,7 @@
 //         vault = new MockVaultWithShares(address(token));
 
 //         vm.prank(address(vault));
-//         escrow = new MoreEscrow(address(vault));
+//         escrow = new MoreVaultsEscrow(address(vault));
 
 //         vm.prank(address(vault));
 //         escrow.setCrossChainAccountingManager(manager);
@@ -508,7 +508,7 @@
 //      */
 //     function testFuzz_releaseRevertsForNonExistentGuid(bytes32 randomGuid) public {
 //         vm.prank(manager);
-//         vm.expectRevert(MoreEscrow.RequestNotFound.selector);
+//         vm.expectRevert(MoreVaultsEscrow.RequestNotFound.selector);
 //         escrow.releaseTokensForExecution(randomGuid);
 //     }
 
@@ -519,7 +519,7 @@
 //         vm.assume(caller != manager);
 
 //         vm.prank(caller);
-//         vm.expectRevert(MoreEscrow.OnlyCrossChainAccountingManager.selector);
+//         vm.expectRevert(MoreVaultsEscrow.OnlyCrossChainAccountingManager.selector);
 //         escrow.releaseTokensForExecution(guid);
 //     }
 
@@ -531,7 +531,7 @@
 //         uint256[] memory amounts = new uint256[](0);
 
 //         vm.prank(manager);
-//         vm.expectRevert(MoreEscrow.RequestNotFound.selector);
+//         vm.expectRevert(MoreVaultsEscrow.RequestNotFound.selector);
 //         escrow.unlockTokensAfterExecution(randomGuid, tokens, amounts);
 //     }
 
@@ -540,7 +540,7 @@
 //      */
 //     function testFuzz_refundNonExistentGuid(bytes32 randomGuid) public {
 //         vm.prank(manager);
-//         vm.expectRevert(MoreEscrow.RequestNotFound.selector);
+//         vm.expectRevert(MoreVaultsEscrow.RequestNotFound.selector);
 //         escrow.refundTokens(randomGuid);
 //     }
 
@@ -577,7 +577,7 @@
 
 //         // Second release should fail (already finalized)
 //         vm.prank(manager);
-//         vm.expectRevert(MoreEscrow.RequestAlreadyFinalized.selector);
+//         vm.expectRevert(MoreVaultsEscrow.RequestAlreadyFinalized.selector);
 //         escrow.releaseTokensForExecution(guid);
 //     }
 
