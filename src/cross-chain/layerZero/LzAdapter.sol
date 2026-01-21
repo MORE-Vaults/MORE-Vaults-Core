@@ -357,13 +357,14 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
             try IBridgeFacet(info.vault).executeRequest(_guid) {
                 executionSuccess = true;
             } catch {
-                // Execution failed (e.g., due to slippage), handle via callback
+                // Execution failed (e.g., due to slippage, timeout, or finalization failure)
                 executionSuccess = false;
             }
         }
 
         if (!readSuccess || !executionSuccess) {
-            IBridgeFacet(info.vault).sendNativeTokenBackToInitiator(_guid);
+            // Refund all locked tokens (native and ERC20 tokens/shares) back to initiator/owner
+            IBridgeFacet(info.vault).refundRequestTokens(_guid);
         }
 
         // Step 3: Call composer callback to handle the result

@@ -12,9 +12,14 @@ import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.s
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {ERC4626, ERC20} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {console} from "forge-std/console.sol";
 
 contract MockERC4626Vault is ERC4626 {
     constructor(IERC20 _asset) ERC4626(_asset) ERC20("Test Vault", "TV") {}
+
+    function mintShares(address to, uint256 amount) public {
+        _mint(to, amount);
+    }
 }
 
 contract MockAsyncERC4626WithLockOnDeposit is ERC4626 {

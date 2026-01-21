@@ -49,6 +49,7 @@ library MoreVaultsLib {
     error RestrictedActionInsideMulticall();
     error OnFacetRemovalFailed(address facet, bytes data);
     error FacetNameFailed(address facet);
+    error EscrowNotSet();
 
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -176,7 +177,6 @@ library MoreVaultsLib {
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
         mapping(address => uint256) userHighWaterMarkPerShare;
-        uint256 pendingNative;
         uint32 maxWithdrawalDelay;
         /// @dev Locked tokens per external contract per token address
         /// For deposits: lockedTokensPerContract[vault][asset] = amount
@@ -845,5 +845,15 @@ library MoreVaultsLib {
         }
 
         return ds.crossChainAccountingManager;
+    }
+
+    function _availableTokensToManage(address token) internal view returns (uint256) {
+        // Cross-chain locks are held in escrow (not in the vault), so the vault's own balance is fully available.
+        return IERC20(token).balanceOf(address(this));
+    }
+
+    function _getEscrow() internal view returns (address) {
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        return IMoreVaultsRegistry(acs.moreVaultsRegistry).escrow();
     }
 }

@@ -9,6 +9,7 @@ import {MockEndpointV2} from "../../../../test/mocks/MockEndpointV2.sol";
 import {MockVaultFacet} from "../../../../test/mocks/MockVaultFacet.sol";
 import {MockOFT} from "../../../../test/mocks/MockOFT.sol";
 import {MockOFTAdapter} from "../../../../test/mocks/MockOFTAdapter.sol";
+import {MockMoreVaultsEscrow} from "../../../../test/mocks/MockMoreVaultsEscrow.sol";
 import {MaliciousOFTAdapter} from "../../../../test/mocks/MaliciousOFTAdapter.sol";
 import {SendParam} from "../../../../lib/devtools/packages/oft-evm/contracts/interfaces/IOFT.sol";
 import {OFTComposeMsgCodec} from "../../../../lib/devtools/packages/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
@@ -60,6 +61,7 @@ contract MoreVaultsComposerTest is Test {
 
     MockLzAdapterView lzAdapter;
     MockVaultsFactory vaultFactory;
+    MockMoreVaultsEscrow escrow;
     address user = address(0xBEEF);
     TestableComposer testComposer;
 
@@ -78,6 +80,11 @@ contract MoreVaultsComposerTest is Test {
         shareOFT.setEndpoint(address(endpoint));
         assetOFT.setUnderlyingToken(address(assetToken));
         assetOFT.setEndpoint(address(endpoint));
+
+        // Set up escrow
+        escrow = new MockMoreVaultsEscrow();
+        vault.setEscrow(address(escrow));
+        escrow.setUnderlyingToken(address(vault), address(assetToken));
 
         lzAdapter = new MockLzAdapterView();
         lzAdapter.setTrusted(address(assetOFT), true);
@@ -280,12 +287,15 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = localEid; // local path
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 1e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         uint256 initialTotalNativePending = composer.totalNativePending();
@@ -332,7 +342,10 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
         uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = localEid; // cross chain
         sendParam.to = bytes32(uint256(uint160(user)));
@@ -385,7 +398,10 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
         uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
@@ -448,12 +464,15 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 5e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 5e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         uint256 initialTotalNativePending = composer.totalNativePending();
@@ -514,12 +533,15 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 5e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 5e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         uint256 initialTotalNativePending = composer.totalNativePending();
@@ -595,12 +617,15 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 5e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 5e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         uint256 initialTotalNativePending = composer.totalNativePending();
@@ -691,12 +716,16 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(otherToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 2e18;
+        otherToken.mint(address(composer), amountLD);
+
         SendParam memory sp;
         sp.dstEid = 202;
         sp.to = bytes32(uint256(uint160(user)));
         sp.minAmountLD = 0;
 
-        bytes memory msgBytes = _buildComposeMsg(sp, 0, 201, 2e18);
+        bytes memory msgBytes = _buildComposeMsg(sp, 0, 201, amountLD);
         
         uint256 initialTotalNativePending = composer.totalNativePending();
         uint256 msgValue = 0.25 ether;
@@ -1269,13 +1298,16 @@ contract MoreVaultsComposerTest is Test {
         vault.setAccountingFee(0.1 ether); // Need accounting fee for async flow
         vault.setDepositable(address(assetToken), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         // Setup: Prepare compose message
         SendParam memory sendParam;
         sendParam.dstEid = 202; // Cross-chain destination
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 1e18;
         bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         // Execute: This should succeed using async flow (initDeposit)
@@ -1767,12 +1799,15 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 1e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         uint256 msgValueForDeposit = 3 ether;

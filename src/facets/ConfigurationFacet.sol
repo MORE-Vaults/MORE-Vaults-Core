@@ -211,6 +211,13 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
+    function getEscrow() external view returns (address escrow) {
+        return MoreVaultsLib._getEscrow();
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
     function getWithdrawalFee() external view returns (uint96) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.withdrawalFee;

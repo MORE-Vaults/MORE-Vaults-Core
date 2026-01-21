@@ -162,8 +162,8 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
-
         assets = IERC4626(vault).previewMint(shares);
+
         IERC20(asset).forceApprove(vault, assets);
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceBefore = IERC20(IERC4626(vault).asset()).balanceOf(address(this));
@@ -188,6 +188,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
+
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceBefore = IERC20(asset).balanceOf(address(this));
         shares = IERC4626(vault).withdraw(assets, address(this), address(this));
@@ -210,6 +211,7 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
+
         uint256 sharesBalanceBefore = IERC4626(vault).balanceOf(address(this));
         uint256 assetsBalanceBefore = IERC20(asset).balanceOf(address(this));
         assets = IERC4626(vault).redeem(shares, address(this), address(this));
@@ -250,6 +252,9 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
         balances.assetsBefore = IERC20(balances.asset).balanceOf(address(this));
         balances.totalSupplyBefore = IERC4626(vault).totalSupply();
 
+        uint256 availableTokens = MoreVaultsLib._availableTokensToManage(balances.asset);
+        uint256 availableShares = MoreVaultsLib._availableTokensToManage(vault);
+
         ExecutionContext memory execution;
         execution.diamondAddress = bytes32(uint256(uint160(address(this))));
         execution.fixedData = _replaceBytesInData(data, validation.maskForData, execution.diamondAddress);
@@ -267,6 +272,9 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
             // Only allow one pending deposit request per vault/asset
             if (ds.lockedTokensPerContract[vault][balances.asset] > 0) revert PendingOperationExists();
             uint256 assetsLocked = balances.assetsBefore - balances.assetsAfter;
+            if (availableTokens < assetsLocked) {
+                revert InsufficientAvailableTokens(availableTokens, assetsLocked);
+            }
             ds.lockedTokens[balances.asset] += assetsLocked;
             ds.lockedTokensPerContract[vault][balances.asset] = assetsLocked;
             ds.tokensHeld[ERC4626_ID].add(vault);
@@ -277,6 +285,9 @@ contract ERC4626Facet is IERC4626Facet, BaseFacetInitializer {
             // Only allow one pending redeem request per vault (vault is the share token for ERC-4626)
             if (ds.lockedTokensPerContract[vault][vault] > 0) revert PendingOperationExists();
             uint256 sharesLocked = balances.sharesBefore - balances.sharesAfter;
+            if (availableShares < sharesLocked) {
+                revert InsufficientAvailableTokens(availableShares, sharesLocked);
+            }
             ds.lockedTokens[vault] += sharesLocked;
             ds.lockedTokensPerContract[vault][vault] = sharesLocked;
             ds.tokensHeld[ERC4626_ID].add(vault);

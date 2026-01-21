@@ -86,12 +86,24 @@ interface IMoreVaultsRegistry {
      * @param router Address of the router
      */
     event RouterSet(address indexed router);
+    /// @notice Emitted when protocol-wide escrow is set
+    event EscrowSet(address indexed escrow);
 
     /**
      * @notice Get router address
      * @return address Router address
      */
     function router() external view returns (address);
+
+    /**
+     * @notice Returns protocol-wide escrow address
+     */
+    function escrow() external view returns (address);
+
+    /**
+     * @notice Sets protocol-wide escrow address (admin-only)
+     */
+    function setEscrow(address escrow) external;
 
     /**
      * @notice Initialize the registry

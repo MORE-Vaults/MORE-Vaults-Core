@@ -240,16 +240,10 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
 
         delete _pendingDeposits[_guid];
 
-        // Decrease approve for vault by deposit amount (supports parallel deposits)
-        // If request execution didn't occur, approve wasn't used and should be decreased
-        // If request execution occurred, approve was already automatically decreased via safeTransferFrom
-        uint256 currentAllowance = IERC20(deposit.tokenAddress).allowance(address(this), address(VAULT));
-        if (currentAllowance >= deposit.assetAmount) {
-            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), deposit.assetAmount);
-        } else if (currentAllowance > 0) {
-            // If approve is less than expected (partially used), decrease by available amount
-            IERC20(deposit.tokenAddress).safeDecreaseAllowance(address(VAULT), currentAllowance);
-        }
+        // Tokens are already transferred and locked in vault by _lockFundsForRequest
+        // BridgeFacet.refundStuckDepositInComposer will unlock them via _unlockRequestFunds
+        // and transfer them back to composer via _transferTokensBackToComposer
+        // Tokens should already be in composer at this point
 
         // cross-chain refund back to origin
         SendParam memory refundSendParam;
@@ -414,11 +408,11 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             revert NotATokenOfOFT();
         }
 
-        // Increase approve BEFORE creating request so it's available for request execution
-        // Use safeIncreaseAllowance to support parallel deposits
-        // Request execution occurs in executeRequest and calls deposit,
-        // which takes tokens via safeTransferFrom using approve
-        IERC20(_tokenAddress).safeIncreaseAllowance(address(VAULT), _assetAmount);
+        // Escrow pulls tokens from initiator (this composer) during BridgeFacet.initVaultActionRequest -> escrow.lockTokens().
+        // Therefore, approval must be granted to escrow (spender), not the VAULT.
+        address escrow = IConfigurationFacet(address(VAULT)).getEscrow();
+        if (escrow == address(0)) revert MoreVaultsLib.EscrowNotSet();
+        IERC20(_tokenAddress).forceApprove(escrow, _assetAmount);
 
         MoreVaultsLib.ActionType actionType;
         bytes memory actionCallData;
@@ -431,12 +425,17 @@ contract MoreVaultsComposer is IMoreVaultsComposer, ReentrancyGuard, Initializab
             tokens[0] = _tokenAddress;
             uint256[] memory assets = new uint256[](1);
             assets[0] = _assetAmount;
-            actionCallData = abi.encode(tokens, assets, address(this));
+            uint256 minAmountOut = _sendParam.minAmountLD;
+            actionCallData = abi.encode(tokens, assets, address(this), minAmountOut, 0);
         }
         // Pass amountLimit for slippage check in _executeRequest
+        // Tokens will be transferred and locked inside initVaultActionRequest via escrow.lockTokens()
         bytes32 guid = IBridgeFacet(address(VAULT)).initVaultActionRequest{value: readFee}(
             actionType, actionCallData, _sendParam.minAmountLD, ""
         );
+        
+        // Clear approval to minimize token approvals surface area.
+        IERC20(_tokenAddress).forceApprove(escrow, 0);
         _pendingDeposits[guid] = PendingDeposit(
             _depositor,
             _tokenAddress,

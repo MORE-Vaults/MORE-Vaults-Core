@@ -36,6 +36,8 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event WithdrawalTimelockSet(uint64 duration);
     /// @notice Emitted when the cross chain accounting manager is set
     event CrossChainAccountingManagerSet(address indexed manager);
+    /// @notice Emitted when the escrow contract is set
+    event EscrowSet(address indexed escrow);
     /// @notice Emitted when the max slippage percent is set
     event MaxSlippagePercentSet(uint256 percent);
     /// @notice Emitted when the max withdrawal delay is set
@@ -156,6 +158,12 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @param manager New cross chain accounting manager
      */
     function setCrossChainAccountingManager(address manager) external;
+
+    /**
+     * @notice Returns escrow contract address used for cross-chain locking.
+     * @return escrow Escrow contract address
+     */
+    function getEscrow() external view returns (address escrow);
 
     /**
      * @notice Get the current withdrawal fee

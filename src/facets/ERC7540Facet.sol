@@ -162,6 +162,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
+
         shares = IERC7540(vault).deposit(assets, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
 
@@ -180,6 +181,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
+
         assets = IERC7540(vault).mint(shares, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
 
@@ -197,14 +199,15 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        address asset = IERC4626(vault).asset();
+        address shareToken = _getShareToken(vault);
+
         shares = IERC7540(vault).withdraw(assets, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem
-        address shareToken = _getShareToken(vault);
         ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
         ds.lockedTokensPerContract[vault][shareToken] = 0;
 
+        address asset = IERC4626(vault).asset();
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault, asset, shareToken);
     }
 
@@ -217,14 +220,14 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        address asset = IERC4626(vault).asset();
+        address shareToken = _getShareToken(vault);
         assets = IERC7540(vault).redeem(shares, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem
-        address shareToken = _getShareToken(vault);
         ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
         ds.lockedTokensPerContract[vault][shareToken] = 0;
 
+        address asset = IERC4626(vault).asset();
         MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault, asset, shareToken);
     }
 

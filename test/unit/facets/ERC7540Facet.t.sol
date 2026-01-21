@@ -121,9 +121,14 @@ contract MockERC7575Vault {
 // Mock vault that returns address(0) for share()
 contract MockVaultReturnsZeroShare {
     address public immutable assetToken;
+    uint256 public balance;
 
     constructor(address _asset) {
         assetToken = _asset;
+    }
+
+    function setBalance(uint256 _balance) external {
+        balance = _balance;
     }
 
     function asset() external view returns (address) {
@@ -136,6 +141,10 @@ contract MockVaultReturnsZeroShare {
 
     function requestRedeem(uint256, address, address) external pure returns (uint256) {
         return 1;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return balance;
     }
 }
 
@@ -1048,6 +1057,7 @@ contract ERC7540FacetTest is Test {
     function test_erc7540RequestRedeem_ShareReturnsAddressZero_ShouldNotApprove() public {
         // Deploy vault that returns address(0) for share()
         MockVaultReturnsZeroShare zeroShareVault = new MockVaultReturnsZeroShare(address(asset));
+        zeroShareVault.setBalance(MINT_SHARES);
 
         vm.startPrank(address(facet));
 
