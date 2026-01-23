@@ -51,6 +51,10 @@ contract TestBaseVaultsRegistry is BaseVaultsRegistry {
     function setRouter(address) external override {}
 
     function router() external view override returns (address) {}
+
+    function setEscrow(address) external override {}
+
+    function escrow() external view override returns (address) {}
 }
 
 contract BaseVaultsRegistryTest is Test {

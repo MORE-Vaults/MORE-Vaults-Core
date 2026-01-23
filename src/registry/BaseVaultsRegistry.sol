@@ -34,9 +34,6 @@ abstract contract BaseVaultsRegistry is IMoreVaultsRegistry, AccessControlUpgrad
     /// @dev Whitelisted addresses of protocols that vault can interact with
     mapping(address => bool) private _whitelisted;
 
-    /// @dev Protocol-wide escrow contract address (shared escrow)
-    address public escrow;
-
     /// @dev Initialize function
     function initialize(address _owner, address _oracle, address _usdStableTokenAddress) external virtual initializer {
         if (_oracle == address(0)) revert ZeroAddress();
@@ -65,15 +62,6 @@ abstract contract BaseVaultsRegistry is IMoreVaultsRegistry, AccessControlUpgrad
         oracle = IOracleRegistry(newOracleRegistry);
 
         emit OracleRegistryUpdated(oldOracleRegistry, newOracleRegistry);
-    }
-
-    /**
-     * @inheritdoc IMoreVaultsRegistry
-     */
-    function setEscrow(address newEscrow) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (newEscrow == address(0)) revert ZeroAddress();
-        escrow = newEscrow;
-        emit EscrowSet(newEscrow);
     }
 
     /**
