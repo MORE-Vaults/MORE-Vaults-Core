@@ -22,6 +22,10 @@ interface IERC4626Facet is IGenericMoreVaultFacetInitializable {
     error AsyncBehaviorProhibited();
     /// @notice Error thrown when the calldata for generic async action execution is invalid
     error InvalidData();
+    /// @notice Error thrown when there is already a pending operation for this vault/asset
+    error PendingOperationExists();
+    /// @notice Error thrown when there are insufficient available tokens to manage
+    error InsufficientAvailableTokens(uint256 available, uint256 required);
 
     /**
      * @notice Calculates the total accounting for ERC4626 operations

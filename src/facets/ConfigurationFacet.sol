@@ -175,6 +175,14 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         emit WithdrawalFeeSet(_fee);
     }
 
+    function setMaxWithdrawalDelay(uint32 _delay) external {
+        AccessControlLib.validateDiamond(msg.sender);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_delay < 1 days) revert InvalidMaxWithdrawalDelay();
+        ds.maxWithdrawalDelay = _delay;
+        emit MaxWithdrawalDelaySet(_delay);
+    }
+
     /**
      * @inheritdoc IConfigurationFacet
      */
@@ -203,6 +211,13 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
+    function getEscrow() external view returns (address escrow) {
+        return MoreVaultsLib._getEscrow();
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
     function getWithdrawalFee() external view returns (uint96) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.withdrawalFee;
@@ -214,6 +229,14 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function getWithdrawalQueueStatus() external view returns (bool) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.isWithdrawalQueueEnabled;
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function getMaxWithdrawalDelay() external view returns (uint32) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        return ds.maxWithdrawalDelay < 1 days ? 1 days : ds.maxWithdrawalDelay;
     }
 
     /**
@@ -275,8 +298,8 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function getDepositWhitelist(address depositor) external view returns (uint256) {
-        return MoreVaultsLib.moreVaultsStorage().depositWhitelist[depositor];
+    function getAvailableToDeposit(address depositor) external view returns (uint256) {
+        return MoreVaultsLib.moreVaultsStorage().availableToDeposit[depositor];
     }
 
     /**

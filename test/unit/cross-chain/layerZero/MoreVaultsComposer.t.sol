@@ -9,6 +9,7 @@ import {MockEndpointV2} from "../../../../test/mocks/MockEndpointV2.sol";
 import {MockVaultFacet} from "../../../../test/mocks/MockVaultFacet.sol";
 import {MockOFT} from "../../../../test/mocks/MockOFT.sol";
 import {MockOFTAdapter} from "../../../../test/mocks/MockOFTAdapter.sol";
+import {MockMoreVaultsEscrow} from "../../../../test/mocks/MockMoreVaultsEscrow.sol";
 import {MaliciousOFTAdapter} from "../../../../test/mocks/MaliciousOFTAdapter.sol";
 import {SendParam} from "../../../../lib/devtools/packages/oft-evm/contracts/interfaces/IOFT.sol";
 import {OFTComposeMsgCodec} from "../../../../lib/devtools/packages/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
@@ -16,6 +17,10 @@ import {MockLzAdapterView} from "../../../../test/mocks/MockLzAdapterView.sol";
 import {IVaultsFactory} from "../../../../src/interfaces/IVaultsFactory.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {MockVaultsFactory} from "../../../../test/mocks/MockVaultsFactory.sol";
+import {IAccessControlFacet} from "../../../../src/interfaces/facets/IAccessControlFacet.sol";
+import {IMoreVaultsRegistry} from "../../../../src/interfaces/IMoreVaultsRegistry.sol";
+import {MoreVaultsStorageHelper} from "../../../../test/helper/MoreVaultsStorageHelper.sol";
+
 import {console} from "forge-std/console.sol";
 
 contract TestableComposer {
@@ -56,6 +61,7 @@ contract MoreVaultsComposerTest is Test {
 
     MockLzAdapterView lzAdapter;
     MockVaultsFactory vaultFactory;
+    MockMoreVaultsEscrow escrow;
     address user = address(0xBEEF);
     TestableComposer testComposer;
 
@@ -74,6 +80,11 @@ contract MoreVaultsComposerTest is Test {
         shareOFT.setEndpoint(address(endpoint));
         assetOFT.setUnderlyingToken(address(assetToken));
         assetOFT.setEndpoint(address(endpoint));
+
+        // Set up escrow
+        escrow = new MockMoreVaultsEscrow();
+        vault.setEscrow(address(escrow));
+        escrow.setUnderlyingToken(address(vault), address(assetToken));
 
         lzAdapter = new MockLzAdapterView();
         lzAdapter.setTrusted(address(assetOFT), true);
@@ -276,21 +287,54 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = localEid; // local path
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 1e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 1 ether;
+        uint256 expectedIncrease = msgValue - 0.1 ether; // msg.value - accountingFee
+
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(1001)), full, address(0), "");
+        composer.lzCompose{value: msgValue}(address(assetOFT), bytes32(uint256(1001)), full, address(0), "");
+
+        // Verify totalNativePending increased after lzCompose (async flow)
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
+        );
 
         bytes32 guid = bytes32(uint256(0x1));
         vault.setFinalizeShares(guid, amountLD);
+
+        // Get deposit info to check msgValue
+        IMoreVaultsComposer.PendingDeposit memory deposit = composer.pendingDeposits(guid);
+        uint256 depositMsgValue = deposit.msgValue;
+
         vm.prank(address(vault));
         composer.sendDepositShares(guid);
+
+        // Verify totalNativePending decreased after sendDepositShares
+        uint256 totalNativePendingAfterSend = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterSend,
+            totalNativePendingAfterInit - depositMsgValue,
+            "totalNativePending should decrease by deposit.msgValue"
+        );
+        assertEq(
+            totalNativePendingAfterSend,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
     }
 
     function test_sendDepositShares_crosschain_success() public {
@@ -298,7 +342,10 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
         uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = localEid; // cross chain
         sendParam.to = bytes32(uint256(uint160(user)));
@@ -308,13 +355,42 @@ contract MoreVaultsComposerTest is Test {
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
         bytes32 guid = bytes32(uint256(0x1));
 
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 0.5 ether;
+        uint256 expectedIncrease = msgValue - 0; // msg.value - accountingFee (0)
+
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.5 ether}(address(assetOFT), guid, full, address(0), "");
+        composer.lzCompose{value: msgValue}(address(assetOFT), guid, full, address(0), "");
+
+        // Verify totalNativePending increased after lzCompose (async flow)
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value"
+        );
 
         vault.setFinalizeShares(guid, amountLD);
 
+        // Get deposit info to check msgValue
+        IMoreVaultsComposer.PendingDeposit memory deposit = composer.pendingDeposits(guid);
+        uint256 depositMsgValue = deposit.msgValue;
+
         vm.prank(address(vault));
         composer.sendDepositShares(guid);
+
+        // Verify totalNativePending decreased after sendDepositShares
+        uint256 totalNativePendingAfterSend = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterSend,
+            totalNativePendingAfterInit - depositMsgValue,
+            "totalNativePending should decrease by deposit.msgValue"
+        );
+        assertEq(
+            totalNativePendingAfterSend,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
     }
 
     function test_sendDepositShares_success_withSlippageCheck() public {
@@ -322,7 +398,10 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
         uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
@@ -331,15 +410,44 @@ contract MoreVaultsComposerTest is Test {
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
         bytes32 guid = bytes32(uint256(0x1));
 
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 0.5 ether;
+        uint256 expectedIncrease = msgValue - 0; // msg.value - accountingFee (0)
+
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.5 ether}(address(assetOFT), guid, full, address(0), "");
+        composer.lzCompose{value: msgValue}(address(assetOFT), guid, full, address(0), "");
+
+        // Verify totalNativePending increased after lzCompose
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value"
+        );
 
         uint256 actualShares = 1e18; // More than minAmountLD (0.9e18), should succeed
         vault.setFinalizeShares(guid, actualShares);
 
+        // Get deposit info to check msgValue
+        IMoreVaultsComposer.PendingDeposit memory deposit = composer.pendingDeposits(guid);
+        uint256 depositMsgValue = deposit.msgValue;
+
         // Should succeed because actualShares (1e18) >= minAmountLD (0.9e18)
         vm.prank(address(vault));
         composer.sendDepositShares(guid);
+
+        // Verify totalNativePending decreased after sendDepositShares
+        uint256 totalNativePendingAfterSend = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterSend,
+            totalNativePendingAfterInit - depositMsgValue,
+            "totalNativePending should decrease by deposit.msgValue"
+        );
+        assertEq(
+            totalNativePendingAfterSend,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
     }
 
     function test_sendDepositShares_reverts_OnlyVaultOrLzAdapter_and_missing() public {
@@ -356,21 +464,53 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 5e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 5e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 1 ether;
+        uint256 expectedIncrease = msgValue - 0.2 ether; // msg.value - accountingFee
+
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+        composer.lzCompose{value: msgValue}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
         // Use known GUID from trace
         bytes32 guid = bytes32(uint256(0x1)); // GUID from MessagingReceipt
 
+        // Verify totalNativePending increased after lzCompose (async flow)
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
+        );
+
+        // Get deposit info to check msgValue
+        IMoreVaultsComposer.PendingDeposit memory deposit = composer.pendingDeposits(guid);
+        uint256 depositMsgValue = deposit.msgValue;
+
         vm.prank(address(vault));
         composer.refundDeposit{value: 0}(guid);
+
+        // Verify totalNativePending decreased after refundDeposit
+        uint256 totalNativePendingAfterRefund = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterRefund,
+            totalNativePendingAfterInit - depositMsgValue,
+            "totalNativePending should decrease by deposit.msgValue"
+        );
+        assertEq(
+            totalNativePendingAfterRefund,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
 
         // second refund should revert due to missing deposit
         vm.expectRevert();
@@ -393,30 +533,40 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 5e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 5e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 1 ether;
+        uint256 expectedIncrease = msgValue - 0.2 ether; // msg.value - accountingFee
 
         // Initiate a cross-chain deposit that will create a pending deposit
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+        composer.lzCompose{value: msgValue}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+
+        // Verify totalNativePending increased
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
+        );
 
         bytes32 guid = bytes32(uint256(0x1));
 
         // Verify the pending deposit exists and has correct addresses
-        (
-            bytes32 depositor,
-            address tokenAddress,
-            address oftAddress,
-            uint256 assetAmount,
-            address refundAddress,
-            uint256 msgValue,
-            uint32 srcEid,
-        ) = composer.pendingDeposits(guid);
+        IMoreVaultsComposer.PendingDeposit memory pendingDeposit = composer.pendingDeposits(guid);
+        address tokenAddress = pendingDeposit.tokenAddress;
+        address oftAddress = pendingDeposit.oftAddress;
+        uint256 assetAmount = pendingDeposit.assetAmount;
 
         // Verify that tokenAddress and oftAddress are different
         assertEq(tokenAddress, address(assetToken), "Token address should be the underlying token");
@@ -428,13 +578,29 @@ contract MoreVaultsComposerTest is Test {
         // MockOFT has send() which is why the test passes, but this verifies
         // we're using the correct address (oftAddress)
 
+        // Get deposit info to check msgValue
+        IMoreVaultsComposer.PendingDeposit memory deposit = composer.pendingDeposits(guid);
+        uint256 depositMsgValue = deposit.msgValue;
+
         vm.prank(address(vault));
         composer.refundDeposit{value: 0}(guid);
 
+        // Verify totalNativePending decreased after refundDeposit
+        uint256 totalNativePendingAfterRefund = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterRefund,
+            totalNativePendingAfterInit - depositMsgValue,
+            "totalNativePending should decrease by deposit.msgValue"
+        );
+        assertEq(
+            totalNativePendingAfterRefund,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
+
         // Verify the deposit was deleted after successful refund
-        (depositor, tokenAddress, oftAddress, assetAmount, refundAddress, msgValue, srcEid,) =
-            composer.pendingDeposits(guid);
-        assertEq(assetAmount, 0, "Deposit should be deleted after refund");
+        pendingDeposit = composer.pendingDeposits(guid);
+        assertEq(pendingDeposit.assetAmount, 0, "Deposit should be deleted after refund");
     }
 
     /**
@@ -451,23 +617,40 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(assetToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 5e18;
+        assetToken.mint(address(composer), amountLD);
+
         SendParam memory sendParam;
         sendParam.dstEid = 202;
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 5e18;
         bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 1 ether;
+        uint256 expectedIncrease = msgValue - 0.2 ether; // msg.value - accountingFee
 
         // Initiate deposit with 1 ether total, 0.2 ether goes to accounting fee
         // So deposit.msgValue will be stored as 0.8 ether
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 1 ether}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+        composer.lzCompose{value: msgValue}(address(assetOFT), bytes32(uint256(3001)), full, address(0), "");
+
+        // Verify totalNativePending increased after lzCompose
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
+        );
 
         bytes32 guid = bytes32(uint256(0x1));
 
         // Verify the pending deposit exists and check stored msgValue
-        (,,, uint256 assetAmount,, uint256 storedMsgValue,,) = composer.pendingDeposits(guid);
+        IMoreVaultsComposer.PendingDeposit memory pendingDeposit = composer.pendingDeposits(guid);
+        uint256 assetAmount = pendingDeposit.assetAmount;
+        uint256 storedMsgValue = pendingDeposit.msgValue;
         assertEq(assetAmount, amountLD, "Pending deposit should be created");
         assertEq(storedMsgValue, 0.8 ether, "Stored msgValue should be 0.8 ether (1 ether - 0.2 ether accounting fee)");
 
@@ -484,8 +667,22 @@ contract MoreVaultsComposerTest is Test {
         vm.prank(address(vault));
         composer.refundDeposit{value: additionalMsgValue}(guid);
 
+        // Verify totalNativePending decreased after refundDeposit (only stored msgValue is deducted, not additional)
+        uint256 totalNativePendingAfterRefund = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterRefund,
+            totalNativePendingAfterInit - storedMsgValue,
+            "totalNativePending should decrease by stored deposit.msgValue (additional msg.value is not stored)"
+        );
+        assertEq(
+            totalNativePendingAfterRefund,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
+
         // Verify the deposit was deleted after successful refund
-        (,,, assetAmount,,,,) = composer.pendingDeposits(guid);
+        pendingDeposit = composer.pendingDeposits(guid);
+        assetAmount = pendingDeposit.assetAmount;
         assertEq(assetAmount, 0, "Deposit should be deleted after successful refund with additional msg.value");
 
         // Note: Backward compatibility (refund without additional msg.value) is already tested
@@ -519,20 +716,55 @@ contract MoreVaultsComposerTest is Test {
         vault.setDepositable(address(otherToken), true);
         vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 2e18;
+        otherToken.mint(address(composer), amountLD);
+
         SendParam memory sp;
         sp.dstEid = 202;
         sp.to = bytes32(uint256(uint160(user)));
         sp.minAmountLD = 0;
 
-        bytes memory msgBytes = _buildComposeMsg(sp, 0, 201, 2e18);
+        bytes memory msgBytes = _buildComposeMsg(sp, 0, 201, amountLD);
+        
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 0.25 ether;
+        uint256 expectedIncrease = msgValue - 0; // msg.value - accountingFee (0)
+
         vm.prank(address(endpoint));
-        composer.lzCompose{value: 0.25 ether}(address(otherOFT), bytes32(uint256(0xdead)), msgBytes, address(0), "");
+        composer.lzCompose{value: msgValue}(address(otherOFT), bytes32(uint256(0xdead)), msgBytes, address(0), "");
+
+        // Verify totalNativePending increased after lzCompose (async flow)
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value"
+        );
 
         // Use known GUID from trace
         bytes32 guid = bytes32(uint256(0x1)); // GUID from MessagingReceipt
         vault.setFinalizeShares(guid, 2e18);
+
+        // Get deposit info to check msgValue
+        IMoreVaultsComposer.PendingDeposit memory deposit = composer.pendingDeposits(guid);
+        uint256 depositMsgValue = deposit.msgValue;
+
         vm.prank(address(vault));
         composer.sendDepositShares(guid);
+
+        // Verify totalNativePending decreased after sendDepositShares
+        uint256 totalNativePendingAfterSend = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterSend,
+            totalNativePendingAfterInit - depositMsgValue,
+            "totalNativePending should decrease by deposit.msgValue"
+        );
+        assertEq(
+            totalNativePendingAfterSend,
+            initialTotalNativePending,
+            "totalNativePending should return to initial value"
+        );
     }
 
     function test_receive_accepts_eth() public {
@@ -594,6 +826,10 @@ contract MoreVaultsComposerTest is Test {
         MockOFT otherToken = new MockOFT("Other", "OTH");
         otherToken.mint(user, 1000e18);
 
+        address registry = address(1001);
+        address router = address(1002);
+        MoreVaultsStorageHelper.setMoreVaultsRegistry(address(vault), registry);
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
         deal(user, 10 ether);
         vm.startPrank(user);
         otherToken.approve(address(composer), 1000e18);
@@ -626,7 +862,11 @@ contract MoreVaultsComposerTest is Test {
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        composer.initDeposit{value: 0.1 ether}(
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 0.1 ether;
+        uint256 expectedIncrease = msgValue - 0.1 ether; // msg.value - accountingFee
+
+        composer.initDeposit{value: msgValue}(
             OFTComposeMsgCodec.addressToBytes32(user),
             address(assetToken),
             address(assetOFT),
@@ -634,6 +874,14 @@ contract MoreVaultsComposerTest is Test {
             sendParam,
             user,
             201
+        );
+
+        // Verify totalNativePending increased after initDeposit
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
         );
         vm.stopPrank();
     }
@@ -654,7 +902,11 @@ contract MoreVaultsComposerTest is Test {
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        composer.initDeposit{value: 0.1 ether}(
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 0.1 ether;
+        uint256 expectedIncrease = msgValue - 0.1 ether; // msg.value - accountingFee
+
+        composer.initDeposit{value: msgValue}(
             OFTComposeMsgCodec.addressToBytes32(user),
             address(assetToken),
             address(assetOFT),
@@ -662,6 +914,14 @@ contract MoreVaultsComposerTest is Test {
             sendParam,
             user,
             201
+        );
+
+        // Verify totalNativePending increased after initDeposit
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
         );
         vm.stopPrank();
     }
@@ -688,7 +948,11 @@ contract MoreVaultsComposerTest is Test {
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        composer.initDeposit{value: 0.1 ether}(
+        uint256 initialTotalNativePending = composer.totalNativePending();
+        uint256 msgValue = 0.1 ether;
+        uint256 expectedIncrease = msgValue - 0.1 ether; // msg.value - accountingFee
+
+        composer.initDeposit{value: msgValue}(
             OFTComposeMsgCodec.addressToBytes32(user),
             address(otherToken),
             address(otherTokenOFT),
@@ -696,6 +960,14 @@ contract MoreVaultsComposerTest is Test {
             sendParam,
             user,
             201
+        );
+
+        // Verify totalNativePending increased after initDeposit
+        uint256 totalNativePendingAfterInit = composer.totalNativePending();
+        assertEq(
+            totalNativePendingAfterInit,
+            initialTotalNativePending + expectedIncrease,
+            "totalNativePending should increase by msg.value - accountingFee"
         );
         vm.stopPrank();
     }
@@ -1006,7 +1278,8 @@ contract MoreVaultsComposerTest is Test {
 
         // Verify: No pending deposit should exist (sync flow)
         bytes32 expectedGuid = bytes32(uint256(0x1));
-        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(expectedGuid);
+        IMoreVaultsComposer.PendingDeposit memory pendingDeposit = composer.pendingDeposits(expectedGuid);
+        uint256 pendingAmount = pendingDeposit.assetAmount;
         assertEq(pendingAmount, 0, "No pending deposit for sync flow with oracle accounting");
     }
 
@@ -1025,13 +1298,16 @@ contract MoreVaultsComposerTest is Test {
         vault.setAccountingFee(0.1 ether); // Need accounting fee for async flow
         vault.setDepositable(address(assetToken), true);
 
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
         // Setup: Prepare compose message
         SendParam memory sendParam;
         sendParam.dstEid = 202; // Cross-chain destination
         sendParam.to = bytes32(uint256(uint160(user)));
         sendParam.minAmountLD = 0;
 
-        uint256 amountLD = 1e18;
         bytes memory msgBytes = _buildComposeMsg(sendParam, 0, 201, amountLD);
 
         // Execute: This should succeed using async flow (initDeposit)
@@ -1040,7 +1316,8 @@ contract MoreVaultsComposerTest is Test {
 
         // Verify: Check that a pending deposit was created (async flow)
         bytes32 expectedGuid = bytes32(uint256(0x1));
-        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(expectedGuid);
+        IMoreVaultsComposer.PendingDeposit memory pendingDeposit = composer.pendingDeposits(expectedGuid);
+        uint256 pendingAmount = pendingDeposit.assetAmount;
         assertEq(pendingAmount, amountLD, "Pending deposit should be created for async flow");
     }
 
@@ -1074,7 +1351,8 @@ contract MoreVaultsComposerTest is Test {
 
         // Verify: No pending deposit should be created (sync flow)
         bytes32 expectedGuid = bytes32(uint256(0x1));
-        (,,, uint256 pendingAmount,,,,) = composer.pendingDeposits(expectedGuid);
+        IMoreVaultsComposer.PendingDeposit memory pendingDeposit = composer.pendingDeposits(expectedGuid);
+        uint256 pendingAmount = pendingDeposit.assetAmount;
         assertEq(pendingAmount, 0, "No pending deposit for sync flow");
     }
 
@@ -1263,5 +1541,301 @@ contract MoreVaultsComposerTest is Test {
 
         vm.prank(address(vault));
         composer.sendDepositShares(guid);
+    }
+
+    // ============ rescue function tests ============
+    address owner = address(0x1234);
+    address recipient = address(0x5678);
+    address nonOwner = address(0x9999);
+
+    function test_rescue_nativeToken_success() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Send ETH to composer
+        uint256 initialComposerBalance = 5 ether;
+        deal(address(composer), initialComposerBalance);
+
+        // Setup: Create pending deposit to lock some native
+        vault.setAccountingFee(0.1 ether);
+        vault.setDepositable(address(assetToken), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 1e18;
+        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        uint256 msgValueForDeposit = 2 ether;
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: msgValueForDeposit}(address(assetOFT), bytes32(uint256(1001)), full, address(0), "");
+
+        // Calculate available balance: total balance - totalNativePending
+        uint256 totalNativePending = composer.totalNativePending();
+        uint256 availableBalance = address(composer).balance - totalNativePending;
+        uint256 rescueAmount = 3 ether;
+
+        // Execute: Owner rescues native tokens
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Rescued(address(0), recipient, rescueAmount);
+
+        vm.prank(owner);
+        composer.rescue(address(0), payable(recipient), rescueAmount);
+
+        // Verify: Recipient received the tokens
+        assertEq(recipient.balance, rescueAmount, "Recipient should receive rescued ETH");
+    }
+
+    function test_rescue_nativeToken_maxAmount() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Send ETH to composer
+        uint256 initialComposerBalance = 5 ether;
+        deal(address(composer), initialComposerBalance);
+
+        // Setup: Create pending deposit to lock some native
+        vault.setAccountingFee(0.1 ether);
+        vault.setDepositable(address(assetToken), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 1e18;
+        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        uint256 msgValueForDeposit = 2 ether;
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: msgValueForDeposit}(address(assetOFT), bytes32(uint256(1002)), full, address(0), "");
+
+        // Calculate available balance: total balance - totalNativePending
+        uint256 totalNativePending = composer.totalNativePending();
+        uint256 availableBalance = address(composer).balance - totalNativePending;
+
+        // Execute: Owner rescues all available balance using max
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Rescued(address(0), recipient, availableBalance);
+
+        vm.prank(owner);
+        composer.rescue(address(0), payable(recipient), type(uint256).max);
+
+        // Verify: Recipient received all available balance
+        assertEq(recipient.balance, availableBalance, "Recipient should receive all available ETH");
+    }
+
+    function test_rescue_ERC20Token_success() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Create ERC20 token and mint to composer
+        MockOFT rescueToken = new MockOFT("RescueToken", "RSC");
+        uint256 tokenAmount = 1000e18;
+        rescueToken.mint(address(composer), tokenAmount);
+
+        uint256 rescueAmount = 500e18;
+
+        // Execute: Owner rescues ERC20 tokens
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Rescued(address(rescueToken), recipient, rescueAmount);
+
+        vm.prank(owner);
+        composer.rescue(address(rescueToken), payable(recipient), rescueAmount);
+
+        // Verify: Recipient received the tokens
+        assertEq(rescueToken.balanceOf(recipient), rescueAmount, "Recipient should receive rescued tokens");
+        assertEq(
+            rescueToken.balanceOf(address(composer)),
+            tokenAmount - rescueAmount,
+            "Composer should have remaining tokens"
+        );
+    }
+
+    function test_rescue_ERC20Token_maxAmount() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Create ERC20 token and mint to composer
+        MockOFT rescueToken = new MockOFT("RescueToken", "RSC");
+        uint256 tokenAmount = 1000e18;
+        rescueToken.mint(address(composer), tokenAmount);
+
+        // Execute: Owner rescues all tokens using max
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Rescued(address(rescueToken), recipient, tokenAmount);
+
+        vm.prank(owner);
+        composer.rescue(address(rescueToken), payable(recipient), type(uint256).max);
+
+        // Verify: Recipient received all tokens
+        assertEq(rescueToken.balanceOf(recipient), tokenAmount, "Recipient should receive all tokens");
+        assertEq(rescueToken.balanceOf(address(composer)), 0, "Composer should have no tokens left");
+    }
+
+    function test_rescue_reverts_whenUnauthorized() public {
+        // Setup: Mock owner (different from caller)
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Execute: Non-owner tries to rescue
+        vm.expectRevert(IMoreVaultsComposer.Unauthorized.selector);
+        vm.prank(nonOwner);
+        composer.rescue(address(0), payable(recipient), 1 ether);
+    }
+
+    function test_rescue_reverts_whenZeroAddress() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Execute: Owner tries to rescue to zero address
+        vm.expectRevert(IMoreVaultsComposer.ZeroAddress.selector);
+        vm.prank(owner);
+        composer.rescue(address(0), payable(address(0)), 1 ether);
+    }
+
+    function test_rescue_nativeToken_reverts_whenInsufficientBalance() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Send ETH to composer
+        uint256 initialComposerBalance = 5 ether;
+        deal(address(composer), initialComposerBalance);
+
+        // Setup: Create pending deposit to lock some native
+        vault.setAccountingFee(0.1 ether);
+        vault.setDepositable(address(assetToken), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        uint256 amountLD = 1e18;
+        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        uint256 msgValueForDeposit = 2 ether;
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: msgValueForDeposit}(address(assetOFT), bytes32(uint256(1003)), full, address(0), "");
+
+        // Calculate available balance: total balance - totalNativePending
+        uint256 totalNativePending = composer.totalNativePending();
+        uint256 availableBalance = address(composer).balance - totalNativePending;
+        uint256 rescueAmount = availableBalance + 1; // More than available
+
+        // Execute: Owner tries to rescue more than available
+        vm.expectRevert(IMoreVaultsComposer.InsufficientBalance.selector);
+        vm.prank(owner);
+        composer.rescue(address(0), payable(recipient), rescueAmount);
+    }
+
+    function test_rescue_ERC20Token_reverts_whenInsufficientBalance() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Create ERC20 token and mint to composer
+        MockOFT rescueToken = new MockOFT("RescueToken", "RSC");
+        uint256 tokenAmount = 1000e18;
+        rescueToken.mint(address(composer), tokenAmount);
+
+        uint256 rescueAmount = tokenAmount + 1; // More than available
+
+        // Execute: Owner tries to rescue more than available
+        vm.expectRevert(IMoreVaultsComposer.InsufficientBalance.selector);
+        vm.prank(owner);
+        composer.rescue(address(rescueToken), payable(recipient), rescueAmount);
+    }
+
+    function test_rescue_nativeToken_accountsForTotalNativePending() public {
+        // Setup: Mock owner
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(IAccessControlFacet.owner.selector),
+            abi.encode(owner)
+        );
+
+        // Setup: Send ETH to composer
+        uint256 initialComposerBalance = 10 ether;
+        deal(address(composer), initialComposerBalance);
+
+        // Setup: Create pending deposit to lock native
+        vault.setAccountingFee(0.1 ether);
+        vault.setDepositable(address(assetToken), true);
+        vaultFactory.setIsCrossChainVault(uint32(localEid), address(vault), true);
+
+        // Setup: Give composer tokens needed for escrow.lockTokens
+        uint256 amountLD = 1e18;
+        assetToken.mint(address(composer), amountLD);
+
+        SendParam memory sendParam;
+        sendParam.dstEid = 202;
+        sendParam.to = bytes32(uint256(uint160(user)));
+        sendParam.minAmountLD = 0;
+
+        bytes memory full = _buildComposeMsg(sendParam, 0, 201, amountLD);
+
+        uint256 msgValueForDeposit = 3 ether;
+        vm.prank(address(endpoint));
+        composer.lzCompose{value: msgValueForDeposit}(address(assetOFT), bytes32(uint256(1004)), full, address(0), "");
+
+        // Verify totalNativePending was increased
+        uint256 totalNativePending = composer.totalNativePending();
+        uint256 expectedLocked = msgValueForDeposit - 0.1 ether; // msg.value - accountingFee
+        assertEq(totalNativePending, expectedLocked, "totalNativePending should be set correctly");
+
+        // Available balance = total balance - totalNativePending
+        uint256 currentBalance = address(composer).balance;
+        uint256 availableBalance = currentBalance - totalNativePending;
+
+        // Execute: Owner rescues available balance
+        vm.expectEmit(true, true, true, true);
+        emit IMoreVaultsComposer.Rescued(address(0), recipient, availableBalance);
+
+        vm.prank(owner);
+        composer.rescue(address(0), payable(recipient), type(uint256).max);
+
+        // Verify: Recipient received available balance (not total balance)
+        assertEq(recipient.balance, availableBalance, "Recipient should receive available balance");
+        assertEq(
+            address(composer).balance,
+            totalNativePending,
+            "Composer should still have locked native pending"
+        );
     }
 }

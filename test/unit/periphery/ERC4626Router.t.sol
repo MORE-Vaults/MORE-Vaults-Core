@@ -6,6 +6,9 @@ import {ERC4626Router} from "../../../src/periphery/ERC4626Router.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC4626, ERC20} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {IVaultFacet} from "../../../src/interfaces/facets/IVaultFacet.sol";
+
+import {console} from "forge-std/console.sol";
 
 contract MockAsset is ERC20 {
     constructor() ERC20("Mock Asset", "MOCK") {}
@@ -15,16 +18,47 @@ contract MockAsset is ERC20 {
     }
 }
 
-contract MockVault is ERC4626 {
+contract MockVault is ERC4626, IVaultFacet {
     uint256 public slippageBps; // Simulates price change between preview and execution
+    bool public whitelistEnabled;
+    bool public withdrawalQueueEnabled;
+    uint256 public maxDepositLimit;
+    uint256 public maxMintLimit;
 
-    constructor(address asset_) ERC4626(IERC20(asset_)) ERC20("Mock Vault", "vMOCK") {}
+    constructor(address asset_) ERC4626(IERC20(asset_)) ERC20("Mock Vault", "vMOCK") {
+        maxDepositLimit = type(uint256).max;
+        maxMintLimit = type(uint256).max;
+    }
+
+    function setWhitelistEnabled(bool _enabled) external {
+        whitelistEnabled = _enabled;
+    }
+
+    function setWithdrawalQueueEnabled(bool _enabled) external {
+        withdrawalQueueEnabled = _enabled;
+    }
+
+    function setMaxDepositLimit(uint256 _limit) external {
+        maxDepositLimit = _limit;
+    }
+
+    function setMaxMintLimit(uint256 _limit) external {
+        maxMintLimit = _limit;
+    }
+
+    function isDepositWhitelistEnabled() external view returns (bool) {
+        return whitelistEnabled;
+    }
+
+    function getWithdrawalQueueStatus() external view returns (bool) {
+        return withdrawalQueueEnabled;
+    }
 
     function setSlippage(uint256 bps) external {
         slippageBps = bps;
     }
 
-    function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) public override(ERC4626, IVaultFacet) returns (uint256 shares) {
         shares = super.deposit(assets, receiver);
         // Simulate slippage: reduce shares by slippageBps
         if (slippageBps > 0) {
@@ -34,7 +68,7 @@ contract MockVault is ERC4626 {
         }
     }
 
-    function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
+    function mint(uint256 shares, address receiver) public override(ERC4626, IVaultFacet) returns (uint256 assets) {
         assets = super.mint(shares, receiver);
         // Simulate slippage: increase assets cost
         if (slippageBps > 0) {
@@ -42,7 +76,7 @@ contract MockVault is ERC4626 {
         }
     }
 
-    function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
+    function withdraw(uint256 assets, address receiver, address owner) public override(ERC4626, IVaultFacet) returns (uint256 shares) {
         shares = super.withdraw(assets, receiver, owner);
         // Simulate slippage: burn more shares
         if (slippageBps > 0) {
@@ -52,7 +86,7 @@ contract MockVault is ERC4626 {
         }
     }
 
-    function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
+    function redeem(uint256 shares, address receiver, address owner) public override(ERC4626, IVaultFacet) returns (uint256 assets) {
         assets = super.redeem(shares, receiver, owner);
         // Simulate slippage: reduce assets received
         if (slippageBps > 0) {
@@ -64,6 +98,47 @@ contract MockVault is ERC4626 {
     function mintShares(address to, uint256 amount) external {
         _mint(to, amount);
     }
+
+    function maxDeposit(address) public view override(ERC4626, IERC4626) returns (uint256) {
+        return maxDepositLimit;
+    }
+
+    function maxMint(address) public view override(ERC4626, IERC4626) returns (uint256) {
+        return maxMintLimit;
+    }
+
+    function totalAssets() public view override(ERC4626, IVaultFacet) returns (uint256) {
+        return ERC4626.totalAssets();
+    }
+
+    function facetName() external pure returns (string memory) {
+        return "MockVault";
+    }
+
+    function facetVersion() external pure returns (string memory) {
+        return "1.0.0";
+    }
+
+    function requestWithdraw(uint256 assets, address onBehalfOf) external override {
+        // Mock implementation - just emit event or do nothing
+    }
+
+    function requestRedeem(uint256 shares, address onBehalfOf) external override {
+        // Mock implementation - just emit event or do nothing
+    }
+
+    // Stub implementations for IVaultFacet interface
+    function pause() external override {}
+    function unpause() external override {}
+    function paused() external view override returns (bool) { return false; }
+    function totalAssetsUsd() external override returns (uint256, bool) { return (0, false); }
+    function getWithdrawalRequest(address) external view override returns (uint256, uint256) { return (0, 0); }
+    function deposit(address[] calldata, uint256[] calldata, address, uint256) external payable override returns (uint256) { return 0; }
+    function setFee(uint96) external override {}
+    function clearRequest() external override {}
+    function accrueFees(address) external override {}
+    function initialize(bytes calldata) external override {}
+    function onFacetRemoval(bool) external override {}
 }
 
 contract ERC4626RouterTest is Test {
@@ -93,10 +168,10 @@ contract ERC4626RouterTest is Test {
         uint256 minShares = (expectedShares * 99) / 100; // 1% tolerance
 
         vm.prank(user);
-        uint256 shares = router.depositWithSlippage(vault, assets, minShares, receiver);
+        uint256 shares = router.depositWithSlippage(vault, assets, minShares);
 
         assertGe(shares, minShares);
-        assertEq(vault.balanceOf(receiver), shares);
+        assertEq(vault.balanceOf(user), shares);
     }
 
     function test_depositWithSlippage_RevertsOnSlippage() public {
@@ -110,7 +185,7 @@ contract ERC4626RouterTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(ERC4626Router.SlippageExceeded.selector, expectedShares * 99 / 100, minShares)
         );
-        router.depositWithSlippage(vault, assets, minShares, receiver);
+        router.depositWithSlippage(vault, assets, minShares);
     }
 
     function test_depositWithSlippage_AcceptsWithinTolerance() public {
@@ -121,7 +196,7 @@ contract ERC4626RouterTest is Test {
         vault.setSlippage(100); // 1% slippage (within tolerance)
 
         vm.prank(user);
-        uint256 shares = router.depositWithSlippage(vault, assets, minShares, receiver);
+        uint256 shares = router.depositWithSlippage(vault, assets, minShares);
 
         assertGe(shares, minShares);
     }
@@ -134,10 +209,10 @@ contract ERC4626RouterTest is Test {
         uint256 maxAssets = (expectedAssets * 101) / 100; // 1% tolerance
 
         vm.prank(user);
-        uint256 assets = router.mintWithSlippage(vault, shares, maxAssets, receiver);
+        uint256 assets = router.mintWithSlippage(vault, shares, maxAssets);
 
         assertLe(assets, maxAssets);
-        assertEq(vault.balanceOf(receiver), shares);
+        assertEq(vault.balanceOf(user), shares);
     }
 
     function test_mintWithSlippage_RefundsExcess() public {
@@ -148,7 +223,7 @@ contract ERC4626RouterTest is Test {
         uint256 balanceBefore = asset.balanceOf(user);
 
         vm.prank(user);
-        uint256 assets = router.mintWithSlippage(vault, shares, maxAssets, receiver);
+        uint256 assets = router.mintWithSlippage(vault, shares, maxAssets);
 
         uint256 balanceAfter = asset.balanceOf(user);
         assertEq(balanceBefore - balanceAfter, assets); // Only spent what was needed
@@ -170,7 +245,7 @@ contract ERC4626RouterTest is Test {
         uint256 expectedShares = vault.previewWithdraw(withdrawAssets);
         uint256 maxShares = (expectedShares * 102) / 100; // 2% tolerance
 
-        uint256 shares = router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver, user);
+        uint256 shares = router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver);
         vm.stopPrank();
 
         assertLe(shares, maxShares);
@@ -190,7 +265,7 @@ contract ERC4626RouterTest is Test {
         uint256 maxShares = userShares; // Send all shares
 
         uint256 sharesBefore = vault.balanceOf(user);
-        uint256 shares = router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver, user);
+        uint256 shares = router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver);
         uint256 sharesAfter = vault.balanceOf(user);
         vm.stopPrank();
 
@@ -213,7 +288,7 @@ contract ERC4626RouterTest is Test {
         uint256 expectedAssets = vault.previewRedeem(redeemShares);
         uint256 minAssets = (expectedAssets * 99) / 100; // 1% tolerance
 
-        uint256 assets = router.redeemWithSlippage(vault, redeemShares, minAssets, receiver, user);
+        uint256 assets = router.redeemWithSlippage(vault, redeemShares, minAssets, receiver);
         vm.stopPrank();
 
         assertGe(assets, minAssets);
@@ -234,9 +309,181 @@ contract ERC4626RouterTest is Test {
         uint256 minAssets = expectedAssets; // Exact amount
 
         vault.setSlippage(200); // 2% slippage
+        expectedAssets = expectedAssets * 9800 / 10000;
 
-        vm.expectRevert(); // SlippageExceeded
-        router.redeemWithSlippage(vault, redeemShares, minAssets, receiver, user);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626Router.SlippageExceeded.selector, expectedAssets, minAssets)); // SlippageExceeded
+        router.redeemWithSlippage(vault, redeemShares, minAssets, receiver);
+        vm.stopPrank();
+    }
+
+    function test_mintWithSlippage_RevertsOnSlippage() public {
+        uint256 shares = 1000e18;
+        uint256 expectedAssets = vault.previewMint(shares);
+        uint256 maxAssets = expectedAssets; // Exact amount, no tolerance
+
+        vault.setSlippage(100); // 1% slippage
+
+        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.SlippageExceeded.selector, expectedAssets * 101 / 100, maxAssets)
+        );
+        router.mintWithSlippage(vault, shares, maxAssets);
+    }
+
+    function test_withdrawWithSlippage_RevertsOnSlippage() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        vault.deposit(depositAssets, user);
+        vault.approve(address(router), type(uint256).max);
+
+        uint256 withdrawAssets = 500e18;
+        uint256 expectedShares = vault.previewWithdraw(withdrawAssets);
+        uint256 maxShares = expectedShares; // Exact amount, no tolerance
+
+        vault.setSlippage(200); // 2% slippage
+        expectedShares = expectedShares * 10200 / 10000;
+
+        vm.expectRevert(abi.encodeWithSelector(ERC4626Router.SlippageExceeded.selector, expectedShares, maxShares));
+        router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver);
+        vm.stopPrank();
+    }
+
+    // ========== MAX DEPOSIT/MINT TESTS ==========
+
+    function test_depositWithSlippage_RevertsWhenMaxDepositExceeded() public {
+        uint256 assets = 1000e18;
+        vault.setMaxDepositLimit(500e18); // Set limit lower than assets
+
+        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.MaxDepositExceeded.selector, assets, 500e18)
+        );
+        router.depositWithSlippage(vault, assets, 0);
+    }
+
+    function test_mintWithSlippage_RevertsWhenMaxMintExceeded() public {
+        uint256 shares = 1000e18;
+        vault.setMaxMintLimit(500e18); // Set limit lower than shares
+        uint256 expectedAssets = vault.previewMint(shares);
+
+        console.log("expectedAssets", expectedAssets);
+        console.log(asset.balanceOf(user));
+        console.log(uint256(500e18));
+        console.log(vault.convertToAssets(500e18));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.MaxMintExceeded.selector, shares, 500e18)
+        );
+        vm.prank(user);
+        router.mintWithSlippage(vault, shares, expectedAssets);
+    }
+
+    // ========== REQUEST WITHDRAW/REDEEM TESTS ==========
+
+    function test_requestWithdraw_Success() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        uint256 userShares = vault.deposit(depositAssets, user);
+
+        // Approve router
+        vault.approve(address(router), type(uint256).max);
+
+        uint256 withdrawAssets = 500e18;
+        uint256 requiredShares = vault.convertToShares(withdrawAssets);
+
+        router.requestWithdraw(vault, withdrawAssets);
+        vm.stopPrank();
+    }
+
+    function test_requestWithdraw_RevertsOnInsufficientAllowance() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        vault.deposit(depositAssets, user);
+
+        // Don't approve router
+        uint256 withdrawAssets = 500e18;
+        uint256 requiredShares = vault.convertToShares(withdrawAssets);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.ERC20InsufficientAllowance.selector, user, 0, requiredShares)
+        );
+        router.requestWithdraw(vault, withdrawAssets);
+        vm.stopPrank();
+    }
+
+    function test_requestRedeem_Success() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        uint256 userShares = vault.deposit(depositAssets, user);
+
+        // Approve router
+        vault.approve(address(router), type(uint256).max);
+
+        uint256 redeemShares = userShares / 2;
+
+        router.requestRedeem(vault, redeemShares);
+        vm.stopPrank();
+    }
+
+    function test_requestRedeem_RevertsOnInsufficientAllowance() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        uint256 userShares = vault.deposit(depositAssets, user);
+
+        // Don't approve router
+        uint256 redeemShares = userShares / 2;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.ERC20InsufficientAllowance.selector, user, 0, vault.convertToAssets(redeemShares))
+        );
+        router.requestRedeem(vault, redeemShares);
+        vm.stopPrank();
+    }
+
+    // ========== INSUFFICIENT ALLOWANCE TESTS ==========
+
+    function test_withdrawWithSlippage_RevertsOnInsufficientAllowance() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        vault.deposit(depositAssets, user);
+
+        // Don't approve router
+        uint256 withdrawAssets = 500e18;
+        uint256 requiredShares = vault.convertToShares(withdrawAssets);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.ERC20InsufficientAllowance.selector, user, 0, requiredShares)
+        );
+        router.withdrawWithSlippage(vault, withdrawAssets, type(uint256).max, receiver);
+        vm.stopPrank();
+    }
+
+    function test_redeemWithSlippage_RevertsOnInsufficientAllowance() public {
+        // First deposit to get shares
+        uint256 depositAssets = 1000e18;
+        vm.startPrank(user);
+        asset.approve(address(vault), depositAssets);
+        uint256 userShares = vault.deposit(depositAssets, user);
+
+        // Don't approve router
+        uint256 redeemShares = userShares / 2;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626Router.ERC20InsufficientAllowance.selector, user, 0, vault.convertToAssets(redeemShares))
+        );
+        router.redeemWithSlippage(vault, redeemShares, 0, receiver);
         vm.stopPrank();
     }
 
@@ -246,7 +493,7 @@ contract ERC4626RouterTest is Test {
         uint256 assets = 1000e18;
 
         vm.prank(user);
-        uint256 shares = router.depositWithSlippage(vault, assets, 0, receiver);
+        uint256 shares = router.depositWithSlippage(vault, assets, 0);
 
         assertGt(shares, 0);
     }
@@ -259,7 +506,7 @@ contract ERC4626RouterTest is Test {
 
         vault.approve(address(router), type(uint256).max);
 
-        uint256 assets = router.redeemWithSlippage(vault, userShares, 0, receiver, user);
+        uint256 assets = router.redeemWithSlippage(vault, userShares, 0, receiver);
         vm.stopPrank();
 
         assertGt(assets, 0);
@@ -275,10 +522,10 @@ contract ERC4626RouterTest is Test {
         uint256 minShares = (expectedShares * (10000 - slippageBps)) / 10000;
 
         vm.prank(user);
-        uint256 shares = router.depositWithSlippage(vault, assets, minShares, receiver);
+        uint256 shares = router.depositWithSlippage(vault, assets, minShares);
 
         assertGe(shares, minShares);
-        assertEq(vault.balanceOf(receiver), shares);
+        assertEq(vault.balanceOf(user), shares);
     }
 
     function testFuzz_mintWithSlippage(uint256 shares, uint256 toleranceBps) public {
@@ -289,10 +536,10 @@ contract ERC4626RouterTest is Test {
         uint256 maxAssets = (expectedAssets * (10000 + toleranceBps)) / 10000;
 
         vm.prank(user);
-        uint256 assets = router.mintWithSlippage(vault, shares, maxAssets, receiver);
+        uint256 assets = router.mintWithSlippage(vault, shares, maxAssets);
 
         assertLe(assets, maxAssets);
-        assertEq(vault.balanceOf(receiver), shares);
+        assertEq(vault.balanceOf(user), shares);
     }
 
     function testFuzz_redeemWithSlippage(uint256 depositAmount, uint256 redeemPct, uint256 slippageBps) public {
@@ -313,7 +560,7 @@ contract ERC4626RouterTest is Test {
         uint256 expectedAssets = vault.previewRedeem(redeemShares);
         uint256 minAssets = (expectedAssets * (10000 - slippageBps)) / 10000;
 
-        uint256 assets = router.redeemWithSlippage(vault, redeemShares, minAssets, receiver, user);
+        uint256 assets = router.redeemWithSlippage(vault, redeemShares, minAssets, receiver);
         vm.stopPrank();
 
         assertGe(assets, minAssets);
@@ -337,7 +584,7 @@ contract ERC4626RouterTest is Test {
         uint256 expectedShares = vault.previewWithdraw(withdrawAssets);
         uint256 maxShares = (expectedShares * (10000 + toleranceBps)) / 10000;
 
-        uint256 shares = router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver, user);
+        uint256 shares = router.withdrawWithSlippage(vault, withdrawAssets, maxShares, receiver);
         vm.stopPrank();
 
         assertLe(shares, maxShares);
@@ -396,7 +643,7 @@ contract RouterHandler is Test {
         uint256 minShares = vault.previewDeposit(assets) * 95 / 100;
 
         vm.prank(user);
-        router.depositWithSlippage(vault, assets, minShares, receiver);
+        router.depositWithSlippage(vault, assets, minShares);
     }
 
     function mint(uint256 shares) external {
@@ -404,7 +651,7 @@ contract RouterHandler is Test {
         uint256 maxAssets = vault.previewMint(shares) * 105 / 100;
 
         vm.prank(user);
-        router.mintWithSlippage(vault, shares, maxAssets, receiver);
+        router.mintWithSlippage(vault, shares, maxAssets);
     }
 
     function redeem(uint256 shares) external {
@@ -415,7 +662,7 @@ contract RouterHandler is Test {
         uint256 minAssets = vault.previewRedeem(shares) * 95 / 100;
 
         vm.prank(user);
-        router.redeemWithSlippage(vault, shares, minAssets, receiver, user);
+        router.redeemWithSlippage(vault, shares, minAssets, receiver);
     }
 
     function withdraw(uint256 assets) external {
@@ -426,6 +673,6 @@ contract RouterHandler is Test {
         uint256 maxShares = vault.previewWithdraw(assets) * 105 / 100;
 
         vm.prank(user);
-        router.withdrawWithSlippage(vault, assets, maxShares, receiver, user);
+        router.withdrawWithSlippage(vault, assets, maxShares, receiver);
     }
 }

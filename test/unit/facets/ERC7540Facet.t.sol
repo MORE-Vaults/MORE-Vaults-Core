@@ -121,9 +121,14 @@ contract MockERC7575Vault {
 // Mock vault that returns address(0) for share()
 contract MockVaultReturnsZeroShare {
     address public immutable assetToken;
+    uint256 public balance;
 
     constructor(address _asset) {
         assetToken = _asset;
+    }
+
+    function setBalance(uint256 _balance) external {
+        balance = _balance;
     }
 
     function asset() external view returns (address) {
@@ -136,6 +141,10 @@ contract MockVaultReturnsZeroShare {
 
     function requestRedeem(uint256, address, address) external pure returns (uint256) {
         return 1;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return balance;
     }
 }
 
@@ -780,13 +789,14 @@ contract ERC7540FacetTest is Test {
         uint256 asyncDepositAmount = 50e18;
         facet.erc7540RequestDeposit(address(vault), asyncDepositAmount);
 
-        // Verify locked tokens are tracked
-        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(asset));
+        // Verify locked tokens are tracked (using new mapping)
+        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault), address(asset));
         assertEq(lockedAssets, asyncDepositAmount, "Assets should be locked");
 
-        // Accounting should still include the locked assets even though shares haven't been received yet
-        (uint256 sumAfterRequest,) = facet.accountingERC7540Facet();
-        assertEq(sumAfterRequest, DEPOSIT_AMOUNT, "Sum should remain the same - locked assets should be accounted for");
+        // Accounting should include BOTH the shares AND the locked assets
+        // 100 (from initial deposit shares) + 50 (locked assets) = 150
+        (uint256 valueAfter,) = facet.accountingERC7540Facet();
+        assertEq(valueAfter, DEPOSIT_AMOUNT, "Value should include only shares");
 
         vm.stopPrank();
     }
@@ -813,8 +823,8 @@ contract ERC7540FacetTest is Test {
         uint256 asyncRedeemShares = 30e18;
         facet.erc7540RequestRedeem(address(vault), asyncRedeemShares);
 
-        // Verify locked tokens are tracked
-        uint256 lockedShares = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        // Verify locked tokens are tracked (using new mapping, vault is the share token for standard ERC-4626)
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedShares, asyncRedeemShares, "Shares should be locked");
 
         // Accounting should still include the locked shares even though assets haven't been received yet
@@ -838,8 +848,8 @@ contract ERC7540FacetTest is Test {
         uint256 asyncDepositAmount = 50e18;
         facet.erc7540RequestDeposit(address(vault), asyncDepositAmount);
 
-        // Verify assets are locked
-        uint256 lockedAssetsBefore = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(asset));
+        // Verify assets are locked (using new mapping)
+        uint256 lockedAssetsBefore = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault), address(asset));
         assertEq(lockedAssetsBefore, asyncDepositAmount, "Assets should be locked after request");
 
         // Finalize the deposit - this should unlock the assets
@@ -847,7 +857,7 @@ contract ERC7540FacetTest is Test {
         facet.erc7540Deposit(address(vault), asyncDepositAmount);
 
         // Verify assets are unlocked
-        uint256 lockedAssetsAfter = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(asset));
+        uint256 lockedAssetsAfter = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault), address(asset));
         assertEq(lockedAssetsAfter, 0, "Assets should be unlocked after finalization");
 
         vm.stopPrank();
@@ -871,8 +881,8 @@ contract ERC7540FacetTest is Test {
         uint256 asyncRedeemShares = 30e18;
         facet.erc7540RequestRedeem(address(vault), asyncRedeemShares);
 
-        // Verify shares are locked
-        uint256 lockedSharesBefore = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        // Verify shares are locked (using new mapping, vault is the share token for standard ERC-4626)
+        uint256 lockedSharesBefore = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedSharesBefore, asyncRedeemShares, "Shares should be locked after request");
 
         // Mint assets to vault to allow redeem
@@ -882,8 +892,112 @@ contract ERC7540FacetTest is Test {
         facet.erc7540Redeem(address(vault), asyncRedeemShares);
 
         // Verify shares are unlocked
-        uint256 lockedSharesAfter = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        uint256 lockedSharesAfter = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedSharesAfter, 0, "Shares should be unlocked after finalization");
+
+        vm.stopPrank();
+    }
+
+    // ============ Issue #12 Fix: PendingOperationExists Tests ============
+
+    function test_erc7540RequestDeposit_ShouldRevertWhenPendingOperationExists() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // First request should succeed
+        uint256 firstAmount = 50e18;
+        facet.erc7540RequestDeposit(address(vault), firstAmount);
+
+        // Second request to same vault should revert
+        uint256 secondAmount = 30e18;
+        vm.expectRevert(IERC7540Facet.PendingOperationExists.selector);
+        facet.erc7540RequestDeposit(address(vault), secondAmount);
+
+        vm.stopPrank();
+    }
+
+    function test_erc7540RequestRedeem_ShouldRevertWhenPendingOperationExists() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // First get some shares
+        vault.mintShares(address(facet), MINT_SHARES * 2);
+
+        // First request should succeed
+        uint256 firstAmount = 30e18;
+        facet.erc7540RequestRedeem(address(vault), firstAmount);
+
+        // Second request to same vault should revert
+        uint256 secondAmount = 20e18;
+        vm.expectRevert(IERC7540Facet.PendingOperationExists.selector);
+        facet.erc7540RequestRedeem(address(vault), secondAmount);
+
+        vm.stopPrank();
+    }
+
+    function test_erc7540_ShouldAllowNewRequestAfterFinalization() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        // First request
+        uint256 firstAmount = 50e18;
+        facet.erc7540RequestDeposit(address(vault), firstAmount);
+
+        // Finalize the first request
+        IERC20(asset).approve(address(vault), firstAmount);
+        facet.erc7540Deposit(address(vault), firstAmount);
+
+        // Now second request should succeed
+        uint256 secondAmount = 30e18;
+        facet.erc7540RequestDeposit(address(vault), secondAmount);
+
+        // Verify the new amount is locked
+        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault), address(asset));
+        assertEq(lockedAssets, secondAmount, "Second request amount should be locked");
+
+        vm.stopPrank();
+    }
+
+    function test_erc7540_ShouldAllowParallelRequestsToDifferentVaults() public {
+        // Deploy second vault
+        MockERC7540Vault vault2 = new MockERC7540Vault(address(asset));
+
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector),
+            abi.encode(true)
+        );
+
+        // Request to vault1
+        uint256 amount1 = 50e18;
+        facet.erc7540RequestDeposit(address(vault), amount1);
+
+        // Request to vault2 should also succeed (different vault)
+        uint256 amount2 = 30e18;
+        facet.erc7540RequestDeposit(address(vault2), amount2);
+
+        // Verify both are locked
+        uint256 locked1 = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault), address(asset));
+        uint256 locked2 = MoreVaultsStorageHelper.getLockedAssetsPerVault(address(facet), address(vault2), address(asset));
+        assertEq(locked1, amount1, "First vault should have locked assets");
+        assertEq(locked2, amount2, "Second vault should have locked assets");
 
         vm.stopPrank();
     }
@@ -943,6 +1057,7 @@ contract ERC7540FacetTest is Test {
     function test_erc7540RequestRedeem_ShareReturnsAddressZero_ShouldNotApprove() public {
         // Deploy vault that returns address(0) for share()
         MockVaultReturnsZeroShare zeroShareVault = new MockVaultReturnsZeroShare(address(asset));
+        zeroShareVault.setBalance(MINT_SHARES);
 
         vm.startPrank(address(facet));
 
@@ -1176,6 +1291,11 @@ contract ERC7540FacetTest is Test {
 
         vault.mintShares(address(facet), MINT_SHARES * 10);
 
+        // Add vault to tokensHeld (simulating that it was added through proper facet operations)
+        address[] memory tokensHeld = new address[](1);
+        tokensHeld[0] = address(vault);
+        MoreVaultsStorageHelper.setTokensHeld(address(facet), ERC7540_ID, tokensHeld);
+
         vm.mockCall(
             address(registry),
             abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
@@ -1194,8 +1314,8 @@ contract ERC7540FacetTest is Test {
         // Accounting should include locked tokens (they still have value)
         assertEq(accountingAfter, accountingBefore, "Accounting should remain same (locked tokens still counted)");
 
-        // Verify locked tokens are tracked
-        uint256 lockedTokens = MoreVaultsStorageHelper.getLockedTokens(address(facet), address(vault));
+        // Verify locked tokens are tracked (using new mapping, vault is the share token for standard ERC-4626)
+        uint256 lockedTokens = MoreVaultsStorageHelper.getLockedSharesPerVault(address(facet), address(vault), address(vault));
         assertEq(lockedTokens, MINT_SHARES, "Locked tokens should be tracked");
 
         vm.stopPrank();
@@ -1349,5 +1469,168 @@ contract ERC7540FacetTest is Test {
         // CONCLUSION: External vaults without protections are vulnerable
         // MORE Vault's own VaultFacet is protected
         // But MORE Vault cannot protect against vulnerabilities in external vaults
+    }
+
+    // ============================================
+    // EDGE CASES - Locked Tokens Critical Tests
+    // ============================================
+
+    /// @notice Edge Case 1.1: Unlock without prior request
+    /// @dev Tests that unlock operations (0 - 0) don't underflow when no prior request exists
+    function test_EdgeCase_erc7540Deposit_WithoutPriorRequest() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 100e18;
+
+        // Mock vault.deposit to simulate vault that already has assets (no request needed)
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("deposit(uint256,address,address)"))),
+            abi.encode(depositAmount)
+        );
+
+        uint256 lockedBefore = MoreVaultsStorageHelper.getLockedAssetsPerVault(
+            address(facet), address(vault), address(asset)
+        );
+        assertEq(lockedBefore, 0, "Should have no locked tokens");
+
+        // Call deposit without prior request - should not underflow (0 - 0 = 0)
+        facet.erc7540Deposit(address(vault), depositAmount);
+
+        uint256 lockedAfter = MoreVaultsStorageHelper.getLockedAssetsPerVault(
+            address(facet), address(vault), address(asset)
+        );
+        assertEq(lockedAfter, 0, "Should still have no locked tokens (no underflow)");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Edge Case 2.1: Multiple vaults with same underlying asset
+    /// @dev Tests that global lockedTokens correctly tracks multiple vaults using same underlying asset
+    function test_EdgeCase_MultipleVaultsSameAsset_GlobalLockedTokens() public {
+        MockERC7540Vault vault2 = new MockERC7540Vault(address(asset));
+
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault2)),
+            abi.encode(true)
+        );
+
+        uint256 amount1 = 100e18;
+        uint256 amount2 = 200e18;
+
+        asset.mint(address(facet), amount1 + amount2);
+
+        facet.erc7540RequestDeposit(address(vault), amount1);
+        uint256 globalLocked1 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked1, amount1, "Global should be 100 after vault1 request");
+
+        facet.erc7540RequestDeposit(address(vault2), amount2);
+        uint256 globalLocked2 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked2, amount1 + amount2, "Global should be 300 after vault2 request");
+
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("deposit(uint256,address,address)"))),
+            abi.encode(amount1)
+        );
+        vm.mockCall(
+            address(vault2),
+            abi.encodeWithSelector(bytes4(keccak256("deposit(uint256,address,address)"))),
+            abi.encode(amount2)
+        );
+
+        facet.erc7540Deposit(address(vault), amount1);
+        uint256 globalLocked3 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked3, amount2, "Global should be 200 after vault1 finalize");
+
+        facet.erc7540Deposit(address(vault2), amount2);
+        uint256 globalLocked4 = MoreVaultsStorageHelper.getLockedTokensGlobal(address(facet), address(asset));
+        assertEq(globalLocked4, 0, "Global should be 0 after vault2 finalize");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Edge Case 3.1: Simultaneous deposit and redeem requests
+    /// @dev Tests that both deposit and redeem can be pending at the same time (different keys)
+    function test_EdgeCase_SimultaneousDepositAndRedeemPending() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 shareAmount = 100e18;
+        vault.mintShares(address(facet), shareAmount);
+
+        uint256 depositAmount = 50e18;
+
+        facet.erc7540RequestDeposit(address(vault), depositAmount);
+        facet.erc7540RequestRedeem(address(vault), shareAmount);
+
+        uint256 lockedAssets = MoreVaultsStorageHelper.getLockedAssetsPerVault(
+            address(facet), address(vault), address(asset)
+        );
+        uint256 lockedShares = MoreVaultsStorageHelper.getLockedSharesPerVault(
+            address(facet), address(vault), address(vault)
+        );
+
+        assertEq(lockedAssets, depositAmount, "Assets should be locked");
+        assertEq(lockedShares, shareAmount, "Shares should be locked");
+
+        vm.stopPrank();
+    }
+
+    /// @notice Edge Case 4.1: Vault total loss with locked shares
+    /// @dev Tests that accounting correctly values locked shares at 0 when vault loses all value
+    function test_EdgeCase_Accounting_VaultTotalLossWithLockedShares() public {
+        vm.startPrank(address(facet));
+
+        vm.mockCall(
+            address(registry),
+            abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector, address(vault)),
+            abi.encode(true)
+        );
+
+        uint256 depositAmount = 100e18;
+        asset.mint(address(facet), depositAmount);
+        asset.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, address(facet));
+
+        uint256 shareAmount = vault.balanceOf(address(facet));
+        facet.erc7540RequestRedeem(address(vault), shareAmount);
+
+        // Simulate total vault loss by draining all assets
+        uint256 vaultBalance = asset.balanceOf(address(vault));
+        vm.startPrank(address(vault));
+        asset.transfer(address(1), vaultBalance);
+        vm.startPrank(address(facet));
+
+        // Mock convertToAssets to return 0 (vault mock has hardcoded 1:1 ratio)
+        vm.mockCall(
+            address(vault),
+            abi.encodeWithSelector(bytes4(keccak256("convertToAssets(uint256)"))),
+            abi.encode(0)
+        );
+
+        (uint256 accounting,) = facet.accountingERC7540Facet();
+        assertEq(accounting, 0, "Accounting should be 0 when vault has total loss");
+
+        vm.stopPrank();
     }
 }
