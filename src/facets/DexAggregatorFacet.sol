@@ -34,8 +34,6 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
      */
     function initialize(bytes calldata data) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        bytes32 facetSelector = abi.decode(data, (bytes32));
-        ds.facetsForAccounting.push(facetSelector);
         ds.supportedInterfaces[type(IDexAggregatorFacet).interfaceId] = true;
     }
 
@@ -46,16 +44,6 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
     function onFacetRemoval(bool isReplacing) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IDexAggregatorFacet).interfaceId] = false;
-        MoreVaultsLib.removeFromFacetsForAccounting(
-            ds, IDexAggregatorFacet.accountingDexAggregatorFacet.selector, isReplacing
-        );
-    }
-
-    /**
-     * @inheritdoc IDexAggregatorFacet
-     */
-    function accountingDexAggregatorFacet() external pure returns (uint256, bool) {
-        return (0, true);
     }
 
     /**
@@ -81,9 +69,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
      * @inheritdoc IDexAggregatorFacet
      */
     function executeSwap(SwapParams calldata params) external returns (uint256 amountOut) {
-        MoreVaultsLib.validateNotMulticall();
-        AccessControlLib.validateCurator(msg.sender);
-
+        AccessControlLib.validateDiamond(msg.sender);
         _validateSwapParams(params);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
@@ -123,12 +109,9 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
      * @inheritdoc IDexAggregatorFacet
      */
     function executeBatchSwap(BatchSwapParams calldata params) external returns (uint256[] memory amountsOut) {
-        MoreVaultsLib.validateNotMulticall();
-        AccessControlLib.validateCurator(msg.sender);
+        AccessControlLib.validateDiamond(msg.sender);
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
-        uint256 totalBefore = _getTotalAssets();
 
         amountsOut = new uint256[](params.swaps.length);
 
@@ -139,16 +122,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
             }
         }
 
-        uint256 totalAfter = _getTotalAssets();
-
-        if (totalBefore > totalAfter) {
-            uint256 slippagePercent = ((totalBefore - totalAfter) * 10_000) / totalBefore;
-            if (slippagePercent > ds.maxSlippagePercent) {
-                revert GlobalSlippageExceeded(slippagePercent, ds.maxSlippagePercent);
-            }
-        }
-
-        emit BatchSwapExecuted(msg.sender, params.swaps.length, totalBefore, totalAfter);
+        emit BatchSwapExecuted(msg.sender, params.swaps.length);
 
         return amountsOut;
     }
@@ -220,19 +194,5 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
         if (params.minAmountOut == 0) {
             revert ZeroMinAmount();
         }
-    }
-
-    /**
-     * @notice Get total assets of the vault
-     * @return Total assets in underlying
-     */
-    function _getTotalAssets() private view returns (uint256) {
-        (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSignature("totalAssets()"));
-
-        if (!success) {
-            revert("TotalAssetsFailed");
-        }
-
-        return abi.decode(result, (uint256));
     }
 }

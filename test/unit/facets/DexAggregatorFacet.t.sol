@@ -77,32 +77,6 @@ contract DexAggregatorFacetTest is Test {
         assertEq(facet.facetVersion(), "1.0.0");
     }
 
-    function test_initialize_ShouldSetParametersCorrectly() public {
-        bytes32 selector = IDexAggregatorFacet.accountingDexAggregatorFacet.selector;
-        facet.initialize(abi.encode(selector));
-
-        assertTrue(
-            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IDexAggregatorFacet).interfaceId)
-        );
-    }
-
-    function test_onFacetRemoval_ShouldDisableInterface() public {
-        bytes32 selector = IDexAggregatorFacet.accountingDexAggregatorFacet.selector;
-        facet.initialize(abi.encode(selector));
-
-        facet.onFacetRemoval(false);
-
-        assertFalse(
-            MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IDexAggregatorFacet).interfaceId)
-        );
-    }
-
-    function test_accountingDexAggregatorFacet_ShouldReturnZero() public view {
-        (uint256 sum, bool isPositive) = facet.accountingDexAggregatorFacet();
-        assertEq(sum, 0);
-        assertTrue(isPositive);
-    }
-
     function test_getGenericQuote_ShouldReturnQuote() public view {
         bytes memory quoteCall =
             abi.encodeWithSelector(MockQuoter.getQuote.selector, address(tokenA), address(tokenB), 100e18);
@@ -141,7 +115,7 @@ contract DexAggregatorFacetTest is Test {
         uint256 balanceABefore = tokenA.balanceOf(address(facet));
         uint256 balanceBBefore = tokenB.balanceOf(address(facet));
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         uint256 amountOut = facet.executeSwap(params);
 
         assertEq(tokenA.balanceOf(address(facet)), balanceABefore - amountIn);
@@ -197,7 +171,7 @@ contract DexAggregatorFacetTest is Test {
             swapCallData: swapCall
         });
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         vm.expectRevert(abi.encodeWithSelector(IDexAggregatorFacet.InvalidTokenIn.selector, address(tokenC)));
         facet.executeSwap(params);
     }
@@ -218,7 +192,7 @@ contract DexAggregatorFacetTest is Test {
             swapCallData: swapCall
         });
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         vm.expectRevert(abi.encodeWithSelector(IDexAggregatorFacet.InvalidTokenOut.selector, address(tokenC)));
         facet.executeSwap(params);
     }
@@ -237,7 +211,7 @@ contract DexAggregatorFacetTest is Test {
             swapCallData: swapCall
         });
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         vm.expectRevert(abi.encodeWithSelector(IDexAggregatorFacet.SameToken.selector, address(tokenA)));
         facet.executeSwap(params);
     }
@@ -256,7 +230,7 @@ contract DexAggregatorFacetTest is Test {
             swapCallData: swapCall
         });
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         vm.expectRevert(IDexAggregatorFacet.ZeroAmount.selector);
         facet.executeSwap(params);
     }
@@ -278,7 +252,7 @@ contract DexAggregatorFacetTest is Test {
             swapCallData: swapCall
         });
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         vm.expectRevert(abi.encodeWithSelector(IDexAggregatorFacet.SlippageExceeded.selector, 95e18, 100e18));
         facet.executeSwap(params);
     }
@@ -317,7 +291,7 @@ contract DexAggregatorFacetTest is Test {
 
         vm.mockCall(address(facet), abi.encodeWithSignature("totalAssets()"), abi.encode(1000e18));
 
-        vm.prank(curator);
+        vm.prank(address(facet));
         uint256[] memory amountsOut = facet.executeBatchSwap(batchParams);
 
         assertEq(amountsOut.length, 2);

@@ -130,14 +130,10 @@ interface IDexAggregatorFacet is IGenericMoreVaultFacetInitializable {
      * @notice Emitted when a batch of swaps is executed successfully
      * @param curator Address of the curator who executed the batch
      * @param swapCount Number of swaps executed
-     * @param totalValueBefore Total vault value before batch (in underlying)
-     * @param totalValueAfter Total vault value after batch (in underlying)
      */
     event BatchSwapExecuted(
         address indexed curator,
-        uint256 swapCount,
-        uint256 totalValueBefore,
-        uint256 totalValueAfter
+        uint256 swapCount
     );
 
     // ==================== FUNCTIONS ====================
@@ -147,14 +143,6 @@ interface IDexAggregatorFacet is IGenericMoreVaultFacetInitializable {
      * @return The facet name
      */
     function facetName() external pure returns (string memory);
-
-    /**
-     * @notice Accounting function for totalAssets calculation
-     * @dev Always returns (0, true) since swaps are atomic and facet does not hold assets
-     * @return sum Always 0
-     * @return isPositive Always true
-     */
-    function accountingDexAggregatorFacet() external view returns (uint256 sum, bool isPositive);
 
     /**
      * @notice Get quote from any quoter contract using generic staticcall
