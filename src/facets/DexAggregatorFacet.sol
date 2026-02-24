@@ -30,18 +30,16 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
 
     /**
      * @notice Initialize the facet
-     * @param data Encoded facet selector for accounting
      */
-    function initialize(bytes calldata data) external initializerFacet {
+    function initialize(bytes calldata /* data */) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IDexAggregatorFacet).interfaceId] = true;
     }
 
     /**
      * @notice Handle facet removal
-     * @param isReplacing Whether the facet is being replaced
      */
-    function onFacetRemoval(bool isReplacing) external {
+    function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IDexAggregatorFacet).interfaceId] = false;
     }
@@ -72,12 +70,10 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
         AccessControlLib.validateDiamond(msg.sender);
         _validateSwapParams(params);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
         uint256 tokenInBalanceBefore = IERC20(params.tokenIn).balanceOf(address(this));
         uint256 tokenOutBalanceBefore = IERC20(params.tokenOut).balanceOf(address(this));
 
-        IERC20(params.tokenIn).forceApprove(params.targetContract, params.amountIn);
+        IERC20(params.tokenIn).forceApprove(params.targetContract, params.maxAmountIn);
 
         (bool success, bytes memory result) = params.targetContract.call(params.swapCallData);
 
@@ -91,8 +87,8 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
         uint256 tokenOutBalanceAfter = IERC20(params.tokenOut).balanceOf(address(this));
 
         uint256 actualAmountIn = tokenInBalanceBefore - tokenInBalanceAfter;
-        if (actualAmountIn != params.amountIn) {
-            revert UnexpectedAmountIn(params.amountIn, actualAmountIn);
+        if (actualAmountIn != params.maxAmountIn) {
+            revert UnexpectedAmountIn(params.maxAmountIn, actualAmountIn);
         }
 
         amountOut = tokenOutBalanceAfter - tokenOutBalanceBefore;
@@ -138,7 +134,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
         uint256 tokenInBalanceBefore = IERC20(params.tokenIn).balanceOf(address(this));
         uint256 tokenOutBalanceBefore = IERC20(params.tokenOut).balanceOf(address(this));
 
-        IERC20(params.tokenIn).forceApprove(params.targetContract, params.amountIn);
+        IERC20(params.tokenIn).forceApprove(params.targetContract, params.maxAmountIn);
 
         (bool success, bytes memory result) = params.targetContract.call(params.swapCallData);
 
@@ -152,8 +148,8 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
         uint256 tokenOutBalanceAfter = IERC20(params.tokenOut).balanceOf(address(this));
 
         uint256 actualAmountIn = tokenInBalanceBefore - tokenInBalanceAfter;
-        if (actualAmountIn != params.amountIn) {
-            revert UnexpectedAmountIn(params.amountIn, actualAmountIn);
+        if (actualAmountIn != params.maxAmountIn) {
+            revert UnexpectedAmountIn(params.maxAmountIn, actualAmountIn);
         }
 
         amountOut = tokenOutBalanceAfter - tokenOutBalanceBefore;
@@ -187,7 +183,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
             revert SameToken(params.tokenIn);
         }
 
-        if (params.amountIn == 0) {
+        if (params.maxAmountIn == 0) {
             revert ZeroAmount();
         }
 

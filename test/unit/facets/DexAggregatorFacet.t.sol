@@ -107,7 +107,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: amountIn,
+            maxAmountIn: amountIn,
             minAmountOut: minAmountOut,
             swapCallData: swapCall
         });
@@ -128,7 +128,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: 100e18,
+            maxAmountIn: 100e18,
             minAmountOut: 90e18,
             swapCallData: ""
         });
@@ -145,7 +145,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: notWhitelisted,
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: 100e18,
+            maxAmountIn: 100e18,
             minAmountOut: 90e18,
             swapCallData: ""
         });
@@ -166,7 +166,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenC),
             tokenOut: address(tokenB),
-            amountIn: 100e18,
+            maxAmountIn: 100e18,
             minAmountOut: 90e18,
             swapCallData: swapCall
         });
@@ -187,7 +187,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenC),
-            amountIn: 100e18,
+            maxAmountIn: 100e18,
             minAmountOut: 90e18,
             swapCallData: swapCall
         });
@@ -206,7 +206,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenA),
-            amountIn: 100e18,
+            maxAmountIn: 100e18,
             minAmountOut: 90e18,
             swapCallData: swapCall
         });
@@ -225,7 +225,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: 0,
+            maxAmountIn: 0,
             minAmountOut: 0,
             swapCallData: swapCall
         });
@@ -247,7 +247,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: amountIn,
+            maxAmountIn: amountIn,
             minAmountOut: minAmountOut,
             swapCallData: swapCall
         });
@@ -268,7 +268,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: 50e18,
+            maxAmountIn: 50e18,
             minAmountOut: 40e18,
             swapCallData: swapCall1
         });
@@ -281,7 +281,7 @@ contract DexAggregatorFacetTest is Test {
             targetContract: address(aggregator),
             tokenIn: address(tokenA),
             tokenOut: address(tokenB),
-            amountIn: 30e18,
+            maxAmountIn: 30e18,
             minAmountOut: 25e18,
             swapCallData: swapCall2
         });

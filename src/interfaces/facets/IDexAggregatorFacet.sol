@@ -16,15 +16,17 @@ interface IDexAggregatorFacet is IGenericMoreVaultFacetInitializable {
      * @param targetContract Address of the DEX aggregator contract (must be whitelisted)
      * @param tokenIn Address of the token to sell
      * @param tokenOut Address of the token to buy
-     * @param amountIn Exact amount of tokenIn to swap
-     * @param minAmountOut Minimum acceptable amount of tokenOut (slippage protection)
+     * @param maxAmountIn Maximum amount of tokenIn to swap, used to approve `maxAmountIn` tokens to the target contract, 
+     * for cases where exactInput used it is required amountIn
+     * @param minAmountOut Minimum acceptable amount of tokenOut (slippage protection), 
+     * for cases where exactOutput used it is required amountOut
      * @param swapCallData Complete calldata to execute on the target contract
      */
     struct SwapParams {
         address targetContract;
         address tokenIn;
         address tokenOut;
-        uint256 amountIn;
+        uint256 maxAmountIn;
         uint256 minAmountOut;
         bytes swapCallData;
     }
