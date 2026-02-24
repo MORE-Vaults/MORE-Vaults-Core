@@ -64,10 +64,15 @@ contract MerkleRewardsHandlerFacet is BaseFacetInitializer, IMerkleRewardsHandle
             revert InvalidArrayLength();
         }
 
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
         // Build users array internally - always claim to the vault
         address[] memory users = new address[](tokens.length);
         for (uint256 i = 0; i < tokens.length;) {
             users[i] = address(this);
+            if (!ds.isAssetAvailable[tokens[i]]) {
+                revert UnsupportedAsset(tokens[i]);
+            }
             unchecked {
                 ++i;
             }
@@ -102,6 +107,12 @@ contract MerkleRewardsHandlerFacet is BaseFacetInitializer, IMerkleRewardsHandle
 
         // Validate distributor is whitelisted in registry
         MoreVaultsLib.validateAddressWhitelisted(distributor);
+
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+
+        if (!ds.isAssetAvailable[reward]) {
+            revert UnsupportedAsset(reward);
+        }
 
         // Call Morpho URD to claim rewards
         // The distributor will calculate: amount = claimable - claimed[vault][reward]

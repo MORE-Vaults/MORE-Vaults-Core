@@ -154,6 +154,8 @@ contract MerkleRewardsHandlerFacetTest is Test {
         proofs[0][0] = keccak256("proof1");
         proofs[0][1] = keccak256("proof2");
 
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
+
         vm.prank(curator);
         vm.expectEmit(true, true, true, true);
         emit IMerkleRewardsHandlerFacet.MerklRewardsClaimed(token1, 1000e18, address(facet));
@@ -162,6 +164,8 @@ contract MerkleRewardsHandlerFacetTest is Test {
 
     function test_claimMerklRewards_shouldSucceedWithMultipleTokens() public {
         facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token2), true);
 
         address[] memory tokens = new address[](2);
         tokens[0] = token1;
@@ -250,6 +254,7 @@ contract MerkleRewardsHandlerFacetTest is Test {
     function test_claimMerklRewards_shouldRevertWhenClaimFails() public {
         facet.initialize(abi.encode(""));
         mockMerklDistributor.setShouldRevert(true);
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(0), true);
 
         address[] memory tokens = new address[](1);
         uint256[] memory amounts = new uint256[](1);
@@ -264,6 +269,7 @@ contract MerkleRewardsHandlerFacetTest is Test {
     function test_claimMerklRewards_shouldRevertWithReasonWhenDistributorFails() public {
         facet.initialize(abi.encode(""));
         mockMerklDistributor.setShouldRevertWithMessage("Invalid merkle proof");
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(0), true);
 
         address[] memory tokens = new address[](1);
         uint256[] memory amounts = new uint256[](1);
@@ -303,6 +309,7 @@ contract MerkleRewardsHandlerFacetTest is Test {
 
     function test_claimMerklRewards_shouldSucceedAsOwner() public {
         facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
 
         address[] memory tokens = new address[](1);
         tokens[0] = token1;
@@ -319,10 +326,21 @@ contract MerkleRewardsHandlerFacetTest is Test {
         facet.claimMerklRewards(address(mockMerklDistributor), tokens, amounts, proofs);
     }
 
+    function test_claimMerklRewards_shouldRevertWhenAssetNotAvailable() public {
+        facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), false);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = token1;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1000e18;
+    }
+
     // ========== MORPHO URD TESTS ==========
 
     function test_claimMorphoReward_shouldSucceed() public {
         facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
 
         bytes32[] memory proof = new bytes32[](2);
         proof[0] = keccak256("proof1");
@@ -339,6 +357,7 @@ contract MerkleRewardsHandlerFacetTest is Test {
 
     function test_claimMorphoReward_shouldClaimDelta() public {
         facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
 
         bytes32[] memory proof = new bytes32[](1);
         proof[0] = keccak256("proof1");
@@ -395,6 +414,7 @@ contract MerkleRewardsHandlerFacetTest is Test {
     function test_claimMorphoReward_shouldRevertWhenClaimFails() public {
         facet.initialize(abi.encode(""));
         mockMorphoDistributor.setShouldRevert(true);
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
 
         bytes32[] memory proof = new bytes32[](1);
 
@@ -405,6 +425,7 @@ contract MerkleRewardsHandlerFacetTest is Test {
 
     function test_claimMorphoReward_shouldSucceedAsOwner() public {
         facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
 
         bytes32[] memory proof = new bytes32[](1);
 
@@ -416,8 +437,21 @@ contract MerkleRewardsHandlerFacetTest is Test {
         assertEq(claimed, 1000e18, "Owner should be able to claim");
     }
 
+    function test_claimMorphoReward_shouldRevertWhenAssetNotAvailable() public {
+        facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), false);
+
+        bytes32[] memory proof = new bytes32[](1);
+
+        vm.prank(curator);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleRewardsHandlerFacet.UnsupportedAsset.selector, token1));
+        facet.claimMorphoReward(address(mockMorphoDistributor), token1, 1000e18, proof);
+    }
+
     function test_claimMorphoReward_shouldHandleMultipleTokens() public {
         facet.initialize(abi.encode(""));
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token1), true);
+        MoreVaultsStorageHelper.setAssetAvailable(address(facet), address(token2), true);
 
         bytes32[] memory proof = new bytes32[](1);
 

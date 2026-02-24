@@ -8,6 +8,7 @@ interface IMerkleRewardsHandlerFacet is IGenericMoreVaultFacetInitializable {
      * @dev Custom errors
      */
     error InvalidArrayLength();
+    error UnsupportedAsset(address asset);
 
     /**
      * @dev Events

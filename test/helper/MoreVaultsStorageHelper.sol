@@ -371,6 +371,10 @@ library MoreVaultsStorageHelper {
         return uint256(getMappingValue(contractAddress, ASSET_AVAILABLE, bytes32(uint256(uint160(asset))))) != 0;
     }
 
+    function setAssetAvailable(address contractAddress, address asset, bool available) internal {
+        setMappingValue(contractAddress, ASSET_AVAILABLE, bytes32(uint256(uint160(asset))), bytes32(uint256(available ? 1 : 0)));
+    }
+
     function isAssetDepositable(address contractAddress, address asset) internal view returns (bool) {
         return uint256(getMappingValue(contractAddress, ASSET_DEPOSITABLE, bytes32(uint256(uint160(asset))))) != 0;
     }
