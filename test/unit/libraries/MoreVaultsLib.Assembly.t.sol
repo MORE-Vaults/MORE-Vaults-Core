@@ -17,7 +17,6 @@ import {console} from "forge-std/console.sol";
  * 3. removeFromBeforeAccounting() (lines 652-658) - HIGH
  */
 contract MoreVaultsLibAssemblyTest is Test {
-
     // Mock facet that implements beforeAccounting
     MockBeforeAccountingFacet public mockFacet1;
     MockBeforeAccountingFacet public mockFacet2;
@@ -176,7 +175,7 @@ contract MoreVaultsLibAssemblyTest is Test {
 
         // Create some data in memory
         bytes memory testData = new bytes(1000);
-        for (uint i = 0; i < 1000; i++) {
+        for (uint256 i = 0; i < 1000; i++) {
             testData[i] = bytes1(uint8(i % 256));
         }
 
@@ -184,7 +183,7 @@ contract MoreVaultsLibAssemblyTest is Test {
         harness.testBeforeAccounting();
 
         // Verify memory is still intact
-        for (uint i = 0; i < 1000; i++) {
+        for (uint256 i = 0; i < 1000; i++) {
             assertEq(uint8(testData[i]), i % 256, "Memory should not be corrupted");
         }
     }

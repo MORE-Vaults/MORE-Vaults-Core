@@ -55,7 +55,7 @@ contract DiamondCutFacetTest is Test {
     }
 
     function test_facetVersion_ShouldReturnCorrectVersion() public view {
-        assertEq(IDiamondCut(facet).facetVersion(), "1.0.0", "Facet version should be correct");
+        assertEq(IDiamondCut(facet).facetVersion(), "1.0.1", "Facet version should be correct");
     }
 
     function test_onFacetRemoval_ShouldDisableInterface() public {

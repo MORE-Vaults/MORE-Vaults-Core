@@ -19,6 +19,6 @@ contract BridgeFacetAdditionalTest is Test {
 
     function test_facetVersion_shouldReturnCorrectVersion() public view {
         string memory version = bridgeFacet.facetVersion();
-        assertEq(version, "1.0.0");
+        assertEq(version, "1.0.1");
     }
 }

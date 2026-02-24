@@ -8,7 +8,7 @@ import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
 contract DiamondCutFacet is BaseFacetInitializer, IDiamondCut {
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.DiamondCutFacet");
+        return keccak256("MoreVaults.storage.initializable.DiamondCutFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -16,7 +16,7 @@ contract DiamondCutFacet is BaseFacetInitializer, IDiamondCut {
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     function initialize(bytes calldata) external initializerFacet {

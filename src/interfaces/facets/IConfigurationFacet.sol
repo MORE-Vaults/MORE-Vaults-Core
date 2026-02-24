@@ -23,6 +23,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     error InvalidReceiver();
     error CannotAddAssetWithExistingBalance();
     error AssetIsHeldToken();
+    error InvalidMaxWithdrawalDelay();
 
     /**
      * @dev Events
@@ -41,10 +42,14 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     event WithdrawalTimelockSet(uint64 duration);
     /// @notice Emitted when the cross chain accounting manager is set
     event CrossChainAccountingManagerSet(address indexed manager);
+    /// @notice Emitted when the escrow contract is set
+    event EscrowSet(address indexed escrow);
     /// @notice Emitted when the max slippage percent is set
     event MaxSlippagePercentSet(uint256 percent);
     /// @notice Emitted when assets are recovered from the vault
     event AssetsRecovered(address indexed asset, address indexed receiver, uint256 amount);
+    /// @notice Emitted when the max withdrawal delay is set
+    event MaxWithdrawalDelaySet(uint32 delay);
 
     /**
      * @notice Sets fee recipient address, callable by owner
@@ -65,7 +70,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function setDepositCapacity(uint256 capacity) external;
 
     /**
-     * @notice Sets deposit whitelist, callable by owner
+     * @notice Sets available to deposit amounts for users, callable by owner
      * @param depositors Array of depositors
      * @param undelyingAssetCaps Array of underlying asset caps
      */
@@ -82,14 +87,11 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function disableDepositWhitelist() external;
 
     /**
-     * @notice Disables deposit whitelist
-     */
-    /**
-     * @notice Gets deposit whitelist
+     * @notice Gets available to deposit amount for a depositor
      * @param depositor Depositor address
-     * @return Undelying asset cap
+     * @return Available amount to deposit
      */
-    function getDepositWhitelist(address depositor) external view returns (uint256);
+    function getAvailableToDeposit(address depositor) external view returns (uint256);
 
     /**
      * @notice Adds new available asset, callable by curator or owner
@@ -134,6 +136,12 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function updateWithdrawalQueueStatus(bool _status) external;
 
     /**
+     * @notice Update the max withdrawal delay, callable by owner through `submitActions` and timelocked
+     * @param _delay New max withdrawal delay
+     */
+    function setMaxWithdrawalDelay(uint32 _delay) external;
+
+    /**
      * @notice Sets gas limit for accounting, callable by curator or owner through `submitActions` and timelocked
      * @param _availableTokenAccountingGas Gas limit for available token accounting
      * @param _heldTokenAccountingGas Gas limit for held token accounting
@@ -160,6 +168,12 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     function setCrossChainAccountingManager(address manager) external;
 
     /**
+     * @notice Returns escrow contract address used for cross-chain locking.
+     * @return escrow Escrow contract address
+     */
+    function getEscrow() external view returns (address escrow);
+
+    /**
      * @notice Get the current withdrawal fee
      * @return The current withdrawal fee in basis points
      */
@@ -170,6 +184,12 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
      * @return The current withdrawal queue status
      */
     function getWithdrawalQueueStatus() external view returns (bool);
+
+    /**
+     * @notice Get the current max withdrawal delay
+     * @return The current max withdrawal delay
+     */
+    function getMaxWithdrawalDelay() external view returns (uint32);
 
     /**
      * @notice Gets list of depositable assets
@@ -255,6 +275,10 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
     /// @notice Get the cross chain accounting manager
     /// @return The cross chain accounting manager
     function getCrossChainAccountingManager() external view returns (address);
+
+    /// @notice Get the max slippage percent
+    /// @return The max slippage percent
+    function getMaxSlippagePercent() external view returns (uint256);
 
     /**
      * @notice Recovers assets that were accidentally sent to the vault

@@ -21,8 +21,14 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     error AccountingViaOracles();
     error AdapterNotAllowed(address);
     error RequestTimedOut();
+    error RequestNotStuck();
     error RequestAlreadyFinalized();
+    error InitiatorIsNotVaultComposer();
     error NotEnoughMsgValueProvided();
+    error SlippageExceeded(uint256 amount, uint256 limit);
+    error NotCrossChainVault();
+    /// @dev For WITHDRAW/REDEEM, the request initiator must match the share owner to prevent abuse via escrow approvals.
+    error OwnerMustBeInitiator();
 
     /**
      * @dev Returns the sum of assets from all spoke vaults in USD
@@ -68,14 +74,17 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
      * @dev Initiates a request to perform an action in a cross-chain vault
      * @param actionType Type of action to perform (deposit, withdraw, mint, etc.)
      * @param actionCallData Action call data
+     * @param amountLimit Amount limit for slippage protection: minAmountOut for deposits/mints, maxAmountIn for withdraws/redeems (0 = no slippage check)
      * @param extraOptions Additional options for cross-chain transfer
      * @return guid Unique request number for tracking
      * @notice Function requires gas payment for cross-chain transfer
      * @notice Available only when the contract is not paused
+     * @notice amountLimit is used for slippage protection for all actions except SET_FEE
      */
     function initVaultActionRequest(
         MoreVaultsLib.ActionType actionType,
         bytes calldata actionCallData,
+        uint256 amountLimit,
         bytes calldata extraOptions
     ) external payable returns (bytes32 guid);
 
@@ -90,18 +99,43 @@ interface IBridgeFacet is IGenericMoreVaultFacetInitializable {
     function updateAccountingInfoForRequest(bytes32 guid, uint256 sumOfSpokesUsdValue, bool readSuccess) external;
 
     /**
-     * @dev Finalizes the execution of a cross-chain request
-     * @param guid Request number to finalize
-     * @notice Executes the actual action after receiving all data from spoke vaults
-     * @notice Supports various action types: deposit, withdraw, mint, set fee
-     * @notice Can only be called after successful accounting information update
+     * @dev Executes a cross-chain request action (deposit, mint, withdraw, etc.)
+     * @param guid Request number to execute
+     * @notice Can only be called by the cross-chain accounting manager
+     * @notice Requires the request to be fulfilled
+     * @notice Executes the action and performs slippage check
      */
-    function finalizeRequest(bytes32 guid) external payable returns (bytes memory result);
+    function executeRequest(bytes32 guid) external;
 
     /**
+     * @dev Refunds all tokens (native and ERC20) back to the initiator (or owner for WITHDRAW/REDEEM) and unlocks them from pending
+     * @param guid Request number to refund
+     * @notice Can only be called by the cross-chain accounting manager
+     * @notice Unlocks tokens and transfers them back to the appropriate recipient
+     * @notice Handles both native tokens (for MULTI_ASSETS_DEPOSIT) and ERC20 tokens/shares
+     */
+    function refundRequestTokens(bytes32 guid) external;
+
+    /**
+     * @dev Refunds the stuck deposit
+     * @param guid Request number to refund
+     * @notice Can only be called by the cross-chain accounting manager
+     */
+    function refundStuckDepositInComposer(bytes32 guid) external payable;
+
+    /**
+     *
+     **
      * @dev Returns the request info for a given guid
      * @param guid Request number to get info for
      * @return Request info
      */
     function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory);
+
+    /**
+     * @dev Returns the finalization result for a given guid
+     * @param guid Request number to get finalization result for
+     * @return result The finalization result (e.g., shares amount for deposits)
+     */
+    function getFinalizationResult(bytes32 guid) external view returns (uint256 result);
 }

@@ -69,7 +69,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_initialize_shouldSetCorrectValues() public {
-        facet.initialize(abi.encode(10_000));
+        facet.initialize(abi.encode(2000));
         assertEq(
             MoreVaultsStorageHelper.getSupportedInterface(address(facet), type(IConfigurationFacet).interfaceId),
             true,
@@ -82,7 +82,7 @@ contract ConfigurationFacetTest is Test {
     }
 
     function test_facetVersion_ShouldReturnCorrectVersion() public view {
-        assertEq(facet.facetVersion(), "1.0.0", "Facet version should be correct");
+        assertEq(facet.facetVersion(), "1.0.1", "Facet version should be correct");
     }
 
     function test_onFacetRemoval_ShouldDisableInterface() public {
@@ -585,7 +585,7 @@ contract ConfigurationFacetTest is Test {
         facet.setDepositWhitelist(depositors, undelyingAssetCaps);
         vm.stopPrank();
 
-        assertEq(facet.getDepositWhitelist(address(1)), 10 ether);
+        assertEq(facet.getAvailableToDeposit(address(1)), 10 ether);
     }
 
     function test_setDepositWhitelist_ShouldRevertWhenUnauthorized() public {
@@ -610,6 +610,121 @@ contract ConfigurationFacetTest is Test {
         vm.expectRevert(IConfigurationFacet.ArraysLengthsMismatch.selector);
         facet.setDepositWhitelist(depositors, undelyingAssetCaps);
         vm.stopPrank();
+    }
+
+    /**
+     * @notice Test that new user gets both availableToDeposit and initialDepositCapPerUser set to the same value
+     */
+    function test_setDepositWhitelist_NewUser_SetsBothValuesEqual() public {
+        address newUser = address(0x100);
+        uint256 cap = 100 ether;
+
+        vm.startPrank(owner);
+        address[] memory depositors = new address[](1);
+        depositors[0] = newUser;
+        uint256[] memory caps = new uint256[](1);
+        caps[0] = cap;
+        facet.setDepositWhitelist(depositors, caps);
+        vm.stopPrank();
+
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), newUser),
+            cap,
+            "availableToDeposit should be set to cap"
+        );
+        assertEq(
+            MoreVaultsStorageHelper.getInitialDepositCapPerUser(address(facet), newUser),
+            cap,
+            "initialDepositCapPerUser should be set to cap"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit is preserved when new initialDepositCapPerUser is higher
+     */
+    function test_setDepositWhitelist_ExistingUser_increasesAvailableToDepositWhenNewCapIsHigher() public {
+        address existingUser = address(0x200);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 50 ether; // User has used 50 ether
+        uint256 newCap = 150 ether; // New cap is higher
+
+        // Set up initial state: user already exists with initialCap and has used some of it
+        vm.startPrank(owner);
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        facet.setDepositWhitelist(depositors1, caps1);
+        vm.stopPrank();
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsStorageHelper.setDepositWhitelist(address(facet), existingUser, currentAvailableToDeposit);
+
+        // Update initialDepositCapPerUser to a higher value
+        vm.startPrank(owner);
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        facet.setDepositWhitelist(depositors2, caps2);
+        vm.stopPrank();
+
+        // availableToDeposit should be preserved
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), existingUser),
+            currentAvailableToDeposit + (newCap - initialCap),
+            "availableToDeposit should be increased by the difference between new and old cap"
+        );
+        // initialDepositCapPerUser should be updated
+        assertEq(
+            MoreVaultsStorageHelper.getInitialDepositCapPerUser(address(facet), existingUser),
+            newCap,
+            "initialDepositCapPerUser should be updated"
+        );
+    }
+
+    /**
+     * @notice Test that existing user's availableToDeposit is capped when new initialDepositCapPerUser is lower
+     */
+    function test_setDepositWhitelist_ExistingUser_CapsAvailableToDepositWhenNewCapIsLower() public {
+        address existingUser = address(0x300);
+        uint256 initialCap = 100 ether;
+        uint256 currentAvailableToDeposit = 80 ether; // User has used 20 ether
+        uint256 newCap = 50 ether; // New cap is lower than current availableToDeposit
+
+        // Set up initial state: user already exists with initialCap and has used some of it
+        vm.startPrank(owner);
+        address[] memory depositors1 = new address[](1);
+        depositors1[0] = existingUser;
+        uint256[] memory caps1 = new uint256[](1);
+        caps1[0] = initialCap;
+        facet.setDepositWhitelist(depositors1, caps1);
+        vm.stopPrank();
+
+        // Manually set availableToDeposit to simulate user has deposited
+        MoreVaultsStorageHelper.setDepositWhitelist(address(facet), existingUser, currentAvailableToDeposit);
+
+        // Update initialDepositCapPerUser to a lower value
+        vm.startPrank(owner);
+        address[] memory depositors2 = new address[](1);
+        depositors2[0] = existingUser;
+        uint256[] memory caps2 = new uint256[](1);
+        caps2[0] = newCap;
+        facet.setDepositWhitelist(depositors2, caps2);
+        vm.stopPrank();
+
+        // availableToDeposit should be capped to newCap
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(address(facet), existingUser),
+            newCap,
+            "availableToDeposit should be capped to newCap"
+        );
+        // initialDepositCapPerUser should be updated
+        assertEq(
+            MoreVaultsStorageHelper.getInitialDepositCapPerUser(address(facet), existingUser),
+            newCap,
+            "initialDepositCapPerUser should be updated"
+        );
     }
 
     function test_enableDepositWhitelist_ShouldEnableDepositWhitelist() public {
@@ -710,6 +825,29 @@ contract ConfigurationFacetTest is Test {
         vm.stopPrank();
     }
 
+    // ==================== MaxWithdrawalDelay Tests ====================
+
+    function test_setMaxWithdrawalDelay_ShouldUpdateDelay() public {
+        vm.startPrank(address(facet));
+
+        uint32 newDelay = 14 days;
+        facet.setMaxWithdrawalDelay(newDelay);
+
+        assertEq(facet.getMaxWithdrawalDelay(), newDelay, "Max withdrawal delay should be updated");
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldEmitEvent() public {
+        vm.startPrank(address(facet));
+
+        uint32 newDelay = 7 days;
+        vm.expectEmit(true, true, true, true);
+        emit IConfigurationFacet.MaxWithdrawalDelaySet(newDelay);
+        facet.setMaxWithdrawalDelay(newDelay);
+
+        vm.stopPrank();
+    }
+    
     function test_recoverAssets_ShouldRevertWhenUnauthorized() public {
         MockERC20 token = new MockERC20("Test Token", "TST");
         token.mint(address(facet), 1000 ether);
@@ -718,6 +856,15 @@ contract ConfigurationFacetTest is Test {
 
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
         facet.recoverAssets(address(token), address(0x999), 500 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenUnauthorized() public {
+        vm.startPrank(unauthorized);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setMaxWithdrawalDelay(14 days);
 
         vm.stopPrank();
     }
@@ -745,6 +892,24 @@ contract ConfigurationFacetTest is Test {
         vm.startPrank(guardian);
         vm.expectRevert(IConfigurationFacet.AssetIsAvailable.selector);
         facet.recoverAssets(address(availableToken), address(0x999), 100 ether);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenCalledByOwnerDirectly() public {
+        vm.startPrank(owner);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setMaxWithdrawalDelay(14 days);
+
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenCalledByCurator() public {
+        vm.startPrank(curator);
+
+        vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
+        facet.setMaxWithdrawalDelay(14 days);
 
         vm.stopPrank();
     }
@@ -779,6 +944,41 @@ contract ConfigurationFacetTest is Test {
         // Try to recover 200 tokens - should revert from SafeERC20
         vm.expectRevert();
         facet.recoverAssets(address(token), address(0x999), 200 ether);
+
+        vm.stopPrank();
+    }
+
+    // ==================== MaxWithdrawalDelay Tests ====================
+    function test_setMaxWithdrawalDelay_ShouldRevertWhenZeroDelay() public {
+        vm.startPrank(address(facet));
+
+        vm.expectRevert(IConfigurationFacet.InvalidMaxWithdrawalDelay.selector);
+        facet.setMaxWithdrawalDelay(0);
+        vm.stopPrank();
+    }
+
+    function test_setMaxWithdrawalDelay_ShouldAllowMaxUint32() public {
+        vm.startPrank(address(facet));
+
+        uint32 maxValue = type(uint32).max;
+        facet.setMaxWithdrawalDelay(maxValue);
+
+        assertEq(facet.getMaxWithdrawalDelay(), maxValue, "Max withdrawal delay should be max uint32");
+        vm.stopPrank();
+    }
+
+    function test_getMaxWithdrawalDelay_ShouldReturnOneDayByDefault() public view {
+        assertEq(facet.getMaxWithdrawalDelay(), 1 days, "Default max withdrawal delay should be one day");
+    }
+
+    function test_getMaxWithdrawalDelay_ShouldReturnCorrectValueAfterSet() public {
+        vm.startPrank(address(facet));
+
+        facet.setMaxWithdrawalDelay(21 days);
+        assertEq(facet.getMaxWithdrawalDelay(), 21 days, "Should return 21 days");
+
+        facet.setMaxWithdrawalDelay(1 days);
+        assertEq(facet.getMaxWithdrawalDelay(), 1 days, "Should return 1 day after update");
 
         vm.stopPrank();
     }
@@ -972,6 +1172,11 @@ contract ConfigurationFacetTest is Test {
 
         // Verify held token was NOT recovered
         assertEq(heldToken.balanceOf(address(facet)), 1000 ether, "Held token should not be recovered");
+    }
+
+    function test_getMaxWithdrawalDelay_ShouldReturnValueSetByHelper() public {
+        MoreVaultsStorageHelper.setMaxWithdrawalDelay(address(facet), 30 days);
+        assertEq(facet.getMaxWithdrawalDelay(), 30 days, "Should return value set by helper");
     }
 }
 

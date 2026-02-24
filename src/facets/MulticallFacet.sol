@@ -12,7 +12,7 @@ contract MulticallFacet is BaseFacetInitializer, IMulticallFacet, ContextUpgrade
     error SlippageExceeded(uint256 slippagePercent, uint256 maxSlippagePercent);
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.MulticallFacet");
+        return keccak256("MoreVaults.storage.initializable.MulticallFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -20,16 +20,17 @@ contract MulticallFacet is BaseFacetInitializer, IMulticallFacet, ContextUpgrade
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     function initialize(bytes calldata data) external initializerFacet {
-        uint256 timeLockPeriod = abi.decode(data, (uint256));
-
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IMulticallFacet).interfaceId] = true;
 
-        MoreVaultsLib._setTimeLockPeriod(timeLockPeriod);
+        if (ds.timeLockPeriod == 0) {
+            uint256 timeLockPeriod = abi.decode(data, (uint256));
+            MoreVaultsLib._setTimeLockPeriod(timeLockPeriod);
+        }
     }
 
     function onFacetRemoval(bool) external {

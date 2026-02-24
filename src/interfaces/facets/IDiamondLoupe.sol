@@ -8,7 +8,6 @@ import {IGenericMoreVaultFacetInitializable} from "./IGenericMoreVaultFacetIniti
 interface IDiamondLoupe is IGenericMoreVaultFacetInitializable {
     /// These functions are expected to be called frequently
     /// by tools.
-
     struct Facet {
         address facetAddress;
         bytes4[] functionSelectors;

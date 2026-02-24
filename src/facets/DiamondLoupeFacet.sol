@@ -8,7 +8,7 @@ import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 
 contract DiamondLoupeFacet is BaseFacetInitializer, IDiamondLoupe, IERC165 {
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.DiamondLoupeFacet");
+        return keccak256("MoreVaults.storage.initializable.DiamondLoupeFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -16,7 +16,7 @@ contract DiamondLoupeFacet is BaseFacetInitializer, IDiamondLoupe, IERC165 {
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     function initialize(bytes calldata) external initializerFacet {

@@ -15,7 +15,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     using SafeERC20 for IERC20;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.ConfigurationFacet");
+        return keccak256("MoreVaults.storage.initializable.ConfigurationFacetV1.0.1");
     }
 
     function facetName() external pure returns (string memory) {
@@ -23,14 +23,16 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     }
 
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     function initialize(bytes calldata data) external initializerFacet {
-        uint256 maxSlippagePercent = abi.decode(data, (uint256));
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IConfigurationFacet).interfaceId] = true;
-        ds.maxSlippagePercent = maxSlippagePercent;
+        if (ds.maxSlippagePercent == 0) {
+            uint256 maxSlippagePercent = abi.decode(data, (uint256));
+            _setMaxSlippagePercent(maxSlippagePercent);
+        }
     }
 
     function onFacetRemoval(bool) external {
@@ -43,11 +45,7 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      */
     function setMaxSlippagePercent(uint256 _newPercent) external {
         AccessControlLib.validateDiamond(msg.sender);
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (_newPercent > 2000) revert SlippageTooHigh();
-        ds.maxSlippagePercent = _newPercent;
-
-        emit MaxSlippagePercentSet(_newPercent);
+        _setMaxSlippagePercent(_newPercent);
     }
 
     /**
@@ -180,6 +178,14 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         emit WithdrawalFeeSet(_fee);
     }
 
+    function setMaxWithdrawalDelay(uint32 _delay) external {
+        AccessControlLib.validateDiamond(msg.sender);
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_delay < 1 days) revert InvalidMaxWithdrawalDelay();
+        ds.maxWithdrawalDelay = _delay;
+        emit MaxWithdrawalDelaySet(_delay);
+    }
+
     /**
      * @inheritdoc IConfigurationFacet
      */
@@ -208,6 +214,13 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
+    function getEscrow() external view returns (address escrow) {
+        return MoreVaultsLib._getEscrow();
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
     function getWithdrawalFee() external view returns (uint96) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.withdrawalFee;
@@ -219,6 +232,14 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     function getWithdrawalQueueStatus() external view returns (bool) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         return ds.isWithdrawalQueueEnabled;
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function getMaxWithdrawalDelay() external view returns (uint32) {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        return ds.maxWithdrawalDelay < 1 days ? 1 days : ds.maxWithdrawalDelay;
     }
 
     /**
@@ -280,8 +301,8 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
     /**
      * @inheritdoc IConfigurationFacet
      */
-    function getDepositWhitelist(address depositor) external view returns (uint256) {
-        return MoreVaultsLib.moreVaultsStorage().depositWhitelist[depositor];
+    function getAvailableToDeposit(address depositor) external view returns (uint256) {
+        return MoreVaultsLib.moreVaultsStorage().availableToDeposit[depositor];
     }
 
     /**
@@ -334,8 +355,6 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
      * @inheritdoc IConfigurationFacet
      */
     function getCrossChainAccountingManager() external view returns (address) {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
         return MoreVaultsLib._getCrossChainAccountingManager();
     }
 
@@ -366,5 +385,20 @@ contract ConfigurationFacet is BaseFacetInitializer, IConfigurationFacet {
         IERC20(asset).safeTransfer(receiver, amount);
 
         emit AssetsRecovered(asset, receiver, amount);
+    }
+
+    /**
+     * @inheritdoc IConfigurationFacet
+     */
+    function getMaxSlippagePercent() external view returns (uint256) {
+        return MoreVaultsLib.moreVaultsStorage().maxSlippagePercent;
+    }
+
+    function _setMaxSlippagePercent(uint256 _newPercent) internal {
+        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
+        if (_newPercent > 2000) revert SlippageTooHigh();
+        ds.maxSlippagePercent = _newPercent;
+
+        emit MaxSlippagePercentSet(_newPercent);
     }
 }

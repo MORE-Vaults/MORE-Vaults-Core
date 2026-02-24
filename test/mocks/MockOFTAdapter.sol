@@ -73,7 +73,12 @@ contract MockOFTAdapter is IOFT {
         returns (MessagingReceipt memory, OFTReceipt memory)
     {
         require(msg.value >= fee.nativeFee, "fee");
-        return (MessagingReceipt(bytes32(uint256(1)), 1, fee), OFTReceipt(_sendParam.amountLD, _sendParam.amountLD));
+        // Apply LayerZero normalization: remove dust (normalize to sharedDecimals = 6)
+        // For tokens with 18 decimals: decimalConversionRate = 10^12
+        // This simulates the actual behavior of OFTAdapter
+        uint256 decimalConversionRate = 1e12; // 10^(18-6) for 18 decimal tokens
+        uint256 amountSentLD = (_sendParam.amountLD / decimalConversionRate) * decimalConversionRate;
+        return (MessagingReceipt(bytes32(uint256(1)), 1, fee), OFTReceipt(amountSentLD, amountSentLD));
     }
 
     // Minimal helper to satisfy forceApprove in tests

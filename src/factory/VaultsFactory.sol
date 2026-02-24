@@ -13,8 +13,9 @@ import {
     Origin,
     MessagingFee
 } from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
-import {OAppOptionsType3Upgradeable} from
-    "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
+import {
+    OAppOptionsType3Upgradeable
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
@@ -45,8 +46,12 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     error RestrictedFacet(address);
     /// @dev Thrown when hub owner and spoke owner do not match
     error OwnersMismatch(address hubOwner, address spokeOwner);
+    /// @dev Thrown when trying to register a second spoke from the same chain
+    error SpokeAlreadyExistsForChain(uint32 hubEid, address hubVault, uint32 spokeEid);
     /// @dev Thrown on unknown message type
     error UnknownMsgType();
+    /// @dev Thrown when hub and spoke addresses don't match (not in same mesh)
+    error VaultsNotInSameMesh();
 
     /// @dev Registry contract address
     IMoreVaultsRegistry public registry;
@@ -171,7 +176,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         _setFacetRestricted(_facet, true);
         for (uint256 i = 0; i < vaults.length;) {
             try IVaultFacet(vaults[i]).pause() {}
-            catch (bytes memory _err) {
+            catch (bytes memory) {
                 emit VaultFailedToPause(vaults[i]);
             }
             unchecked {
@@ -250,8 +255,12 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         IDiamondCut.FacetCut[] calldata facets,
         bytes memory accessControlFacetInitData,
         bool isHub,
-        bytes32 salt
+        bytes32 vaultIdentifier
     ) external returns (address vault) {
+        // Salt derived from msg.sender + vaultIdentifier to ensure same address across chains
+        // and prevent front-running (each deployer has its own namespace)
+        bytes32 salt = keccak256(abi.encodePacked(msg.sender, vaultIdentifier));
+
         // Deploy new MoreVaultsDiamond (vault) with CREATE3
         vault = CREATE3.deployDeterministic(
             abi.encodePacked(
@@ -343,11 +352,18 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         bytes calldata _message,
         address, /* _executor */
         bytes calldata /* _extraData */
-    ) internal override {
+    )
+        internal
+        override
+    {
         // OAppReceiver already validated endpoint and peer
         (uint16 msgType, bytes memory rest) = abi.decode(_message, (uint16, bytes));
         if (msgType == MSG_TYPE_REGISTER_SPOKE) {
             (address spokeVault, address hubVault, address spokeOwner) = abi.decode(rest, (address, address, address));
+
+            // Hub and spoke must have identical addresses (same mesh via CREATE3 deterministic deployment)
+            if (hubVault != spokeVault) revert VaultsNotInSameMesh();
+
             // Ensure dst hub vault is actually deployed by this factory and is hub
             if (!isFactoryVault[hubVault]) revert NotAVault(hubVault);
             if (!IConfigurationFacet(hubVault).isHub()) {
@@ -630,6 +646,19 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     }
 
     function _updateConnections(uint32 _hubEid, address _hubVault, uint32 _spokeEid, address _spokeVault) internal {
+        // Check if a spoke from the same chain already exists for this hub vault
+        EnumerableSet.Bytes32Set storage spokesSet = _hubToSpokesSet[_hubEid][_hubVault];
+        uint256 length = spokesSet.length();
+        for (uint256 i = 0; i < length;) {
+            (uint32 existingSpokeEid,) = _decodeSpokeKey(spokesSet.at(i));
+            if (existingSpokeEid == _spokeEid) {
+                revert SpokeAlreadyExistsForChain(_hubEid, _hubVault, _spokeEid);
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
         if (_spokeToHub[_spokeEid][_spokeVault] == bytes32(0)) {
             _spokeToHub[_spokeEid][_spokeVault] = _encodeSpokeKey(_hubEid, _hubVault);
         }

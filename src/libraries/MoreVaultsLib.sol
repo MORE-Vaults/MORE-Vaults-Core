@@ -23,8 +23,6 @@ bytes32 constant BALANCE_OF_SELECTOR = 0x70a082310000000000000000000000000000000
 bytes32 constant TOTAL_ASSETS_SELECTOR = 0x01e1d11400000000000000000000000000000000000000000000000000000000;
 bytes32 constant TOTAL_ASSETS_RUN_FAILED = 0xb5a7047700000000000000000000000000000000000000000000000000000000;
 
-uint256 constant MAX_WITHDRAWAL_DELAY = 14 days;
-
 library MoreVaultsLib {
     error InitializationFunctionReverted(address _initializationContractAddress, bytes _calldata);
     error UnsupportedAsset(address);
@@ -52,6 +50,7 @@ library MoreVaultsLib {
     error RestrictedActionInsideMulticall();
     error OnFacetRemovalFailed(address facet, bytes data);
     error FacetNameFailed(address facet);
+    error EscrowNotSet();
 
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -112,7 +111,7 @@ library MoreVaultsLib {
         WITHDRAW,
         REDEEM,
         MULTI_ASSETS_DEPOSIT,
-        SET_FEE
+        ACCRUE_FEES
     }
 
     struct CrossChainRequestInfo {
@@ -122,7 +121,10 @@ library MoreVaultsLib {
         bytes actionCallData;
         bool fulfilled;
         bool finalized;
+        bool refunded;
         uint256 totalAssets;
+        uint256 finalizationResult;
+        uint256 amountLimit; // Amount limit for slippage check: minAmountOut for deposits/mints, maxAmountIn for withdraws/redeems (0 = check not required)
     }
 
     struct MoreVaultsStorage {
@@ -164,7 +166,7 @@ library MoreVaultsLib {
         bool isMulticall;
         address factory;
         mapping(address => uint256) curvePoolLength;
-        mapping(address => uint256) depositWhitelist;
+        mapping(address => uint256) availableToDeposit;
         mapping(address => bool) isNecessaryToCheckLock;
         bool isWhitelistEnabled;
         address[] depositableAssets;
@@ -175,7 +177,13 @@ library MoreVaultsLib {
         bytes32 finalizationGuid;
         bool isWithdrawalQueueEnabled;
         uint96 withdrawalFee;
-        address facetOnRemoval;
+        mapping(address => uint256) userHighWaterMarkPerShare;
+        uint32 maxWithdrawalDelay;
+        /// @dev Locked tokens per external contract per token address
+        /// For deposits: lockedTokensPerContract[vault][asset] = amount
+        /// For redeems: lockedTokensPerContract[vault][shareToken] = shares
+        mapping(address contract_ => mapping(address token => uint256)) lockedTokensPerContract;
+        mapping(address => uint256) initialDepositCapPerUser;
     }
 
     event DiamondCut(IDiamondCut.FacetCut[] _diamondCut);
@@ -225,10 +233,19 @@ library MoreVaultsLib {
         }
     }
 
-    function removeTokenIfnecessary(EnumerableSet.AddressSet storage tokensHeld, address token) internal {
+    function removeTokenIfnecessary(
+        EnumerableSet.AddressSet storage tokensHeld,
+        address vault,
+        address asset,
+        address shareToken
+    ) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        if (IERC20(token).balanceOf(address(this)) + ds.lockedTokens[token] < 10e3) {
-            tokensHeld.remove(token);
+        uint256 sharesBalance = IERC20(vault).balanceOf(address(this));
+        uint256 lockedShares = ds.lockedTokensPerContract[vault][shareToken];
+        uint256 lockedAssets = ds.lockedTokensPerContract[vault][asset];
+
+        if (sharesBalance + lockedShares + lockedAssets < 10e3) {
+            tokensHeld.remove(vault);
         }
     }
 
@@ -290,9 +307,13 @@ library MoreVaultsLib {
         );
     }
 
+    function getUnderlyingTokenAddress() internal view returns (address) {
+        return address(getERC4626Storage()._asset);
+    }
+
     function convertUnderlyingToUsd(uint256 amount, Math.Rounding rounding) internal view returns (uint256) {
         IOracleRegistry oracle = IMoreVaultsRegistry(AccessControlLib.vaultRegistry()).oracle();
-        address underlyingToken = address(getERC4626Storage()._asset);
+        address underlyingToken = getUnderlyingTokenAddress();
         return amount.mulDiv(
             oracle.getAssetPrice(underlyingToken), 10 ** IERC20Metadata(underlyingToken).decimals(), rounding
         );
@@ -335,10 +356,29 @@ library MoreVaultsLib {
         emit DepositCapacitySet(previousCapacity, capacity);
     }
 
-    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata undelyingAssetCaps) internal {
+    function _setDepositWhitelist(address[] calldata depositors, uint256[] calldata underlyingAssetCaps) internal {
         MoreVaultsStorage storage ds = moreVaultsStorage();
         for (uint256 i; i < depositors.length;) {
-            ds.depositWhitelist[depositors[i]] = undelyingAssetCaps[i];
+            // Check if the user was added previously (by checking if initialDepositCapPerUser exists)
+            uint256 previousInitialCap = ds.initialDepositCapPerUser[depositors[i]];
+            
+            // Update initialDepositCapPerUser to the new value
+            ds.initialDepositCapPerUser[depositors[i]] = underlyingAssetCaps[i];
+            
+            // If the user already existed (initialDepositCapPerUser was set previously)
+            if (previousInitialCap > 0) {
+                // Preserve the current availableToDeposit value, but cap it to the new initialDepositCapPerUser
+                // if it exceeds the new limit
+                uint256 currentAvailableToDeposit = ds.availableToDeposit[depositors[i]];
+                if (currentAvailableToDeposit > underlyingAssetCaps[i]) {
+                    ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
+                } else if (underlyingAssetCaps[i] > previousInitialCap) {
+                    ds.availableToDeposit[depositors[i]] += underlyingAssetCaps[i] - previousInitialCap;
+                }
+            } else {
+                // If the user is new, set both values to be equal
+                ds.availableToDeposit[depositors[i]] = underlyingAssetCaps[i];
+            }
             unchecked {
                 ++i;
             }
@@ -605,19 +645,16 @@ library MoreVaultsLib {
                 ds.facetFunctionSelectors[lastFacetAddress].facetAddressPosition = facetAddressPosition;
             }
             ds.facetAddresses.pop();
-            delete ds
-                .facetFunctionSelectors[_facetAddress]
-                .facetAddressPosition;
+            delete ds.facetFunctionSelectors[_facetAddress].facetAddressPosition;
             address factory = ds.factory;
             IVaultsFactory(factory).unlink(_facetAddress);
 
-            ds.facetOnRemoval = _facetAddress;
-            (bool success, bytes memory result) = address(_facetAddress).delegatecall(
-                abi.encodeWithSelector(
-                    bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
-                )
-            );
-            delete ds.facetOnRemoval;
+            (bool success, bytes memory result) = address(_facetAddress)
+                .delegatecall(
+                    abi.encodeWithSelector(
+                        bytes4(IGenericMoreVaultFacetInitializable.onFacetRemoval.selector), _isReplacing
+                    )
+                );
             // revert if onFacetRemoval exists on facet and failed
             if (!success && result.length > 0) {
                 revert OnFacetRemovalFailed(_facetAddress, result);
@@ -683,13 +720,19 @@ library MoreVaultsLib {
         for (uint256 i; i < ds.facetsForAccounting.length;) {
             if (ds.facetsForAccounting[i] == selector) {
                 if (!_isReplacing) {
-                    (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
-                    if (!success) {
-                        revert AccountingFailed(selector);
-                    }
-                    uint256 decodedAmount = abi.decode(result, (uint256));
-                    if (decodedAmount > 10e4) {
-                        revert FacetHasBalance(decodedAmount);
+                    // Skip balance check for accountingBridgeFacet - it reports remote spoke funds,
+                    // not local funds, and a failing oracle should not prevent disabling oracle accounting
+                    bytes4 accountingBridgeFacetSelector =
+                        bytes4(keccak256(abi.encodePacked("accountingBridgeFacet()")));
+                    if (selector != accountingBridgeFacetSelector) {
+                        (bool success, bytes memory result) = address(this).staticcall(abi.encodeWithSelector(selector));
+                        if (!success) {
+                            revert AccountingFailed(selector);
+                        }
+                        uint256 decodedAmount = abi.decode(result, (uint256));
+                        if (decodedAmount > 10e4) {
+                            revert FacetHasBalance(decodedAmount);
+                        }
                     }
                 }
                 ds.facetsForAccounting[i] = ds.facetsForAccounting[ds.facetsForAccounting.length - 1];
@@ -740,9 +783,8 @@ library MoreVaultsLib {
 
         uint256 consumption;
         unchecked {
-            consumption = tokensHeldLength * gl.heldTokenAccountingGas
-                + stakingTokensLength * gl.stakingTokenAccountingGas
-                + ds.availableAssets.length * gl.availableTokenAccountingGas
+            consumption = tokensHeldLength * gl.heldTokenAccountingGas + stakingTokensLength
+                * gl.stakingTokenAccountingGas + ds.availableAssets.length * gl.availableTokenAccountingGas
                 + ds.facetsForAccounting.length * gl.facetAccountingGas + gl.nestedVaultsGas;
         }
 
@@ -751,16 +793,15 @@ library MoreVaultsLib {
         }
     }
 
-    function withdrawFromRequest(address _requester, uint256 _shares) internal returns (bool) {
+    function withdrawFromRequest(address _owner, uint256 _shares) internal returns (bool) {
         MoreVaultsStorage storage ds = moreVaultsStorage();
-        WithdrawRequest storage request = ds.withdrawalRequests[_requester];
+        WithdrawRequest storage request = ds.withdrawalRequests[_owner];
         // if withdrawal queue is disabled, request can be processed immediately
         if (!ds.isWithdrawalQueueEnabled) {
-            // only allow for the shares owner to withdraw in this case
-            return msg.sender == _requester;
+            return true;
         }
 
-        if (isWithdrawableRequest(request.timelockEndsAt, ds.witdrawTimelock) && request.shares >= _shares) {
+        if (isWithdrawableRequest(request.timelockEndsAt) && request.shares >= _shares) {
             request.shares -= _shares;
             return true;
         }
@@ -768,9 +809,10 @@ library MoreVaultsLib {
         return false;
     }
 
-    function isWithdrawableRequest(uint256 _timelockEndsAt, uint256 _witdrawTimelock) private view returns (bool) {
-        uint256 requestTimestamp = _timelockEndsAt - _witdrawTimelock;
-        return block.timestamp >= _timelockEndsAt && block.timestamp - requestTimestamp <= MAX_WITHDRAWAL_DELAY;
+    function isWithdrawableRequest(uint256 _timelockEndsAt) internal view returns (bool) {
+        MoreVaultsStorage storage ds = moreVaultsStorage();
+        uint256 maxWithdrawalDelay = ds.maxWithdrawalDelay < 1 days ? 1 days : ds.maxWithdrawalDelay;
+        return block.timestamp >= _timelockEndsAt && block.timestamp - _timelockEndsAt <= maxWithdrawalDelay;
     }
 
     function factoryAddress() internal view returns (address) {
@@ -833,5 +875,15 @@ library MoreVaultsLib {
         }
 
         return false;
+    }
+
+    function _availableTokensToManage(address token) internal view returns (uint256) {
+        // Cross-chain locks are held in escrow (not in the vault), so the vault's own balance is fully available.
+        return IERC20(token).balanceOf(address(this));
+    }
+
+    function _getEscrow() internal view returns (address) {
+        AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
+        return IMoreVaultsRegistry(acs.moreVaultsRegistry).escrow();
     }
 }

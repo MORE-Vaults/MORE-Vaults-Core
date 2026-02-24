@@ -15,3 +15,4 @@ docs/
 # Markdown files (except README)
 *.md
 !README.md
+EDGE_CASES_ANALYSIS.md

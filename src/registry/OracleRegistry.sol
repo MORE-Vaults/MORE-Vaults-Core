@@ -71,12 +71,6 @@ contract OracleRegistry is IOracleRegistry, AccessControlUpgradeable {
             revert InconsistentParamsLength();
         }
         for (uint256 i = 0; i < assets.length;) {
-            // If asset is not the base currency, aggregator must be set
-            if (assets[i] != BASE_CURRENCY) {
-                if (address(infos[i].aggregator) == address(0)) {
-                    revert AggregatorNotSet();
-                }
-            }
             _oracleInfos[assets[i]].aggregator = infos[i].aggregator;
             _oracleInfos[assets[i]].stalenessThreshold = infos[i].stalenessThreshold;
             emit OracleInfoUpdated(assets[i], infos[i]);

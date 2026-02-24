@@ -2,7 +2,10 @@
 pragma solidity ^0.8.19;
 
 import {
-    IOFT, SendParam, MessagingFee, OFTReceipt
+    IOFT,
+    SendParam,
+    MessagingFee,
+    OFTReceipt
 } from "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
 import {
     MessagingReceipt,
@@ -34,6 +37,13 @@ contract MockOFT {
 
     function approve(address spender, uint256 amount) external returns (bool) {
         allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 

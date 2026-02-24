@@ -63,9 +63,7 @@ contract MockEndpointForBootstrap {
         lastOptions = _params.options;
         lastRefundAddress = _refundAddress;
         return MessagingReceipt({
-            guid: bytes32(uint256(1)),
-            nonce: 1,
-            fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
+            guid: bytes32(uint256(1)), nonce: 1, fee: MessagingFee({nativeFee: msg.value, lzTokenFee: 0})
         });
     }
 

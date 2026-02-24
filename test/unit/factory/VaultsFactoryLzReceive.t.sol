@@ -100,25 +100,25 @@ contract VaultsFactoryLzReceiveTest is Test {
     }
 
     function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_Success() public {
-        bytes memory rest = abi.encode(address(spokeVault), address(hubVault), vaultOwner);
+        bytes memory rest = abi.encode(address(hubVault), address(hubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
         Origin memory origin =
             Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
         vm.expectEmit(true, true, true, true);
-        emit CrossChainLinked(SPOKE_EID, address(spokeVault), address(hubVault));
+        emit CrossChainLinked(SPOKE_EID, address(hubVault), address(hubVault));
 
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
 
-        (uint32 registeredHubEid, address registeredHubVault) = factory.spokeToHub(SPOKE_EID, address(spokeVault));
+        (uint32 registeredHubEid, address registeredHubVault) = factory.spokeToHub(SPOKE_EID, address(hubVault));
         assertEq(registeredHubEid, LOCAL_EID);
         assertEq(registeredHubVault, address(hubVault));
     }
 
     function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_RevertIfNotFactoryVault() public {
         address fakeHubVault = address(0xDEAD);
-        bytes memory rest = abi.encode(address(spokeVault), fakeHubVault, vaultOwner);
+        bytes memory rest = abi.encode(address(fakeHubVault), fakeHubVault, vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
         Origin memory origin =
@@ -132,7 +132,7 @@ contract VaultsFactoryLzReceiveTest is Test {
         MockHubVault nonHubVault = new MockHubVault(vaultOwner, false);
         factory.setFactoryVault(address(nonHubVault), true);
 
-        bytes memory rest = abi.encode(address(spokeVault), address(nonHubVault), vaultOwner);
+        bytes memory rest = abi.encode(address(nonHubVault), address(nonHubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
         Origin memory origin =
@@ -146,7 +146,7 @@ contract VaultsFactoryLzReceiveTest is Test {
         address differentOwner = address(0x9999);
         hubVault.setOwner(differentOwner);
 
-        bytes memory rest = abi.encode(address(spokeVault), address(hubVault), vaultOwner);
+        bytes memory rest = abi.encode(address(hubVault), address(hubVault), vaultOwner);
         bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
 
         Origin memory origin =
@@ -156,19 +156,48 @@ contract VaultsFactoryLzReceiveTest is Test {
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
     }
 
-    function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_Idempotent() public {
-        bytes memory rest = abi.encode(address(spokeVault), address(hubVault), vaultOwner);
-        bytes memory message = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest);
+    function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_RevertIfSpokeAlreadyExistsForChain() public {
+        // First registration should succeed
+        bytes memory rest1 = abi.encode(address(hubVault), address(hubVault), vaultOwner);
+        bytes memory message1 = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest1);
 
         Origin memory origin =
             Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
 
-        factory.exposed_lzReceive(origin, keccak256("guid1"), message, address(endpoint), "");
-        factory.exposed_lzReceive(origin, keccak256("guid2"), message, address(endpoint), "");
+        factory.exposed_lzReceive(origin, keccak256("guid1"), message1, address(endpoint), "");
 
-        (uint32 registeredHubEid, address registeredHubVault) = factory.spokeToHub(SPOKE_EID, address(spokeVault));
-        assertEq(registeredHubEid, LOCAL_EID);
-        assertEq(registeredHubVault, address(hubVault));
+        // Second registration of the same spoke should revert
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VaultsFactory.SpokeAlreadyExistsForChain.selector, LOCAL_EID, address(hubVault), SPOKE_EID
+            )
+        );
+        factory.exposed_lzReceive(origin, keccak256("guid2"), message1, address(endpoint), "");
+    }
+
+    function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_RevertIfDifferentSpokeFromSameChain() public {
+        // Register first spoke
+        bytes memory rest1 = abi.encode(address(hubVault), address(hubVault), vaultOwner);
+        bytes memory message1 = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest1);
+
+        Origin memory origin =
+            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
+
+        factory.exposed_lzReceive(origin, keccak256("guid1"), message1, address(endpoint), "");
+
+        // Try to register a different spoke vault from the same chain
+        MockHubVault differentSpokeVault = new MockHubVault(vaultOwner, false);
+        factory.setFactoryVault(address(differentSpokeVault), true);
+
+        bytes memory rest2 = abi.encode(address(differentSpokeVault), address(hubVault), vaultOwner);
+        bytes memory message2 = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest2);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                VaultsFactory.VaultsNotInSameMesh.selector
+            )
+        );
+        factory.exposed_lzReceive(origin, keccak256("guid2"), message2, address(endpoint), "");
     }
 
     function test_lzReceive_MSG_TYPE_SPOKE_ADDED_Success() public {

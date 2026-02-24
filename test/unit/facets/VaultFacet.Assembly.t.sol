@@ -18,7 +18,6 @@ import {console} from "forge-std/console.sol";
  * 4. Line 244: if debt >= totalAssets, returns 0 (not an error)
  */
 contract VaultFacetAssemblyTest is Test {
-
     AccountFacetsTestHarness public harness;
 
     // Mock accounting facets with different behaviors
@@ -355,9 +354,8 @@ contract AccountFacetsTestHarness {
         address facet = facetAddresses[index];
 
         // Call the facet's accounting() function
-        (bool success, bytes memory result) = facet.staticcall(
-            abi.encodeWithSelector(bytes4(keccak256("accounting()")))
-        );
+        (bool success, bytes memory result) =
+            facet.staticcall(abi.encodeWithSelector(bytes4(keccak256("accounting()"))));
 
         if (success) {
             assembly {

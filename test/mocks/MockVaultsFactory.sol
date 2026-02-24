@@ -8,6 +8,7 @@ contract MockVaultsFactory {
     uint32 private _localEid;
     mapping(address => bool) private _vaults;
     address public lzAdapter;
+    mapping(address => address) public vaultComposer;
 
     struct HubToSpokes {
         uint32[] eids;
@@ -46,5 +47,9 @@ contract MockVaultsFactory {
 
     function setLzAdapter(address _lzAdapter) external {
         lzAdapter = _lzAdapter;
+    }
+
+    function setVaultComposer(address vault, address composer) external {
+        vaultComposer[vault] = composer;
     }
 }

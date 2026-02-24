@@ -3,9 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {VaultsFactory, MessagingFee} from "../../../src/factory/VaultsFactory.sol";
-import {
-    OAppSenderUpgradeable
-} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppSenderUpgradeable.sol";
+import {OAppSenderUpgradeable} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppSenderUpgradeable.sol";
 import {VaultsFactoryHarness} from "../../mocks/VaultsFactoryHarness.sol";
 import {IAccessControlFacet} from "../../../src/interfaces/facets/IAccessControlFacet.sol";
 

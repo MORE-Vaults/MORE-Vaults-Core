@@ -78,7 +78,7 @@ contract AccessControlFacetTest is Test {
     }
 
     function test_version_shouldReturnCorrectVersion() public view {
-        assertEq(facet.facetVersion(), "1.0.0", "Version should be correct");
+        assertEq(facet.facetVersion(), "1.0.1", "Version should be correct");
     }
 
     function test_transferCuratorship_ShouldUpdateCurator() public {

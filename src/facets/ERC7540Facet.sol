@@ -11,6 +11,7 @@ import {IERC7540Facet} from "../interfaces/facets/IERC7540Facet.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IERC7540} from "../interfaces/IERC7540.sol";
+import {IERC7575} from "forge-std/interfaces/IERC7575.sol";
 
 /**
  * @title ERC7540Facet
@@ -32,7 +33,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
      * @return bytes32 The storage slot identifier
      */
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.ERC7540Facet");
+        return keccak256("MoreVaults.storage.initializable.ERC7540FacetV1.0.1");
     }
 
     /**
@@ -48,7 +49,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
      * @return string The facet version
      */
     function facetVersion() external pure returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 
     /**
@@ -92,6 +93,7 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
                 continue;
             }
             address asset = IERC4626(vault).asset();
+            // Count both locked shares (from redeem requests) and locked assets (from deposit requests)
             uint256 balance = IERC20(vault).balanceOf(address(this)) + ds.lockedTokens[vault];
             uint256 convertedToVaultUnderlying = IERC4626(vault).convertToAssets(balance);
             sum += MoreVaultsLib.convertToUnderlying(asset, convertedToVaultUnderlying, Math.Rounding.Floor);
@@ -113,13 +115,19 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
 
         address asset = IERC4626(vault).asset();
 
+        // Only allow one pending deposit request per vault/asset
+        if (ds.lockedTokensPerContract[vault][asset] > 0) revert PendingOperationExists();
+
         IERC20(asset).forceApprove(vault, assets);
         requestId = IERC7540(vault).requestDeposit(assets, address(this), address(this));
         ds.lockedTokens[asset] += assets;
+        ds.lockedTokensPerContract[vault][asset] = assets;
+        ds.tokensHeld[ERC7540_ID].add(vault);
     }
 
     /**
      * @inheritdoc IERC7540Facet
+     * @dev Supports ERC-7575 vaults with external share tokens
      */
     function erc7540RequestRedeem(address vault, uint256 shares) external returns (uint256 requestId) {
         if (shares == 0) revert ZeroAmount();
@@ -127,8 +135,21 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        // Get share token address (vault itself for standard ERC-4626, external for ERC-7575)
+        address shareToken = _getShareToken(vault);
+
+        // Only allow one pending redeem request per vault
+        if (ds.lockedTokensPerContract[vault][shareToken] > 0) revert PendingOperationExists();
+
+        // Approve external share token if vault implements ERC-7575
+        if (shareToken != vault) {
+            IERC20(shareToken).forceApprove(vault, shares);
+        }
+
         requestId = IERC7540(vault).requestRedeem(shares, address(this), address(this));
         ds.lockedTokens[vault] += shares;
+        ds.lockedTokensPerContract[vault][shareToken] = shares;
+        ds.tokensHeld[ERC7540_ID].add(vault);
     }
 
     /**
@@ -141,13 +162,13 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
+
         shares = IERC7540(vault).deposit(assets, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
-        if (ds.lockedTokens[asset] >= assets) {
-            ds.lockedTokens[asset] -= assets;
-        }
+        ds.lockedTokens[asset] -= ds.lockedTokensPerContract[vault][asset];
+        ds.lockedTokensPerContract[vault][asset] = 0;
     }
 
     /**
@@ -160,13 +181,13 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         address asset = IERC4626(vault).asset();
+
         assets = IERC7540(vault).mint(shares, address(this), address(this));
         ds.tokensHeld[ERC7540_ID].add(vault);
 
         // Unlock assets that were locked during requestDeposit
-        if (ds.lockedTokens[asset] >= assets) {
-            ds.lockedTokens[asset] -= assets;
-        }
+        ds.lockedTokens[asset] -= ds.lockedTokensPerContract[vault][asset];
+        ds.lockedTokensPerContract[vault][asset] = 0;
     }
 
     /**
@@ -178,14 +199,16 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        address shareToken = _getShareToken(vault);
+
         shares = IERC7540(vault).withdraw(assets, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem
-        if (ds.lockedTokens[vault] >= shares) {
-            ds.lockedTokens[vault] -= shares;
-        }
+        ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
+        ds.lockedTokensPerContract[vault][shareToken] = 0;
 
-        MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
+        address asset = IERC4626(vault).asset();
+        MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault, asset, shareToken);
     }
 
     /**
@@ -197,13 +220,29 @@ contract ERC7540Facet is IERC7540Facet, BaseFacetInitializer {
         MoreVaultsLib.validateAddressWhitelisted(vault);
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
+        address shareToken = _getShareToken(vault);
         assets = IERC7540(vault).redeem(shares, address(this), address(this));
 
         // Unlock shares that were locked during requestRedeem
-        if (ds.lockedTokens[vault] >= shares) {
-            ds.lockedTokens[vault] -= shares;
-        }
+        ds.lockedTokens[vault] -= ds.lockedTokensPerContract[vault][shareToken];
+        ds.lockedTokensPerContract[vault][shareToken] = 0;
 
-        MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault);
+        address asset = IERC4626(vault).asset();
+        MoreVaultsLib.removeTokenIfnecessary(ds.tokensHeld[ERC7540_ID], vault, asset, shareToken);
+    }
+
+    /**
+     * @notice Gets the share token address for a vault
+     * @dev Returns vault address for standard ERC-4626, or external share token for ERC-7575
+     * @param vault The vault address
+     * @return The share token address
+     */
+    function _getShareToken(address vault) internal view returns (address) {
+        try IERC7575(vault).share() returns (address shareToken) {
+            if (shareToken != address(0)) {
+                return shareToken;
+            }
+        } catch {}
+        return vault;
     }
 }
