@@ -4,11 +4,11 @@ pragma solidity 0.8.28;
 import {IGenericMoreVaultFacetInitializable} from "./IGenericMoreVaultFacetInitializable.sol";
 
 /**
- * @title IDexAggregatorFacet
+ * @title IGenericDexFacet
  * @notice Interface for generic DEX aggregator swap functionality
  * @dev Enables vault curators to execute token swaps through any whitelisted DEX aggregator
  */
-interface IDexAggregatorFacet is IGenericMoreVaultFacetInitializable {
+interface IGenericDexFacet is IGenericMoreVaultFacetInitializable {
     // ==================== STRUCTS ====================
 
     /**

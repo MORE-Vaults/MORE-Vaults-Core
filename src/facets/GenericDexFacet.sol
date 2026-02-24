@@ -3,25 +3,25 @@ pragma solidity 0.8.28;
 
 import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
 import {AccessControlLib} from "../libraries/AccessControlLib.sol";
-import {IDexAggregatorFacet} from "../interfaces/facets/IDexAggregatorFacet.sol";
+import {IGenericDexFacet} from "../interfaces/facets/IGenericDexFacet.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
- * @title DexAggregatorFacet
+ * @title GenericDexFacet
  * @notice Facet for executing token swaps through any DEX aggregator
  * @dev Provides generic swap functionality that works with any whitelisted aggregator
  */
-contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
+contract GenericDexFacet is BaseFacetInitializer, IGenericDexFacet {
     using SafeERC20 for IERC20;
 
     function INITIALIZABLE_STORAGE_SLOT() internal pure override returns (bytes32) {
-        return keccak256("MoreVaults.storage.initializable.DexAggregatorFacet");
+        return keccak256("MoreVaults.storage.initializable.GenericDexFacet");
     }
 
     function facetName() external pure returns (string memory) {
-        return "DexAggregatorFacet";
+        return "GenericDexFacet";
     }
 
     function facetVersion() external pure returns (string memory) {
@@ -33,7 +33,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
      */
     function initialize(bytes calldata /* data */) external initializerFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.supportedInterfaces[type(IDexAggregatorFacet).interfaceId] = true;
+        ds.supportedInterfaces[type(IGenericDexFacet).interfaceId] = true;
     }
 
     /**
@@ -41,11 +41,11 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
      */
     function onFacetRemoval(bool) external {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        ds.supportedInterfaces[type(IDexAggregatorFacet).interfaceId] = false;
+        ds.supportedInterfaces[type(IGenericDexFacet).interfaceId] = false;
     }
 
     /**
-     * @inheritdoc IDexAggregatorFacet
+     * @inheritdoc IGenericDexFacet
      */
     function getGenericQuote(address quoter, bytes calldata quoteCallData)
         external
@@ -64,7 +64,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
     }
 
     /**
-     * @inheritdoc IDexAggregatorFacet
+     * @inheritdoc IGenericDexFacet
      */
     function executeSwap(SwapParams calldata params) external returns (uint256 amountOut) {
         AccessControlLib.validateDiamond(msg.sender);
@@ -102,7 +102,7 @@ contract DexAggregatorFacet is BaseFacetInitializer, IDexAggregatorFacet {
     }
 
     /**
-     * @inheritdoc IDexAggregatorFacet
+     * @inheritdoc IGenericDexFacet
      */
     function executeBatchSwap(BatchSwapParams calldata params) external returns (uint256[] memory amountsOut) {
         AccessControlLib.validateDiamond(msg.sender);
