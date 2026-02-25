@@ -334,6 +334,13 @@ contract MerkleRewardsHandlerFacetTest is Test {
         tokens[0] = token1;
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 1000e18;
+        bytes32[][] memory proofs = new bytes32[][](1);
+        proofs[0] = new bytes32[](1);
+        proofs[0][0] = keccak256("proof1");
+
+        vm.prank(curator);
+        vm.expectRevert(abi.encodeWithSelector(IMerkleRewardsHandlerFacet.UnsupportedAsset.selector, token1));
+        facet.claimMerklRewards(address(mockMerklDistributor), tokens, amounts, proofs);
     }
 
     // ========== MORPHO URD TESTS ==========
