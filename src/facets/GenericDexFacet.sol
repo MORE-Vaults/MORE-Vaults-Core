@@ -107,8 +107,6 @@ contract GenericDexFacet is BaseFacetInitializer, IGenericDexFacet {
     function executeBatchSwap(BatchSwapParams calldata params) external returns (uint256[] memory amountsOut) {
         AccessControlLib.validateDiamond(msg.sender);
 
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-
         amountsOut = new uint256[](params.swaps.length);
 
         for (uint256 i = 0; i < params.swaps.length;) {
