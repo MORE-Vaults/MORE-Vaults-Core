@@ -7,6 +7,7 @@ import {IMerkleRewardsHandlerFacet} from "../interfaces/facets/IMerkleRewardsHan
 import {IMerklDistributor} from "../interfaces/external/IMerklDistributor.sol";
 import {IUniversalRewardsDistributor} from "../interfaces/external/IUniversalRewardsDistributor.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 /**
  * @title MerkleRewardsHandlerFacet
@@ -66,13 +67,15 @@ contract MerkleRewardsHandlerFacet is BaseFacetInitializer, IMerkleRewardsHandle
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        // Build users array internally - always claim to the vault
+        // Build users array and snapshot balances before claim
         address[] memory users = new address[](tokens.length);
+        uint256[] memory balancesBefore = new uint256[](tokens.length);
         for (uint256 i = 0; i < tokens.length;) {
             users[i] = address(this);
             if (!ds.isAssetAvailable[tokens[i]]) {
                 revert UnsupportedAsset(tokens[i]);
             }
+            balancesBefore[i] = IERC20(tokens[i]).balanceOf(address(this));
             unchecked {
                 ++i;
             }
@@ -81,9 +84,10 @@ contract MerkleRewardsHandlerFacet is BaseFacetInitializer, IMerkleRewardsHandle
         // Call Merkl Distributor to claim rewards
         IMerklDistributor(distributor).claim(users, tokens, amounts, proofs);
 
-        // Emit events for each claimed reward
+        // Emit events with the actual received delta, not the cumulative input amount
         for (uint256 i = 0; i < tokens.length;) {
-            emit MerklRewardsClaimed(tokens[i], amounts[i], address(this));
+            uint256 received = IERC20(tokens[i]).balanceOf(address(this)) - balancesBefore[i];
+            emit MerklRewardsClaimed(tokens[i], received, address(this));
             unchecked {
                 ++i;
             }
