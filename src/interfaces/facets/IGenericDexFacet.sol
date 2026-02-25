@@ -101,13 +101,6 @@ interface IGenericDexFacet is IGenericMoreVaultFacetInitializable {
      */
     error QuoteFailed(bytes reason);
 
-    /**
-     * @notice Thrown when global slippage exceeds maximum allowed
-     * @param slippagePercent Actual slippage percentage (basis points)
-     * @param maxSlippagePercent Maximum allowed slippage percentage (basis points)
-     */
-    error GlobalSlippageExceeded(uint256 slippagePercent, uint256 maxSlippagePercent);
-
     // ==================== EVENTS ====================
 
     /**
@@ -168,9 +161,9 @@ interface IGenericDexFacet is IGenericMoreVaultFacetInitializable {
     function executeSwap(SwapParams calldata params) external returns (uint256 amountOut);
 
     /**
-     * @notice Execute multiple swaps atomically with global slippage check
-     * @dev Only callable by curator or owner
-     * @dev Validates that total vault value does not decrease beyond maxSlippagePercent
+     * @notice Execute multiple swaps atomically
+     * @dev Only callable from within the diamond (via multicall)
+     * @dev Each individual swap enforces its own minAmountOut slippage check
      * @param params Batch swap parameters
      * @return amountsOut Array of actual amounts received for each swap
      */

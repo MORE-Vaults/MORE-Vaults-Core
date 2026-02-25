@@ -157,6 +157,7 @@ interface IConfigurationFacet is IGenericMoreVaultFacetInitializable {
 
     /**
      * @notice Sets max slippage percent, callable by curator or owner through `submitActions` and timelocked
+     * @dev Reserved for future global slippage enforcement; not currently enforced by any facet
      * @param _newPercent New max slippage percent
      */
     function setMaxSlippagePercent(uint256 _newPercent) external;

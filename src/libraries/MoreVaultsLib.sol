@@ -162,6 +162,7 @@ library MoreVaultsLib {
         mapping(TokenType => EnumerableSet.Bytes32Set) vaultExternalAssets;
         uint64 witdrawTimelock;
         mapping(address => WithdrawRequest) withdrawalRequests;
+        // NOTE: reserved for future per-facet global slippage enforcement; not currently read by any facet
         uint256 maxSlippagePercent;
         bool isMulticall;
         address factory;
