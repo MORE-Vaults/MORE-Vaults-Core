@@ -694,17 +694,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        if (_isERC4626Compatible(ds)) {
-            // ERC4626-compatible: transfer assets into the vault.
+        address payer = caller;
+        if (!_isERC4626Compatible(ds)) {
             // In cross-chain finalization mode, assets are held by escrow, but caller remains the user/initiator
             // for caps/whitelist and events.
-            address payer = caller;
             address escrow_ = MoreVaultsLib._getEscrow();
             if (ds.finalizationGuid != 0 && escrow_ != address(0)) {
                 payer = escrow_;
             }
-            SafeERC20.safeTransferFrom(IERC20(asset()), payer, address(this), assets);
         }
+        SafeERC20.safeTransferFrom(IERC20(asset()), payer, address(this), assets);
         _mint(receiver, shares);
 
         emit Deposit(caller, receiver, assets, shares);
@@ -729,20 +728,19 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         uint256 totalConvertedAmount
     ) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        if (_isERC4626Compatible(ds)) {
-            // ERC4626-compatible: transfer assets into the vault.
+        address payer = caller;
+        if (!_isERC4626Compatible(ds)) {
             // In cross-chain finalization mode, assets are held by escrow, but caller remains the user/initiator
             // for caps/whitelist and events.
-            address payer = caller;
             address escrow_ = MoreVaultsLib._getEscrow();
             if (ds.finalizationGuid != 0 && escrow_ != address(0)) {
                 payer = escrow_;
             }
-            for (uint256 i; i < assets.length;) {
-                SafeERC20.safeTransferFrom(IERC20(tokens[i]), payer, address(this), assets[i]);
-                unchecked {
-                    ++i;
-                }
+        }
+        for (uint256 i; i < assets.length;) {
+            SafeERC20.safeTransferFrom(IERC20(tokens[i]), payer, address(this), assets[i]);
+            unchecked {
+                ++i;
             }
         }
         _mint(receiver, shares);
