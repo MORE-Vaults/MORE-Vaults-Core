@@ -5,6 +5,9 @@ cache.bak/
 out.bak/
 out.bak*/
 
+# Local config files
+.solhint.json
+
 broadcast/
 node_modules/
 
