@@ -156,25 +156,6 @@ contract VaultsFactoryLzReceiveTest is Test {
         factory.exposed_lzReceive(origin, keccak256("guid"), message, address(endpoint), "");
     }
 
-    function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_RevertIfSpokeAlreadyExistsForChain() public {
-        // First registration should succeed
-        bytes memory rest1 = abi.encode(address(hubVault), address(hubVault), vaultOwner);
-        bytes memory message1 = abi.encode(MSG_TYPE_REGISTER_SPOKE, rest1);
-
-        Origin memory origin =
-            Origin({srcEid: SPOKE_EID, sender: bytes32(uint256(uint160(address(factory)))), nonce: 1});
-
-        factory.exposed_lzReceive(origin, keccak256("guid1"), message1, address(endpoint), "");
-
-        // Second registration of the same spoke should revert
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                VaultsFactory.SpokeAlreadyExistsForChain.selector, LOCAL_EID, address(hubVault), SPOKE_EID
-            )
-        );
-        factory.exposed_lzReceive(origin, keccak256("guid2"), message1, address(endpoint), "");
-    }
-
     function test_lzReceive_MSG_TYPE_REGISTER_SPOKE_RevertIfDifferentSpokeFromSameChain() public {
         // Register first spoke
         bytes memory rest1 = abi.encode(address(hubVault), address(hubVault), vaultOwner);

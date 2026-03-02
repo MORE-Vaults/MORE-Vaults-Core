@@ -652,7 +652,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         for (uint256 i = 0; i < length;) {
             (uint32 existingSpokeEid,) = _decodeSpokeKey(spokesSet.at(i));
             if (existingSpokeEid == _spokeEid) {
-                revert SpokeAlreadyExistsForChain(_hubEid, _hubVault, _spokeEid);
+                return;
             }
             unchecked {
                 ++i;
