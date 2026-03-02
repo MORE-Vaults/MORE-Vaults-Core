@@ -2,11 +2,17 @@
 
 **Severity:** Medium (conditional)
 **Status:** Acknowledged — not urgent (Michael Rozalenok)
-**Location:** `src/facets/ERC7540Facet.sol:accountingERC7540Facet()`
+**Location:** `src/facets/ERC7540Facet.sol` — `accountingERC7540Facet()` (line 102)
 
 ---
 
-## Root Cause — Key Mismatch in `ds.lockedTokens`
+## The bug
+
+When a pending ERC-7540 deposit is initiated via `erc7540RequestDeposit`, the deposit amount is recorded under `ds.lockedTokens[asset]` (keyed by the external vault's underlying asset address). However, `accountingERC7540Facet` reads `ds.lockedTokens[vault]` (keyed by the external vault address itself). These are different keys, so the pending deposit is invisible to the accounting function during the async pending window.
+
+In configurations where `_accountAvailableAssets` does not compensate (cross-asset deposits or misconfigured vaults), this causes `totalAssets()` to understate NAV by the full pending deposit amount, enabling front-running redemptions at a depressed exchange rate.
+
+## Root cause
 
 Write path (`erc7540RequestDeposit`, line 128):
 ```solidity
@@ -24,14 +30,12 @@ During the pending window: `lockedTokens[vault] == 0` (shares not issued yet).
 `lockedTokens[asset] == depositAmount` is written but never read here.
 
 **Call chain for `totalAssets()`:**
-1. `VaultFacet.totalAssets()` → calls `_accountAvailableAssets()` + `_accountFacets()`
+1. `VaultFacet.totalAssets()` calls `_accountAvailableAssets()` + `_accountFacets()`
 2. `_accountAvailableAssets()` (VaultFacet.sol line 170, assembly): reads `lockedTokens[asset]` for each `asset` in `ds.availableAssets`
-3. `_accountFacets()` → delegatecalls `accountingERC7540Facet()` for each registered facet
-4. `accountingERC7540Facet()` reads `lockedTokens[vault]` (not `lockedTokens[asset]`) → **reads wrong key**
+3. `_accountFacets()` delegatecalls `accountingERC7540Facet()` for each registered facet
+4. `accountingERC7540Facet()` reads `lockedTokens[vault]` (not `lockedTokens[asset]`) — **reads wrong key**
 
----
-
-## When is the gap real?
+## Entry conditions
 
 ### Scenario A — No gap (VaultFacet compensates)
 
@@ -50,9 +54,11 @@ VaultFacet.totalAssets():
   TOTAL = 1000  ✓
 ```
 
+The gap is benign in this scenario because `_accountAvailableAssets` already picks up `lockedTokens[asset]` for any asset registered in `ds.availableAssets`. The key mismatch in `accountingERC7540Facet` is masked.
+
 ### Scenario B — Gap is real
 
-**Conditions that trigger it:**
+**Conditions that activate it:**
 - Cross-asset: `extVault.asset()` (e.g. WETH) is not in `ds.availableAssets` of a USDC vault
 - Misconfigured: same underlying but not registered in `ds.availableAssets`
 
@@ -69,20 +75,11 @@ VaultFacet.totalAssets():
   TOTAL = USDC portion only — missing 600 WETH
 ```
 
----
+`erc7540RequestDeposit` has no restriction on `extVault.asset()`. A USDC vault CAN deposit into a WETH ERC-7540 vault. This is technically possible but unusual — it requires the vault to hold WETH balance before calling. If cross-asset is NOT intended (and it introduces an accounting bug), it should be blocked (Fix A). If cross-asset IS a desired use case, the accounting must be fixed instead (Fix B).
 
-## Is cross-asset ERC-7540 intended?
+## Impact
 
-`erc7540RequestDeposit` has no restriction on `extVault.asset()`. A USDC vault CAN deposit into a WETH ERC-7540 vault. This is technically possible but unusual — it requires the vault to hold WETH balance before calling.
-
-If cross-asset is NOT intended (and it introduces an accounting bug), it should be blocked (Fix A).
-If cross-asset IS a desired use case, the accounting must be fixed instead (Fix B).
-
----
-
-## Attack / Exploitation (Scenario B)
-
-During the pending window NAV is understated. Any user who redeems at this point profits:
+During the pending window NAV is understated. Any user who redeems at this point profits at the expense of remaining LPs:
 
 1. Operator calls `erc7540RequestDeposit(wethExtVault, 600 WETH)` — 600 WETH leaves the vault, NAV drops
 2. Attacker calls `redeem(shares)` — burns fewer shares per WETH than correct (exchange rate is wrong)
@@ -94,11 +91,23 @@ This requires the attacker to monitor mempool for the `requestDeposit` call. In 
 - Any user with vault shares can front-run by calling `redeem` in the same block
 - Profit scales with pending deposit size and duration of the pending window
 
-Test `TR-H02-ATTACK-NAVManipulation.t.sol` shows a +119 USDC profit on a 1200 USDC vault.
+Test `TR-H02-ATTACK-NAVManipulation.t.sol` shows a **+119 USDC profit on a 1200 USDC vault** (~10% extraction).
 
----
+| Vault configuration | Gap | Fix A | Fix B |
+|--------------------|-----|-------|-------|
+| `extVault.asset()` == underlying, asset in `availableAssets` | None | No change | No change (guard = 0) |
+| `extVault.asset()` == underlying, asset NOT in `availableAssets` | Full deposit | Blocks it | Fixed |
+| Cross-asset (`extVault.asset()` not in `availableAssets`) | Full deposit | Blocks it | Fixed |
 
-## Fix A — Block cross-asset deposits (not applied)
+## Precedent
+
+**Yearn Finance vault accounting gap (2020)** — During strategy migration, assets in transit between strategies were not counted in the vault's `totalAssets`. This temporarily understated NAV, allowing LPs who redeemed during the migration window to exit at below-fair-value prices, while those who stayed absorbed the difference.
+
+In MORE vaults, the ERC7540 pending deposit window creates the same invisibility: assets sent to the external vault are locked but not counted, understating NAV and enabling front-running by any holder who monitors the mempool for `erc7540RequestDeposit` calls.
+
+## Fix
+
+### Fix A — Block cross-asset deposits (not applied)
 
 Add to `erc7540RequestDeposit` after `address asset = IERC4626(vault).asset()`:
 
@@ -110,17 +119,9 @@ Also add `error AssetMismatch()` to `IERC7540Facet`.
 
 **Effect:** Scenario B is structurally impossible. Same-underlying deposits still work via Scenario A (VaultFacet handles them correctly). The bug in `accountingERC7540Facet` becomes harmless.
 
-**Trade-off:** Cross-asset ERC-7540 investment (USDC vault → WETH ERC-7540 vault) is permanently blocked.
+**Trade-off:** Cross-asset ERC-7540 investment (USDC vault to WETH ERC-7540 vault) is permanently blocked.
 
-**Tests (4/4 pass with Fix A applied, 3/4 pass without):**
-- `test_FIXA_cross_asset_deposit_reverts` — expects `AssetMismatch`, fails without fix
-- `test_FIXA_same_underlying_deposit_succeeds` — same-underlying still works
-- `test_FIXA_totalAssets_no_gap_after_same_underlying_deposit` — totalAssets = 1000, no gap
-- `test_FIXA_existing_scenarioA_behavior_unchanged` — Scenario A path unaffected
-
----
-
-## Fix B — Fix `accountingERC7540Facet` accounting (not applied)
+### Fix B — Fix `accountingERC7540Facet` accounting (not applied)
 
 Replace the balance line in `accountingERC7540Facet` with a guard that adds `lockedTokens[asset]` only when `_accountAvailableAssets` won't handle it:
 
@@ -143,26 +144,13 @@ sum += MoreVaultsLib.convertToUnderlying(asset, sharesValue + lockedDeposit, Mat
 
 **Trade-off vs Fix A:** Preserves cross-asset ERC-7540. More complex — requires the guard logic to be exactly right.
 
-**Tests (5/5 pass with Fix B applied, 2/5 pass without):**
-- `test_FIXB_scenarioB_gap_eliminated_asset_not_in_availableAssets` — gap closed, sum = 600
-- `test_FIXB_scenarioA_no_double_count` — guard fires, lockedDeposit = 0 when asset in availableAssets
-- `test_FIXB_redeem_path_unaffected` — lockedTokens[vault] (redeem shares) still works
-- `test_FIXB_deposit_and_redeem_pending_simultaneously` — 600 + 500 = 1100 counted correctly
-- `test_FIXB_scenarioB_variant_same_underlying_not_in_availableAssets` — misconfigured vault gap fixed
+## Bytecode
 
----
+**Fix A** adds ~3 bytes to deployed bytecode (one address comparison + a conditional revert).
 
-## Condition Summary
+**Fix B** modifies accounting logic — net effect approximately neutral (replaces one key lookup with another plus a conditional guard). No meaningful change in deployed bytecode size.
 
-| Vault configuration | Gap | Fix A | Fix B |
-|--------------------|-----|-------|-------|
-| `extVault.asset()` == underlying, asset in `availableAssets` | None | No change | No change (guard = 0) |
-| `extVault.asset()` == underlying, asset NOT in `availableAssets` | Full deposit | Blocks it | Fixed |
-| Cross-asset (`extVault.asset()` not in `availableAssets`) | Full deposit | Blocks it | Fixed |
-
----
-
-## All Tests
+## Tests
 
 | File | Test | Status (unfixed) | What it proves |
 |------|------|-----------------|----------------|
@@ -184,3 +172,6 @@ sum += MoreVaultsLib.convertToUnderlying(asset, sharesValue + lockedDeposit, Mat
 | `TR-C02-FIX-B-Verification.t.sol` | `test_FIXB_redeem_path_unaffected` | PASS | redeem path not broken |
 | `TR-C02-FIX-B-Verification.t.sol` | `test_FIXB_deposit_and_redeem_pending_simultaneously` | FAIL (expected without fix) | both paths counted |
 | `TR-C02-FIX-B-Verification.t.sol` | `test_FIXB_scenarioB_variant_same_underlying_not_in_availableAssets` | FAIL (expected without fix) | misconfigured vault fixed |
+
+Fix A tests: 4/4 pass with fix applied, 3/4 pass without.
+Fix B tests: 5/5 pass with fix applied, 2/5 pass without.
