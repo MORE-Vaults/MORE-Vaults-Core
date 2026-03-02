@@ -47,12 +47,12 @@ pragma solidity 0.8.28;
  */
 
 import {Test, console} from "forge-std/Test.sol";
-import {BridgeFacet} from "../../src/facets/BridgeFacet.sol";
-import {MoreVaultsLib} from "../../src/libraries/MoreVaultsLib.sol";
-import {MoreVaultsStorageHelper} from "../helper/MoreVaultsStorageHelper.sol";
-import {MockERC20} from "../mocks/MockERC20.sol";
-import {IMoreVaultsRegistry} from "../../src/interfaces/IMoreVaultsRegistry.sol";
-import {IVaultsFactory} from "../../src/interfaces/IVaultsFactory.sol";
+import {BridgeFacet} from "../../../src/facets/BridgeFacet.sol";
+import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
+import {MockERC20} from "../../mocks/MockERC20.sol";
+import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
+import {IVaultsFactory} from "../../../src/interfaces/IVaultsFactory.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract TR_H01_WITHDRAW_SharesUnderdrain is Test {

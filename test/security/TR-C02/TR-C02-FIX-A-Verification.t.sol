@@ -32,16 +32,16 @@ pragma solidity 0.8.28;
  */
 
 import {Test, console} from "forge-std/Test.sol";
-import {ERC7540Facet} from "../../src/facets/ERC7540Facet.sol";
-import {VaultFacet} from "../../src/facets/VaultFacet.sol";
-import {IERC7540Facet} from "../../src/interfaces/facets/IERC7540Facet.sol";
-import {MoreVaultsStorageHelper} from "../helper/MoreVaultsStorageHelper.sol";
-import {MoreVaultsLib} from "../../src/libraries/MoreVaultsLib.sol";
-import {MockERC20} from "../mocks/MockERC20.sol";
-import {IMoreVaultsRegistry} from "../../src/interfaces/IMoreVaultsRegistry.sol";
+import {ERC7540Facet} from "../../../src/facets/ERC7540Facet.sol";
+import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
+import {IERC7540Facet} from "../../../src/interfaces/facets/IERC7540Facet.sol";
+import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
+import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
+import {MockERC20} from "../../mocks/MockERC20.sol";
+import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import {IERC7540} from "../../src/interfaces/IERC7540.sol";
+import {IERC7540} from "../../../src/interfaces/IERC7540.sol";
 
 contract TR_C02_FixA_Verification is Test {
 

@@ -48,13 +48,13 @@ pragma solidity 0.8.28;
  */
 
 import {Test, console} from "forge-std/Test.sol";
-import {VaultFacet} from "../../src/facets/VaultFacet.sol";
-import {MoreVaultsStorageHelper} from "../helper/MoreVaultsStorageHelper.sol";
-import {MockERC20} from "../mocks/MockERC20.sol";
-import {MockMoreVaultsEscrow} from "../mocks/MockMoreVaultsEscrow.sol";
-import {IMoreVaultsRegistry} from "../../src/interfaces/IMoreVaultsRegistry.sol";
-import {IOracleRegistry} from "../../src/interfaces/IOracleRegistry.sol";
-import {IVaultsFactory} from "../../src/interfaces/IVaultsFactory.sol";
+import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
+import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol";
+import {MockERC20} from "../../mocks/MockERC20.sol";
+import {MockMoreVaultsEscrow} from "../../mocks/MockMoreVaultsEscrow.sol";
+import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
+import {IOracleRegistry} from "../../../src/interfaces/IOracleRegistry.sol";
+import {IVaultsFactory} from "../../../src/interfaces/IVaultsFactory.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 contract TR_C04_RedeemReturnsGross is Test {
