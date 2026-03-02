@@ -1,6 +1,12 @@
 # Compiler files
 cache/
 out/
+cache.bak/
+out.bak/
+out.bak*/
+
+# Local config files
+.solhint.json
 
 broadcast/
 node_modules/
@@ -16,3 +22,20 @@ docs/
 *.md
 !README.md
 EDGE_CASES_ANALYSIS.md
+
+# Reports and analysis artifacts
+reports/
+SLITHER_REPORT.md
+SLITHER_FINDINGS_VERIFIED.md
+slither.config.json
+remappings.txt
+
+# Audit / bounty test artifacts
+test/audit/
+test/bounty-poc/
+test/trace/
+test.original_backup/
+
+# Session files
+*.session.txt
+2026-*.txt
