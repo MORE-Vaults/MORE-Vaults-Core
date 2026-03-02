@@ -216,7 +216,7 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
         if (msg.sender != MoreVaultsLib._getCrossChainAccountingManager()) {
             revert OnlyCrossChainAccountingManager();
         }
-        if (readSuccess) {
+        if (readSuccess && !ds.guidToCrossChainRequestInfo[guid].fulfilled) {
             ds.guidToCrossChainRequestInfo[guid].totalAssets += MoreVaultsLib.convertUsdToUnderlying(
                 sumOfSpokesUsdValue, Math.Rounding.Floor
             );
