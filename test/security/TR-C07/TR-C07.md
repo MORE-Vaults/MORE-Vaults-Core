@@ -1,7 +1,7 @@
 # TR-C07 -- Governance Brick Chain: setTimeLockPeriod + setWithdrawalTimelock Permanent Locks
 
-**Severity:** Low (misconfiguration required, no fund loss from the overflow itself)
-**Status:** Open -- Michael: *"Just don't set it as max Uint256 for now"*
+**Severity:** Informational (owner self-inflicted, no external attack vector)
+**Status:** Acknowledged -- Michael: *"Just don't set it as max Uint256 for now"*
 **Location:** `src/facets/MulticallFacet.sol` -- `submitActions()` (line 60); `src/facets/ConfigurationFacet.sol` -- `setTimeLockPeriod()` (line 114), `setWithdrawalTimelock()` (line 162)
 
 ---
@@ -57,13 +57,14 @@ There is no check that `block.timestamp < someDeadline` before allowing the veto
 
 ## Entry conditions
 
-**BUG-01 and BUG-02** require an admin (owner submitting owner-only selectors, or curator submitting curator-allowed selectors) to propose and execute a governance action that calls `setTimeLockPeriod(type(uint256).max)` or `setWithdrawalTimelock(type(uint64).max)`. This can happen through:
+**This is an owner-inflicted problem.** There is no external attack vector. An outside party cannot trigger any of these bugs — they require the vault owner or curator to take a deliberate (and obviously wrong) governance action:
 
-- Deliberate misconfiguration by a malicious or compromised admin
-- Accidental input error during governance setup
-- A malformed proposal that is approved without adequate review
+- `setTimeLockPeriod(type(uint256).max)` must be proposed and executed through the full timelock flow by the owner
+- `setWithdrawalTimelock(type(uint64).max)` — a 20-digit number — must be explicitly passed by the owner
 
-The bugs are **dormant until the extreme value is stored**. No deployed vault is currently affected (confirmed: no vault has `timeLockPeriod` near `type(uint256).max` or `witdrawTimelock` set to `type(uint64).max`).
+The only threat models are: (a) a compromised owner key, or (b) a careless mistake during initial vault setup. In both cases the damage is self-contained to that vault. Cross-vault interaction is limited: if the bricked vault is a hub, governance changes for its associated spokes are also blocked, but spoke-level deposits and withdrawals remain functional.
+
+The bugs are **dormant until the extreme value is stored**. No deployed vault is currently affected.
 
 **BUG-03** is always present whenever a guardian is configured. It becomes a real risk only if the guardian key is compromised or if the guardian acts adversarially.
 
