@@ -137,7 +137,6 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         bool _allowFailure
     ) private view returns (uint256 _totalAssets, bool success) {
         success = true;
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         assembly {
             mstore(_freePtr, BALANCE_OF_SELECTOR)
         }
@@ -579,6 +578,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
 
         uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        assets = netAssets;
 
         // Update user's HWMpS after redeem (using calculated total assets after withdrawal)
         uint256 totalAssetsAfterWithdrawal;

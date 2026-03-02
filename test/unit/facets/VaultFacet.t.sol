@@ -1826,9 +1826,10 @@ contract VaultFacetTest is Test {
         uint256 userBalanceBefore = IERC20(asset).balanceOf(user);
         uint256 feeRecipientBalanceBefore = IERC20(facet).balanceOf(feeRecipient);
 
+        uint256 assets = VaultFacet(facet).convertToAssets(redeemShares);
         // Execute redeem
         vm.prank(user);
-        uint256 assets = VaultFacet(facet).redeem(redeemShares, user, user);
+        uint256 netAssets = VaultFacet(facet).redeem(redeemShares, user, user);
 
         // Check balances after redeem
         uint256 userBalanceAfter = IERC20(asset).balanceOf(user);
