@@ -6,6 +6,7 @@ import {IAggregatorV2V3Interface} from "../../src/interfaces/Chainlink/IAggregat
 
 contract MockOracleRegistry is IOracleRegistry {
     mapping(address => uint256) public prices;
+    mapping(address => OracleInfo) public assetInfos;
 
     struct SpokeKey {
         address hub;
@@ -18,6 +19,10 @@ contract MockOracleRegistry is IOracleRegistry {
 
     function setAssetPrice(address asset, uint256 price) external {
         prices[asset] = price;
+    }
+
+    function setAssetOracleInfo(address asset, OracleInfo calldata info) external {
+        assetInfos[asset] = info;
     }
 
     function setSpokeValue(address hub, uint32 eid, uint256 value) external {
@@ -43,8 +48,13 @@ contract MockOracleRegistry is IOracleRegistry {
         }
     }
 
-    function getOracleInfo(address) external pure override returns (OracleInfo memory) {
-        return OracleInfo(IAggregatorV2V3Interface(address(0)), 0);
+    function getOracleInfo(address asset) external view override returns (OracleInfo memory) {
+        OracleInfo memory info = assetInfos[asset];
+        if (address(info.aggregator) != address(0)) {
+            return info;
+        }
+        // Fallback: non-zero aggregator so _addAvailableAsset doesn't revert with NoOracleForAsset
+        return OracleInfo(IAggregatorV2V3Interface(address(0xDEAD)), 0);
     }
 
     function getSpokeValue(address hub, uint32 chainId) external view override returns (uint256) {

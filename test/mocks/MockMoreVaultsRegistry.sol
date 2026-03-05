@@ -35,7 +35,7 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     function initialize(address, address, address) external {}
 
     function isPermissionless() external pure returns (bool) {
-        return false;
+        return true;
     }
 
     function addFacet(address, bytes4[] calldata) external {}
@@ -90,11 +90,15 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
         return (true, "");
     }
 
-    function isCrossChainAccountingManager(address) external pure returns (bool) {
-        return false;
+    mapping(address => bool) public ccManagers;
+
+    function isCrossChainAccountingManager(address manager) external view returns (bool) {
+        return ccManagers[manager];
     }
 
-    function setIsCrossChainAccountingManager(address manager, bool isManager) external {}
+    function setIsCrossChainAccountingManager(address manager, bool isManager) external {
+        ccManagers[manager] = isManager;
+    }
 
     function setRouter(address _router) external {
         router = _router;
