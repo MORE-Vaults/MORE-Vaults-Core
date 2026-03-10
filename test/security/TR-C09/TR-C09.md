@@ -1,7 +1,7 @@
 # TR-C09 -- setVaultComposer Orphans Pending Deposits
 
 **Severity:** Medium
-**Status:** Open
+**Status:** Partially Mitigated
 **Location:** `src/factory/VaultsFactory.sol` -- `_setVaultComposer()` (line 586-591)
 
 ---
@@ -74,7 +74,7 @@ No deployed vault is currently affected. The bug is dormant unless a composer up
 
 **ETH lock:** `MoreVaultsComposer.rescue()` explicitly excludes `totalNativePending` from the recoverable balance: `uint256 availableBalance = address(this).balance - totalNativePending`. ETH that was earmarked for a pending deposit cannot be rescued even by the owner. ERC20 tokens in `_pendingDeposits` can be recovered via `rescue()`, so the ETH loss is the more severe outcome.
 
-**No on-chain recovery:** There is no function to cancel a specific GUID in `_pendingDeposits`, no function to reset the composer pointer back to the old one (that would re-expose `refundStuckDepositInComposer`), and `totalNativePending` cannot be manually decremented. Full recovery of locked ETH requires redeploying the old composer at the same address, which is not possible without CREATE2 or a proxy upgrade.
+**No on-chain recovery (pre-mitigation):** There was no function to cancel a specific GUID in `_pendingDeposits`, no function to reset the composer pointer back to the old one, and `totalNativePending` cannot be manually decremented. Full recovery of locked ETH previously required redeploying the old composer at the same address. See **Mitigation Applied** below for the current recovery path.
 
 **Scope:** Affects only vaults that use the cross-chain deposit flow via `MoreVaultsComposer`. Single-chain vaults and non-deposit cross-chain operations are unaffected.
 
@@ -84,11 +84,38 @@ No deployed vault is currently affected. The bug is dormant unless a composer up
 
 **Compound Finance COMP distributor migration (2021):** Compound's `Comptroller` upgrade during active distribution cycles caused in-flight COMP accrual entries to reference the old distributor contract. After the pointer was updated to the new distributor, users whose accrual was recorded against the old contract could not claim their COMP through the normal path. Root cause: state pointer updated unconditionally without draining in-flight state first.
 
-**Applicability to MORE vaults:** The same architectural pattern appears here. `vaultComposer[vault]` is the pointer that controls which composer receives deposit callbacks and handles refunds. Overwriting this pointer while the old composer holds open state (pending deposits with locked ETH) breaks all paths that depend on the pointer matching the initiator recorded in request metadata. The COMP migration required a manual recovery script to credit affected users; MORE vaults has no equivalent escape hatch.
+**Applicability to MORE vaults:** The same architectural pattern appears here. `vaultComposer[vault]` is the pointer that controls which composer receives deposit callbacks and handles refunds. Overwriting this pointer while the old composer holds open state (pending deposits with locked ETH) breaks all paths that depend on the pointer matching the initiator recorded in request metadata. The COMP migration required a manual recovery script to credit affected users; MORE vaults now has an emergency escape hatch via `MoreVaultsEscrow.emergencyRefundExpiredRequest` (see Mitigation Applied below).
 
 ---
 
-## Fix
+## Mitigation Applied
+
+**Commit:** `a90fe08` — `feat: made escrow SC upgradeable and added rescue function` (Mar 10, 2026)
+
+`MoreVaultsEscrow` was made upgradeable (`Ownable2StepUpgradeable` + `initialize()`) and a new owner-only emergency recovery function was added:
+
+```solidity
+function emergencyRefundExpiredRequest(address vault_, bytes32 guid, address recipient)
+    external
+    onlyOwner
+    nonReentrant
+```
+
+**How it mitigates the issue:**
+
+If a composer upgrade orphans in-flight deposits in the Escrow, the protocol owner can now call `emergencyRefundExpiredRequest` after `REQUEST_TIMEOUT` (1 hour) has elapsed to recover the locked tokens and native ETH directly from the Escrow to any recipient address.
+
+**What it does NOT fix:**
+
+- The root cause remains: `_setVaultComposer` still overwrites the composer pointer unconditionally with no `totalNativePending` guard.
+- Funds locked inside `MoreVaultsComposer._pendingDeposits` (ERC20 + native earmarked there) are NOT covered by this function — `emergencyRefundExpiredRequest` only recovers assets held in `MoreVaultsEscrow`.
+- The `BridgeFacet.refundStuckDepositInComposer` path and `LzAdapter._lzReceive` callback are still broken after a composer upgrade with in-flight deposits.
+
+**Severity update:** Downgraded from Medium to Low in practice — funds are no longer permanently irrecoverable, but the root cause still allows funds to get orphaned in the first place. A complete fix still requires the `_setVaultComposer` guard described below.
+
+---
+
+## Fix (Pending)
 
 Add a `totalNativePending` check in `_setVaultComposer` to block the upgrade while the old composer holds pending deposits:
 
@@ -126,9 +153,9 @@ Add a `totalNativePending` check in `_setVaultComposer` to block the upgrade whi
 
 ## Tests
 
-| File | Test | Status (unfixed) | What it proves |
-|------|------|-----------------|----------------|
+| File | Test | Status | What it proves |
+|------|------|--------|----------------|
 | `TR-C09-SetVaultComposerOrphans.t.sol` | `test_C09_01_refundStuckDeposit_succeeds_before_upgrade` | PASS | Baseline: refundStuckDepositInComposer works while composer hasn't changed |
 | `TR-C09-SetVaultComposerOrphans.t.sol` | `test_C09_02_refundStuckDeposit_reverts_InitiatorIsNotVaultComposer_after_upgrade` | PASS | BUG: after setVaultComposer(newComposer), old-initiator GUIDs are permanently unrefundable |
 | `TR-C09-SetVaultComposerOrphans.t.sol` | `test_C09_03_lzReceive_skips_sendDepositShares_after_composer_upgrade` | PASS | BUG: _lzReceive silently skips callback for old-initiator GUIDs after upgrade |
-| `TR-C09-SetVaultComposerOrphans.t.sol` | `test_C09_FIX_setVaultComposer_reverts_when_old_composer_has_pending_native` | FAIL (expected) | Fix verification: setVaultComposer reverts when old composer has totalNativePending > 0 |
+| `TR-C09-SetVaultComposerOrphans.t.sol` | `test_C09_FIX_setVaultComposer_reverts_when_old_composer_has_pending_native` | FAIL (root cause fix pending) | Fix verification: setVaultComposer reverts when old composer has totalNativePending > 0 |
