@@ -227,8 +227,9 @@ contract MoreVaultsEscrowInvariantTest is StdInvariant, Test {
         // Register vault
         factory.setIsFactoryVault(address(vault), true);
 
-        // Deploy escrow
-        escrow = new MoreVaultsEscrow(address(factory));
+        // Deploy and initialize escrow
+        escrow = new MoreVaultsEscrow();
+        escrow.initialize(address(factory), address(this));
 
         // Deploy handler
         handler = new EscrowInvariantHandler(escrow, token, vault);
@@ -247,9 +248,9 @@ contract MoreVaultsEscrowInvariantTest is StdInvariant, Test {
     }
 
     /**
-     * @notice INVARIANT: Factory address is immutable
+     * @notice INVARIANT: Factory address remains unchanged after initialize
      */
-    function invariant_factoryImmutable() public view {
+    function invariant_factoryAddressStable() public view {
         assertEq(escrow.vaultsFactory(), address(factory), "Factory changed!");
     }
 
@@ -310,7 +311,8 @@ contract MoreVaultsEscrowFuzzTest is Test {
         factory = new MockFactoryForInvariant();
         vault = new MockVaultForInvariant(address(token));
         factory.setIsFactoryVault(address(vault), true);
-        escrow = new MoreVaultsEscrow(address(factory));
+        escrow = new MoreVaultsEscrow();
+        escrow.initialize(address(factory), address(this));
     }
 
     /**

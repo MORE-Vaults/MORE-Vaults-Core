@@ -4,10 +4,13 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {MoreVaultsLib} from "../libraries/MoreVaultsLib.sol";
 import {IVaultsFactory} from "../interfaces/IVaultsFactory.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
+import {IBridgeFacet} from "../interfaces/facets/IBridgeFacet.sol";
 
 interface IVaultEscrowHooks {
     function isAssetDepositable(address token) external view returns (bool);
@@ -32,7 +35,7 @@ interface IVaultEscrowHooks {
  * - After execution: vault calls escrow.unlockTokensAfterExecution() - excess (if any) is returned from escrow to the owner
  * - On refund: vault calls escrow.refundTokens() - all escrow-held assets/shares/native are returned to the appropriate recipient
  */
-contract MoreVaultsEscrow is ReentrancyGuard {
+contract MoreVaultsEscrow is Initializable, Ownable2StepUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     error OnlyVault();
@@ -50,6 +53,7 @@ contract MoreVaultsEscrow is ReentrancyGuard {
     error NativeTransferFailed();
     error NativeRefundFailed();
     error UsedAmountExceedsReleased(uint256 usedAmount, uint256 releasedAmount);
+    error RequestNotExpired();
 
     event TokensLocked(
         bytes32 indexed guid,
@@ -67,6 +71,10 @@ contract MoreVaultsEscrow is ReentrancyGuard {
     );
     event NativeLocked(bytes32 indexed guid, address indexed vault, uint256 amount);
     event NativeUnlocked(bytes32 indexed guid, address indexed vault, uint256 amount, address recipient);
+    event EmergencyRequestRefunded(bytes32 indexed guid, address indexed vault, address indexed recipient);
+
+    /// @dev Must mirror BridgeFacet.MAX_DELAY for timeout-based emergency refunds.
+    uint256 public constant REQUEST_TIMEOUT = 1 hours;
 
     /// @dev Mapping vault => guid => locked funds info
     mapping(address vault => mapping(bytes32 guid => EscrowInfo)) public escrowInfo;
@@ -99,7 +107,7 @@ contract MoreVaultsEscrow is ReentrancyGuard {
     mapping(address vault => mapping(address user => uint256)) public lockedSharesPerUser;
 
     /// @dev Factory that deployed vaults; used as allowlist source.
-    address public immutable vaultsFactory;
+    address public vaultsFactory;
 
     modifier onlyVault() {
         if (!IVaultsFactory(vaultsFactory).isFactoryVault(msg.sender)) {
@@ -108,8 +116,10 @@ contract MoreVaultsEscrow is ReentrancyGuard {
         _;
     }
 
-    constructor(address _vaultsFactory) {
-        if (_vaultsFactory == address(0)) revert MoreVaultsLib.ZeroAddress();
+    function initialize(address _vaultsFactory, address _owner) external initializer {
+        if (_vaultsFactory == address(0) || _owner == address(0)) revert MoreVaultsLib.ZeroAddress();
+        __Ownable_init(_owner);
+        __Ownable2Step_init();
         vaultsFactory = _vaultsFactory;
     }
 
@@ -577,6 +587,7 @@ contract MoreVaultsEscrow is ReentrancyGuard {
                 // Refund shares: if shares were released to vault, BridgeFacet must return them first
                 uint256 shares = info.requiredAmount[token];
                 if (shares > 0) {
+                    info.amount[token] = 0;
                     IERC20(token).safeTransfer(recipient, shares);
                     emit TokensUnlocked(guid, vault_, token, shares, recipient);
                 }
@@ -605,6 +616,41 @@ contract MoreVaultsEscrow is ReentrancyGuard {
     function refundToComposer(bytes32 guid, address composer) external onlyVault nonReentrant {
         if (composer == address(0)) revert MoreVaultsLib.ZeroAddress();
         _refundTokens(guid, composer);
+    }
+
+    /**
+     * @dev Owner-only emergency refund for expired requests.
+     * @param vault_ Vault address that owns the request
+     * @param guid Unique request identifier
+     * @param recipient Address to receive refunded assets
+     */
+    function emergencyRefundExpiredRequest(address vault_, bytes32 guid, address recipient)
+        external
+        onlyOwner
+        nonReentrant
+    {
+        if (recipient == address(0)) revert MoreVaultsLib.ZeroAddress();
+
+        // Ensure request is stale according to the vault's BridgeFacet request timestamp.
+        MoreVaultsLib.CrossChainRequestInfo memory requestInfo = IBridgeFacet(vault_).getRequestInfo(guid);
+        if (requestInfo.initiator == address(0)) revert RequestNotFound();
+        if (requestInfo.timestamp + REQUEST_TIMEOUT > block.timestamp) revert RequestNotExpired();
+
+        EscrowInfo storage info = escrowInfo[vault_][guid];
+        if (info.owner == address(0)) revert RequestNotFound();
+        if (info.finalized) revert RequestAlreadyFinalized();
+        if (info.refunded) revert RequestAlreadyRefunded();
+
+        info.refunded = true;
+
+        if (info.nativeAmount > 0) {
+            (bool success,) = recipient.call{value: info.nativeAmount}("");
+            if (!success) revert NativeTransferFailed();
+            emit NativeUnlocked(guid, vault_, info.nativeAmount, recipient);
+        }
+
+        _refundTokensToRecipient(guid, vault_, info, recipient);
+        emit EmergencyRequestRefunded(guid, vault_, recipient);
     }
 
     /**

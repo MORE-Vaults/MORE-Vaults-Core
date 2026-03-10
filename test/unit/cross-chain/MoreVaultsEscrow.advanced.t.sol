@@ -193,7 +193,8 @@ contract MoreVaultsEscrowAdvancedTest is Test {
         vault.setCrossChainAccountingManager(manager);
 
         factory.setIsFactoryVault(address(vault), true);
-        escrow = new MoreVaultsEscrow(address(factory));
+        escrow = new MoreVaultsEscrow();
+        escrow.initialize(address(factory), address(this));
     }
 
     // ============ MULTI_ASSETS_DEPOSIT TESTS ============

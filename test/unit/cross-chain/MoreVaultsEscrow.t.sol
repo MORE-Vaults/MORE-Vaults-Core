@@ -19,6 +19,7 @@ contract MockVaultForEscrow is MockERC20, IERC4626 {
     mapping(address => bool) public depositableAssets;
     address public crossChainAccountingManager;
     IVaultsFactory public factory;
+    mapping(bytes32 => MoreVaultsLib.CrossChainRequestInfo) internal requests;
 
     constructor(address _asset, IVaultsFactory _factory) MockERC20("MockVault", "MV") {
         assetToken = _asset;
@@ -48,6 +49,15 @@ contract MockVaultForEscrow is MockERC20, IERC4626 {
 
     function getCrossChainAccountingManager() external view returns (address) {
         return crossChainAccountingManager;
+    }
+
+    function setRequestInfo(bytes32 guid, address initiator, uint64 timestamp) external {
+        requests[guid].initiator = initiator;
+        requests[guid].timestamp = timestamp;
+    }
+
+    function getRequestInfo(bytes32 guid) external view returns (MoreVaultsLib.CrossChainRequestInfo memory) {
+        return requests[guid];
     }
 
     // IERC4626 stub functions (not used in escrow tests)
@@ -169,8 +179,9 @@ contract MoreVaultsEscrowTest is Test {
         // Set vault as factory vault
         factory.setIsFactoryVault(address(vault), true);
 
-        // Deploy escrow
-        escrow = new MoreVaultsEscrow(address(factory));
+        // Deploy and initialize escrow
+        escrow = new MoreVaultsEscrow();
+        escrow.initialize(address(factory), address(this));
 
         // Set manager in vault
         vault.setCrossChainAccountingManager(manager);
@@ -182,15 +193,22 @@ contract MoreVaultsEscrowTest is Test {
     }
 
     // ============================================================================
-    // Constructor Tests
+    // Initialize Tests
     // ============================================================================
 
-    function test_constructor_RevertIfZeroAddress() public {
+    function test_initialize_RevertIfZeroFactory() public {
+        MoreVaultsEscrow escrow2 = new MoreVaultsEscrow();
         vm.expectRevert(MoreVaultsLib.ZeroAddress.selector);
-        new MoreVaultsEscrow(address(0));
+        escrow2.initialize(address(0), address(this));
     }
 
-    function test_constructor_SetsFactory() public {
+    function test_initialize_RevertIfZeroOwner() public {
+        MoreVaultsEscrow escrow2 = new MoreVaultsEscrow();
+        vm.expectRevert(MoreVaultsLib.ZeroAddress.selector);
+        escrow2.initialize(address(factory), address(0));
+    }
+
+    function test_initialize_SetsFactory() public {
         assertEq(address(escrow.vaultsFactory()), address(factory));
     }
 
@@ -213,6 +231,60 @@ contract MoreVaultsEscrowTest is Test {
 
         vm.prank(address(vault));
         escrow.lockTokens(TEST_GUID, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+    }
+
+    // ============================================================================
+    // Emergency Functions Tests
+    // ============================================================================
+
+    function test_emergencyRefundExpiredRequest_Success() public {
+        uint256 amount = 100 ether;
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(TEST_GUID, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+        vm.warp(escrow.REQUEST_TIMEOUT() + 10);
+        vault.setRequestInfo(TEST_GUID, user, uint64(block.timestamp - escrow.REQUEST_TIMEOUT() - 1));
+
+        address recipient = address(0xABCD);
+        escrow.emergencyRefundExpiredRequest(address(vault), TEST_GUID, recipient);
+
+        assertEq(underlyingToken.balanceOf(recipient), amount);
+    }
+
+    function test_emergencyRefundExpiredRequest_RevertIfNotOwner() public {
+        uint256 amount = 100 ether;
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(TEST_GUID, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+        vm.warp(escrow.REQUEST_TIMEOUT() + 10);
+        vault.setRequestInfo(TEST_GUID, user, uint64(block.timestamp - escrow.REQUEST_TIMEOUT() - 1));
+
+        vm.prank(nonVault);
+        vm.expectRevert();
+        escrow.emergencyRefundExpiredRequest(address(vault), TEST_GUID, nonVault);
+    }
+
+    function test_emergencyRefundExpiredRequest_RevertIfNotExpired() public {
+        uint256 amount = 100 ether;
+        bytes memory actionCallData = abi.encode(amount, user);
+
+        vm.prank(user);
+        underlyingToken.approve(address(escrow), amount);
+
+        vm.prank(address(vault));
+        escrow.lockTokens(TEST_GUID, MoreVaultsLib.ActionType.DEPOSIT, actionCallData, 0, user);
+        vault.setRequestInfo(TEST_GUID, user, uint64(block.timestamp));
+
+        vm.expectRevert(MoreVaultsEscrow.RequestNotExpired.selector);
+        escrow.emergencyRefundExpiredRequest(address(vault), TEST_GUID, user);
     }
 
     // ============================================================================
