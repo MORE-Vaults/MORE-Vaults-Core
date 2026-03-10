@@ -272,6 +272,17 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     }
 
     function totalAssetsUsd() public returns (uint256 _totalAssets, bool success) {
+        try this.totalAssetsUsdInternal() returns (uint256 totalAssetsUsdValue, bool accountingSuccess) {
+            return (totalAssetsUsdValue, accountingSuccess);
+        } catch {
+            return (0, false);
+        }
+    }
+
+    function totalAssetsUsdInternal() external returns (uint256 _totalAssets, bool success) {
+        if (msg.sender != address(this)) {
+            revert AccessControlLib.UnauthorizedAccess();
+        }
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         _beforeAccounting(ds.beforeAccountingFacets);
@@ -508,27 +519,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _accrueInterest(newTotalAssets, owner);
 
         shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
-
-        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
-
-        if (!isWithdrawable) {
-            revert CantProcessWithdrawRequest();
-        }
-
-        // In cross-chain finalization mode, shares are locked in escrow, so use escrow's lockedShares for limits.
-        uint256 maxRedeem_;
-        if (ds.finalizationGuid != 0) {
-            address escrow = MoreVaultsLib._getEscrow();
-            if (escrow == address(0)) {
-                revert MoreVaultsLib.EscrowNotSet();
-            }
-            maxRedeem_ = IMoreVaultsEscrow(escrow).getLockedShares(address(this), owner);
-        } else {
-            maxRedeem_ = maxRedeem(owner);
-        }
-        if (shares > maxRedeem_) {
-            revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
-        }
+        _consumeWithdrawRequestAndCheckMaxRedeem(ds, owner, shares);
 
         // Calculate withdrawal fee to determine net assets
         uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
@@ -551,27 +542,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds, receiver, false);
-
-        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
-
-        if (!isWithdrawable) {
-            revert CantProcessWithdrawRequest();
-        }
-
-        // In cross-chain finalization mode, shares are locked in escrow, so use escrow's lockedShares for limits.
-        uint256 maxRedeem_;
-        if (ds.finalizationGuid != 0) {
-            address escrow = MoreVaultsLib._getEscrow();
-            if (escrow == address(0)) {
-                revert MoreVaultsLib.EscrowNotSet();
-            }
-            maxRedeem_ = IMoreVaultsEscrow(escrow).getLockedShares(address(this), owner);
-        } else {
-            maxRedeem_ = maxRedeem(owner);
-        }
-        if (shares > maxRedeem_) {
-            revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
-        }
+        _consumeWithdrawRequestAndCheckMaxRedeem(ds, owner, shares);
 
         _accrueInterest(newTotalAssets, owner);
 
@@ -1058,6 +1029,32 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                     msgSender_ = receiver;
                 }
             }
+        }
+    }
+
+    function _consumeWithdrawRequestAndCheckMaxRedeem(
+        MoreVaultsLib.MoreVaultsStorage storage ds,
+        address owner,
+        uint256 shares
+    ) internal {
+        bool isWithdrawable = MoreVaultsLib.withdrawFromRequest(owner, shares);
+        if (!isWithdrawable) {
+            revert CantProcessWithdrawRequest();
+        }
+
+        // In cross-chain finalization mode, shares are locked in escrow, so use escrow's lockedShares for limits.
+        uint256 maxRedeem_;
+        if (ds.finalizationGuid != 0) {
+            address escrow = MoreVaultsLib._getEscrow();
+            if (escrow == address(0)) {
+                revert MoreVaultsLib.EscrowNotSet();
+            }
+            maxRedeem_ = IMoreVaultsEscrow(escrow).getLockedShares(address(this), owner);
+        } else {
+            maxRedeem_ = maxRedeem(owner);
+        }
+        if (shares > maxRedeem_) {
+            revert ERC4626ExceededMaxRedeem(owner, shares, maxRedeem_);
         }
     }
 
