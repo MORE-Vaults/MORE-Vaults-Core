@@ -101,17 +101,26 @@ function emergencyRefundExpiredRequest(address vault_, bytes32 guid, address rec
     nonReentrant
 ```
 
+**Where funds can get stuck — two distinct locations:**
+
+After a composer upgrade with in-flight deposits, assets can be orphaned in two different places:
+
+| Location | What's held there | Recoverable after mitigation? |
+|----------|------------------|-------------------------------|
+| `MoreVaultsEscrow` | ERC20 tokens + native locked at request creation | ✅ YES — via `emergencyRefundExpiredRequest` after 1 hour |
+| `MoreVaultsComposer._pendingDeposits` | ERC20 + native earmarked in the composer | ❌ NO — still irrecoverable (ETH excluded from `rescue()` via `totalNativePending`) |
+
 **How it mitigates the issue:**
 
-If a composer upgrade orphans in-flight deposits in the Escrow, the protocol owner can now call `emergencyRefundExpiredRequest` after `REQUEST_TIMEOUT` (1 hour) has elapsed to recover the locked tokens and native ETH directly from the Escrow to any recipient address.
+For funds that reached the `MoreVaultsEscrow` (locked at request creation in `BridgeFacet.initVaultActionRequest`), the protocol owner can now call `emergencyRefundExpiredRequest` after `REQUEST_TIMEOUT` (1 hour) to recover both ERC20 tokens and native ETH to any recipient. This eliminates the "permanently irrecoverable" scenario for the Escrow portion of the stuck funds.
 
 **What it does NOT fix:**
 
 - The root cause remains: `_setVaultComposer` still overwrites the composer pointer unconditionally with no `totalNativePending` guard.
-- Funds locked inside `MoreVaultsComposer._pendingDeposits` (ERC20 + native earmarked there) are NOT covered by this function — `emergencyRefundExpiredRequest` only recovers assets held in `MoreVaultsEscrow`.
+- Funds inside `MoreVaultsComposer._pendingDeposits` — specifically native ETH earmarked there — are still unrecoverable. `MoreVaultsComposer.rescue()` explicitly excludes `totalNativePending` from the withdrawable balance.
 - The `BridgeFacet.refundStuckDepositInComposer` path and `LzAdapter._lzReceive` callback are still broken after a composer upgrade with in-flight deposits.
 
-**Severity update:** Downgraded from Medium to Low in practice — funds are no longer permanently irrecoverable, but the root cause still allows funds to get orphaned in the first place. A complete fix still requires the `_setVaultComposer` guard described below.
+**Severity update:** Downgraded from Medium to Low — funds held in `MoreVaultsEscrow` are no longer permanently irrecoverable. The residual risk is native ETH orphaned inside `MoreVaultsComposer._pendingDeposits`, which remains unrecoverable without the root cause fix below.
 
 ---
 
