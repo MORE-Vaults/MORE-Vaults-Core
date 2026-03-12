@@ -26,7 +26,7 @@ interface IVaultsFactory {
     event LzAdapterUpdated(address indexed newLzAdapter);
     event VaultComposerUpdated(address indexed vault, address indexed composer);
     event ComposerImplementationUpdated(address indexed newImplementation);
-    event OFTAdapterFactoryUpdated(address indexed newOFTAdapterFactory);
+    event MoreVaultsOftFactoryUpdated(address indexed newMoreVaultsOftFactory);
     event VaultFailedToPause(address indexed vault);
 
     /**
@@ -40,7 +40,7 @@ interface IVaultsFactory {
      * @param _maxFinalizationTime Maximum finalization time of block for a chain
      * @param _lzAdapter LayerZero adapter address
      * @param _composerImplementation MoreVaultsComposer implementation address
-     * @param _oftAdapterFactory OFT adapter factory address
+     * @param _MoreVaultsOftFactory OFT adapter factory address
      */
     function initialize(
         address _owner,
@@ -52,7 +52,7 @@ interface IVaultsFactory {
         uint96 _maxFinalizationTime,
         address _lzAdapter,
         address _composerImplementation,
-        address _oftAdapterFactory
+        address _MoreVaultsOftFactory
     ) external;
 
     /**
@@ -136,9 +136,9 @@ interface IVaultsFactory {
 
     /**
      * @notice sets the OFT adapter factory
-     * @param oftAdapterFactory address of the OFT adapter factory
+     * @param MoreVaultsOftFactory address of the OFT adapter factory
      */
-    function setOFTAdapterFactory(address oftAdapterFactory) external;
+    function setMoreVaultsOftFactory(address MoreVaultsOftFactory) external;
 
     /**
      * @notice sets restricted flag for facet
@@ -249,7 +249,7 @@ interface IVaultsFactory {
      * @notice Returns OFT adapter factory address
      * @return OFT adapter factory address
      */
-    function oftAdapterFactory() external view returns (address);
+    function MoreVaultsOftFactory() external view returns (address);
 
     /**
      * @notice Returns max finalization time

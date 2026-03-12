@@ -11,7 +11,7 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 import {VaultFacet} from "../../../src/facets/VaultFacet.sol";
 import {MockFacet} from "../../mocks/MockFacet.sol";
 import {MockMoreVaultsComposer} from "../../mocks/MockMoreVaultsComposer.sol";
-import {MockOFTAdapterFactory} from "../../mocks/MockOFTAdapterFactory.sol";
+import {MockMoreVaultsOftFactory} from "../../mocks/MockMoreVaultsOftFactory.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {IMoreVaultsComposer} from "../../../src/interfaces/LayerZero/IMoreVaultsComposer.sol";
@@ -39,7 +39,7 @@ contract VaultsFactoryTest is Test {
     uint96 public maxFinalizationTime = 1 days;
     address public lzAdapter = address(7);
     address payable public composerImplementation;
-    address public oftAdapterFactory;
+    address public MoreVaultsOftFactory;
     address public asset;
     address public wrappedNative;
 
@@ -68,8 +68,8 @@ contract VaultsFactoryTest is Test {
         composerImplementation = payable(address(mockComposer));
 
         // Deploy mock OFT adapter factory
-        MockOFTAdapterFactory mockOFTFactory = new MockOFTAdapterFactory(layerZeroEndpoint, admin);
-        oftAdapterFactory = address(mockOFTFactory);
+        MockMoreVaultsOftFactory mockOFTFactory = new MockMoreVaultsOftFactory(layerZeroEndpoint, admin);
+        MoreVaultsOftFactory = address(mockOFTFactory);
 
         // Deploy factory
         vm.prank(admin);
@@ -92,7 +92,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         assertEq(address(VaultsFactory(factory).registry()), registry, "Should set correct registry");
@@ -112,7 +112,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
@@ -126,7 +126,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
@@ -140,7 +140,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
@@ -154,7 +154,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
     }
 
@@ -170,7 +170,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newFacet = address(5);
@@ -193,7 +193,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(admin);
@@ -213,7 +213,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newFacet = address(5);
@@ -234,7 +234,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newFacet = address(5);
@@ -257,7 +257,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(admin);
@@ -277,7 +277,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newFacet = address(5);
@@ -300,7 +300,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -411,7 +411,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(admin);
@@ -436,7 +436,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -618,7 +618,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);
@@ -640,7 +640,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
         vm.prank(admin);
         VaultsFactory(factory).setFacetRestricted(diamondCutFacet, true);
@@ -664,7 +664,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(curator);
@@ -686,7 +686,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         uint96 newTime = 2 days;
@@ -707,7 +707,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(curator);
@@ -729,7 +729,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newAdapter = address(9);
@@ -750,7 +750,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(curator);
@@ -772,7 +772,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address vault = address(1);
@@ -794,7 +794,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(curator);
@@ -816,7 +816,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(admin);
@@ -836,7 +836,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newImplementation = address(9);
@@ -847,7 +847,7 @@ contract VaultsFactoryTest is Test {
         );
     }
 
-    function test_setOFTAdapterFactory_ShouldRevertWhenNotAdmin() public {
+    function test_setMoreVaultsOftFactory_ShouldRevertWhenNotAdmin() public {
         vm.prank(admin);
         factory.initialize(
             admin,
@@ -859,17 +859,17 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(curator);
         vm.expectRevert(
             abi.encodeWithSelector(OwnableUpgradeable.OwnableUnauthorizedAccount.selector, address(curator))
         );
-        VaultsFactory(factory).setOFTAdapterFactory(address(9));
+        VaultsFactory(factory).setMoreVaultsOftFactory(address(9));
     }
 
-    function test_setOFTAdapterFactory_ShouldRevertWithZeroAddress() public {
+    function test_setMoreVaultsOftFactory_ShouldRevertWithZeroAddress() public {
         vm.prank(admin);
         factory.initialize(
             admin,
@@ -881,15 +881,15 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.prank(admin);
         vm.expectRevert(IVaultsFactory.ZeroAddress.selector);
-        VaultsFactory(factory).setOFTAdapterFactory(address(0));
+        VaultsFactory(factory).setMoreVaultsOftFactory(address(0));
     }
 
-    function test_setOFTAdapterFactory_ShouldUpdateFactory() public {
+    function test_setMoreVaultsOftFactory_ShouldUpdateFactory() public {
         vm.prank(admin);
         factory.initialize(
             admin,
@@ -901,13 +901,13 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         address newOFTFactory = address(9);
         vm.prank(admin);
-        VaultsFactory(factory).setOFTAdapterFactory(newOFTFactory);
-        assertEq(VaultsFactory(factory).oftAdapterFactory(), newOFTFactory, "Should update OFT adapter factory");
+        VaultsFactory(factory).setMoreVaultsOftFactory(newOFTFactory);
+        assertEq(VaultsFactory(factory).MoreVaultsOftFactory(), newOFTFactory, "Should update OFT adapter factory");
     }
 
     function test_unlink_ShouldRevertIfCallerIsNotVault() public {
@@ -922,7 +922,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.expectRevert(abi.encodeWithSelector(VaultsFactory.NotAuthorizedToLinkFacets.selector, curator));
@@ -944,7 +944,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Deploy a vault first
@@ -1053,7 +1053,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -1131,7 +1131,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             address(0), // Zero composer implementation
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -1206,7 +1206,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             corruptedComposerImplmentation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -1283,7 +1283,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         deal(admin, 1 ether);
@@ -1304,7 +1304,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         vm.expectRevert(abi.encodeWithSelector(VaultsFactory.NotAVault.selector, address(1)));
@@ -1326,7 +1326,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Deploy a vault first
@@ -1405,7 +1405,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         uint32[] memory dstEids = new uint32[](1);
@@ -1430,7 +1430,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Deploy a vault first
@@ -1514,7 +1514,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
     }
 
@@ -1532,7 +1532,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Deploy a vault first
@@ -1613,7 +1613,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -1701,7 +1701,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare multiple facets
@@ -1819,7 +1819,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -1897,7 +1897,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Prepare facets
@@ -1995,7 +1995,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Deploy a vault first
@@ -2077,7 +2077,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Add some restricted facets
@@ -2117,7 +2117,7 @@ contract VaultsFactoryTest is Test {
             maxFinalizationTime,
             lzAdapter,
             composerImplementation,
-            oftAdapterFactory
+            MoreVaultsOftFactory
         );
 
         // Add facet to restricted

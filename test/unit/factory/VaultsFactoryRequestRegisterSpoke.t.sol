@@ -122,7 +122,7 @@ contract VaultsFactoryRequestRegisterSpokeTest is Test {
             MAX_FINALIZATION_TIME,
             address(0x9999), // lzAdapter
             address(0xAAAA), // composerImplementation
-            address(0xBBBB) // oftAdapterFactory
+            address(0xBBBB) // MoreVaultsOftFactory
         );
 
         // Deploy mock spoke vault

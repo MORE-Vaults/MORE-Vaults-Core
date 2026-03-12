@@ -2,17 +2,18 @@
 pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
-import {OFTAdapterFactory} from "../../../src/factory/OFTAdapterFactory.sol";
-import {IOFTAdapterFactory} from "../../../src/interfaces/IOFTAdapterFactory.sol";
+import {MoreVaultsOftFactory} from "../../../src/factory/MoreVaultsOftFactory.sol";
+import {IMoreVaultsOftFactory} from "../../../src/interfaces/IMoreVaultsOftFactory.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 
-contract OFTAdapterFactoryTest is Test {
-    OFTAdapterFactory public factory;
+contract MoreVaultsOftFactoryTest is Test {
+    MoreVaultsOftFactory public factory;
     address public endpoint = address(1001);
     address public owner = address(1002);
     address public token;
+    address public vaultsFactory = address(1003);
 
     function setUp() public {
         // Deploy mock token
@@ -20,14 +21,15 @@ contract OFTAdapterFactoryTest is Test {
         token = address(mockToken);
 
         // Deploy factory
-        factory = new OFTAdapterFactory(endpoint, owner);
+        factory = new MoreVaultsOftFactory();
+        factory.initialize(endpoint, owner, vaultsFactory);
 
         vm.mockCall(
             endpoint, abi.encodeWithSelector(ILayerZeroEndpointV2.setDelegate.selector, owner), abi.encode(true)
         );
     }
 
-    function test_constructor_ShouldSetInitialValues() public {
+    function test_initialize_ShouldSetInitialValues() public {
         assertEq(factory.endpoint(), endpoint, "Should set correct endpoint");
         assertEq(factory.owner(), owner, "Should set correct owner");
     }
@@ -36,38 +38,38 @@ contract OFTAdapterFactoryTest is Test {
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        address adapter = factory.deployOFTAdapter(token, salt);
+        address adapter = factory.deployOFT(token, true, salt);
 
         assertTrue(adapter != address(0), "Adapter should be deployed");
-        assertEq(factory.getAdapter(token), adapter, "Should store adapter address");
-        assertTrue(factory.hasAdapter(token), "Should return true for existing adapter");
+        assertEq(factory.getOFT(token), adapter, "Should store adapter address");
+        assertTrue(factory.hasOFT(token), "Should return true for existing adapter");
     }
 
     function test_deployOFTAdapter_ShouldRevertWithZeroToken() public {
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        vm.expectRevert(IOFTAdapterFactory.ZeroAddress.selector);
-        factory.deployOFTAdapter(address(0), salt);
+        vm.expectRevert(IMoreVaultsOftFactory.ZeroAddress.selector);
+        factory.deployOFT(address(0), true, salt);
     }
 
     function test_deployOFTAdapter_ShouldRevertIfAdapterExists() public {
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        factory.deployOFTAdapter(token, salt);
+        factory.deployOFT(token, true, salt);
 
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IOFTAdapterFactory.AdapterAlreadyExists.selector, token));
-        factory.deployOFTAdapter(token, salt);
+        vm.expectRevert(abi.encodeWithSelector(IMoreVaultsOftFactory.OFTAlreadyExists.selector, token));
+        factory.deployOFT(token, true, salt);
     }
 
     function test_predictAdapterAddress_ShouldReturnCorrectAddress() public {
         bytes32 salt = keccak256("test-salt");
-        address predicted = factory.predictAdapterAddress(token, salt);
+        address predicted = factory.predictOFTAddress(token, salt);
 
         vm.prank(owner);
-        address actual = factory.deployOFTAdapter(token, salt);
+        address actual = factory.deployOFT(token, true, salt);
 
         assertEq(predicted, actual, "Predicted address should match actual");
     }
@@ -82,7 +84,7 @@ contract OFTAdapterFactoryTest is Test {
 
     function test_setEndpoint_ShouldRevertWithZeroAddress() public {
         vm.prank(owner);
-        vm.expectRevert(IOFTAdapterFactory.ZeroAddress.selector);
+        vm.expectRevert(IMoreVaultsOftFactory.ZeroAddress.selector);
         factory.setEndpoint(address(0));
     }
 
@@ -125,12 +127,12 @@ contract OFTAdapterFactoryTest is Test {
         MockERC20 token2 = new MockERC20("Token 2", "T2");
 
         vm.prank(owner);
-        address adapter1 = factory.deployOFTAdapter(token, salt1);
+        address adapter1 = factory.deployOFT(token, true, salt1);
 
         vm.prank(owner);
-        address adapter2 = factory.deployOFTAdapter(address(token2), salt2);
+        address adapter2 = factory.deployOFT(address(token2), true, salt2);
 
-        address[] memory adapters = factory.getDeployedAdapters();
+        address[] memory adapters = factory.getDeployedOFTs();
 
         assertEq(adapters.length, 2, "Should return 2 adapters");
         assertEq(adapters[0], adapter1, "Should return first adapter");
@@ -138,13 +140,13 @@ contract OFTAdapterFactoryTest is Test {
     }
 
     function test_getAdaptersCount_ShouldReturnCorrectCount() public {
-        assertEq(factory.getAdaptersCount(), 0, "Should start with 0 adapters");
+        assertEq(factory.getOFTsCount(), 0, "Should start with 0 adapters");
 
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        factory.deployOFTAdapter(token, salt);
+        factory.deployOFT(token, true, salt);
 
-        assertEq(factory.getAdaptersCount(), 1, "Should return 1 adapter");
+        assertEq(factory.getOFTsCount(), 1, "Should return 1 adapter");
     }
 }

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 // Core contracts
 import {VaultsFactory} from "../../src/factory/VaultsFactory.sol";
-import {OFTAdapterFactory} from "../../src/factory/OFTAdapterFactory.sol";
+import {MoreVaultsOftFactory} from "../../src/factory/MoreVaultsOftFactory.sol";
 import {MoreVaultsEscrow} from "../../src/cross-chain/MoreVaultsEscrow.sol";
 import {MoreVaultsComposer} from "../../src/cross-chain/layerZero/MoreVaultsComposer.sol";
 
@@ -100,8 +100,8 @@ contract BaseE2ETest is Test {
     address public hubComposer;
 
     // ── OFT Adapter Factory ──────────────────────────────────────────
-    OFTAdapterFactory internal _hubOftAdapterFactory;
-    OFTAdapterFactory internal _spokeOftAdapterFactory;
+    MoreVaultsOftFactory internal _hubMoreVaultsOftFactory;
+    MoreVaultsOftFactory internal _spokeMoreVaultsOftFactory;
 
     // ── Vault identifier (same for hub + spoke to get same CREATE3 address)
     bytes32 internal _vaultIdentifier = keccak256("E2E_VAULT_V1");
@@ -171,11 +171,13 @@ contract BaseE2ETest is Test {
         // Deploy composer implementation (needed by factory)
         MoreVaultsComposer composerImpl = new MoreVaultsComposer();
 
-        // Hub OFT adapter factory
-        _hubOftAdapterFactory = new OFTAdapterFactory(address(hubEndpoint), owner);
-
         // Hub factory
         hubFactory = new VaultsFactoryHarness(address(hubEndpoint));
+
+        // Hub OFT adapter factory (must know deployed factory address)
+        _hubMoreVaultsOftFactory = new MoreVaultsOftFactory();
+        _hubMoreVaultsOftFactory.initialize(address(hubEndpoint), owner, address(hubFactory));
+
         hubFactory.initialize(
             owner,
             address(hubRegistry),
@@ -186,14 +188,16 @@ contract BaseE2ETest is Test {
             MAX_FINALIZATION_TIME,
             address(0x1), // lzAdapter placeholder (set later)
             address(composerImpl),
-            address(_hubOftAdapterFactory)
+            address(_hubMoreVaultsOftFactory)
         );
-
-        // Spoke OFT adapter factory
-        _spokeOftAdapterFactory = new OFTAdapterFactory(address(spokeEndpoint), owner);
 
         // Spoke factory
         spokeFactory = new VaultsFactoryHarness(address(spokeEndpoint));
+
+        // Spoke OFT adapter factory (must know deployed factory address)
+        _spokeMoreVaultsOftFactory = new MoreVaultsOftFactory();
+        _spokeMoreVaultsOftFactory.initialize(address(spokeEndpoint), owner, address(spokeFactory));
+
         spokeFactory.initialize(
             owner,
             address(spokeRegistry),
@@ -204,7 +208,7 @@ contract BaseE2ETest is Test {
             MAX_FINALIZATION_TIME,
             address(0x1), // lzAdapter placeholder
             address(composerImpl),
-            address(_spokeOftAdapterFactory)
+            address(_spokeMoreVaultsOftFactory)
         );
     }
 
@@ -229,7 +233,7 @@ contract BaseE2ETest is Test {
         // so addresses match. In this single-chain test they differ, which is fine.
 
         // Record share OFT (deployed by factory alongside vault)
-        shareOFT = _hubOftAdapterFactory.getAdapter(hubVault);
+        shareOFT = _hubMoreVaultsOftFactory.getOFT(hubVault);
         require(shareOFT != address(0), "Share OFT not deployed");
 
         // Record composer

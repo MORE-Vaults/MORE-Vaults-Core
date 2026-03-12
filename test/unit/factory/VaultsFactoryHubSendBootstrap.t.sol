@@ -115,7 +115,7 @@ contract VaultsFactoryHubSendBootstrapTest is Test {
             1 days, // maxFinalizationTime
             address(0x9999999999999999999999999999999999999999), // lzAdapter
             address(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB), // composerImplementation
-            address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC) // oftAdapterFactory
+            address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC) // MoreVaultsOftFactory
         );
 
         // Create hub vault owned by owner

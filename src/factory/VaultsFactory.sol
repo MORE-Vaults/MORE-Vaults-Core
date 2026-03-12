@@ -20,7 +20,7 @@ import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {IConfigurationFacet} from "../interfaces/facets/IConfigurationFacet.sol";
 import {IAccessControlFacet} from "../interfaces/facets/IAccessControlFacet.sol";
 import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
-import {IOFTAdapterFactory} from "../interfaces/IOFTAdapterFactory.sol";
+import {IMoreVaultsOftFactory} from "../interfaces/IMoreVaultsOftFactory.sol";
 
 /**
  * @title VaultsFactory
@@ -102,7 +102,7 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
     address public composerImplementation;
 
     /// @dev Address of the OFT adapter factory
-    address public oftAdapterFactory;
+    address public MoreVaultsOftFactory;
 
     // ===== Cross-chain messaging (LayerZero v2, EIDs) =====
     uint16 private constant MSG_TYPE_REGISTER_SPOKE = 1;
@@ -119,23 +119,23 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         address _diamondCutFacet,
         address _accessControlFacet,
         address _wrappedNative,
-        uint32 _localEid,
+        uint32 _localEid, // TODO: remove from params and fetch from endpoint
         uint96 _maxFinalizationTime,
         address _lzAdapter,
         address _composerImplementation,
-        address _oftAdapterFactory
+        address _MoreVaultsOftFactory
     ) external initializer {
         if (
             _owner == address(0) || _registry == address(0) || _diamondCutFacet == address(0)
                 || _accessControlFacet == address(0) || _wrappedNative == address(0) || _localEid == 0
-                || _oftAdapterFactory == address(0)
+                || _MoreVaultsOftFactory == address(0)
         ) revert ZeroAddress();
         _setDiamondCutFacet(_diamondCutFacet);
         _setAccessControlFacet(_accessControlFacet);
         _setMaxFinalizationTime(_maxFinalizationTime);
         _setLzAdapter(_lzAdapter);
         _setComposerImplementation(_composerImplementation);
-        _setOFTAdapterFactory(_oftAdapterFactory);
+        _setMoreVaultsOftFactory(_MoreVaultsOftFactory);
         wrappedNative = _wrappedNative;
         registry = IMoreVaultsRegistry(_registry);
         localEid = _localEid;
@@ -210,10 +210,10 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
 
     /**
      * @notice Set the OFT adapter factory address
-     * @param _oftAdapterFactory The address of the OFT adapter factory
+     * @param _MoreVaultsOftFactory The address of the OFT adapter factory
      */
-    function setOFTAdapterFactory(address _oftAdapterFactory) external onlyOwner {
-        _setOFTAdapterFactory(_oftAdapterFactory);
+    function setMoreVaultsOftFactory(address _MoreVaultsOftFactory) external onlyOwner {
+        _setMoreVaultsOftFactory(_MoreVaultsOftFactory);
     }
 
     /**
@@ -278,10 +278,12 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
             ),
             salt
         );
-        address shareOft = _deployOftAdapter(vault, salt);
+        address shareOft = _deployOFT(vault, isHub, salt);
         // Deploy minimal proxy for composer
-        address composer = _deployComposerProxy(vault, shareOft, salt);
-        _setVaultComposer(vault, address(composer));
+        if (isHub) {
+            address composer = _deployComposerProxy(vault, shareOft, salt);
+            _setVaultComposer(vault, address(composer));
+        }
 
         isFactoryVault[vault] = true;
         deployedVaults.push(vault);
@@ -595,23 +597,24 @@ contract VaultsFactory is IVaultsFactory, OAppUpgradeable, OAppOptionsType3Upgra
         emit ComposerImplementationUpdated(_composerImplementation);
     }
 
-    function _setOFTAdapterFactory(address _oftAdapterFactory) internal {
-        if (_oftAdapterFactory == address(0)) revert ZeroAddress();
-        oftAdapterFactory = _oftAdapterFactory;
-        emit OFTAdapterFactoryUpdated(_oftAdapterFactory);
+    function _setMoreVaultsOftFactory(address _MoreVaultsOftFactory) internal {
+        if (_MoreVaultsOftFactory == address(0)) revert ZeroAddress();
+        MoreVaultsOftFactory = _MoreVaultsOftFactory;
+        emit MoreVaultsOftFactoryUpdated(_MoreVaultsOftFactory);
     }
 
     /**
      * @notice Deploy OFT adapter for vault shares using the OFT adapter factory
      * @param _vault The vault address (which will be the token for the adapter)
+     * @param isHub Whether the vault is a hub vault, if true, deploy OFTAdapter, if false, deploy OFT
      * @param _salt The salt for deterministic deployment
      * @return The address of the deployed OFT adapter
      */
-    function _deployOftAdapter(address _vault, bytes32 _salt) internal returns (address) {
-        if (oftAdapterFactory == address(0)) revert ZeroAddress();
+    function _deployOFT(address _vault, bool isHub, bytes32 _salt) internal returns (address) {
+        if (MoreVaultsOftFactory == address(0)) revert ZeroAddress();
 
         // Use the OFT adapter factory to deploy the adapter
-        return IOFTAdapterFactory(oftAdapterFactory).deployOFTAdapter(_vault, _salt);
+        return IMoreVaultsOftFactory(MoreVaultsOftFactory).deployOFT(_vault, isHub, _salt);
     }
 
     function _checkRestrictedFacet(address _facet) internal view {

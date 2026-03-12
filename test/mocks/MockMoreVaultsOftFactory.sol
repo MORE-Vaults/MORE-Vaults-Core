@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {IOFTAdapterFactory} from "../../src/interfaces/IOFTAdapterFactory.sol";
+import {IMoreVaultsOftFactory} from "../../src/interfaces/IMoreVaultsOftFactory.sol";
 
-contract MockOFTAdapterFactory is IOFTAdapterFactory {
+contract MockMoreVaultsOftFactory is IMoreVaultsOftFactory {
     mapping(address => address) public adapters;
     address public endpoint;
     address public owner;
@@ -13,23 +13,23 @@ contract MockOFTAdapterFactory is IOFTAdapterFactory {
         owner = _owner;
     }
 
-    function deployOFTAdapter(address token, bytes32 salt) external returns (address adapter) {
+    function deployOFT(address token, bool isHub, bytes32 salt) external returns (address adapter) {
         // Create a mock adapter address based on token and salt
         adapter = address(uint160(uint256(keccak256(abi.encodePacked(token, salt, block.timestamp)))));
         adapters[token] = adapter;
-        emit OFTAdapterDeployed(token, adapter, salt);
+        emit OFTDeployed(token, adapter, false, salt);
         return adapter;
     }
 
-    function predictAdapterAddress(address token, bytes32 salt) external pure returns (address) {
+    function predictOFTAddress(address token, bytes32 salt) external pure returns (address) {
         return address(uint160(uint256(keccak256(abi.encodePacked(token, salt)))));
     }
 
-    function getAdapter(address token) external view returns (address) {
+    function getOFT(address token) external view returns (address) {
         return adapters[token];
     }
 
-    function hasAdapter(address token) external view returns (bool) {
+    function hasOFT(address token) external view returns (bool) {
         return adapters[token] != address(0);
     }
 
