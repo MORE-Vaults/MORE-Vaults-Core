@@ -204,7 +204,8 @@ contract BridgeFacet is PausableUpgradeable, BaseFacetInitializer, IBridgeFacet,
             refunded: false,
             totalAssets: IVaultFacet(address(this)).totalAssets(),
             finalizationResult: 0,
-            amountLimit: amountLimit
+            amountLimit: amountLimit,
+            totalSupply: IVaultFacet(address(this)).totalSupply()
         });
 
         ds.guidToCrossChainRequestInfo[guid] = requestInfo;
