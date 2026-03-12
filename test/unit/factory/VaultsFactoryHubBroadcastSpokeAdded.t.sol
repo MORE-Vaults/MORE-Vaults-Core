@@ -134,7 +134,8 @@ contract VaultsFactoryHubBroadcastSpokeAddedTest is Test {
             1 days, // maxFinalizationTime
             address(0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB), // lzAdapter
             address(0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC), // composerImplementation
-            address(0xdD2FD4581271e230360230F9337D5c0430Bf44C0) // MoreVaultsOftFactory
+            address(0xdD2FD4581271e230360230F9337D5c0430Bf44C0), // MoreVaultsOftFactory
+            address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) // MoreVaultsOftAdapterFactory
         );
 
         // Create hub vault owned by owner

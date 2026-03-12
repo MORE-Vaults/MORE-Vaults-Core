@@ -22,7 +22,8 @@ import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transpa
 import {OracleRegistry} from "../src/registry/OracleRegistry.sol";
 import {IOracleRegistry, IAggregatorV2V3Interface} from "../src/interfaces/IOracleRegistry.sol";
 import {IAaveOracle} from "@aave-v3-core/contracts/interfaces/IAaveOracle.sol";
-import {OFTAdapterFactory} from "../src/factory/OFTAdapterFactory.sol";
+import {MoreVaultsOftFactory} from "../src/factory/MoreVaultsOftFactory.sol";
+import {MoreVaultsOftAdapterFactory} from "../src/factory/MoreVaultsOftAdapterFactory.sol";
 import {MoreVaultsComposer} from "../src/cross-chain/layerZero/MoreVaultsComposer.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {console} from "forge-std/console.sol";
@@ -510,15 +511,34 @@ contract DeployScript is Script {
         }
         console.log("Facets added to registry");
 
+        address oftFactory = CREATE3.deployDeterministic(
+            abi.encodePacked(
+                type(MoreVaultsOftFactory).creationCode,
+                abi.encode(lzEndpoint, PROTOCOL_OWNER, address(0))
+            ),
+            keccak256(abi.encode("oftFactoryCrossChainTest5"))
+        );
         address oftAdapterFactory = CREATE3.deployDeterministic(
-             abi.encodePacked(
-                        type(OFTAdapterFactory).creationCode,
-                        abi.encode(
-                            lzEndpoint,
-                            PROTOCOL_OWNER
-                        )
-                    ),
+            abi.encodePacked(
+                type(MoreVaultsOftAdapterFactory).creationCode,
+                abi.encode(lzEndpoint, PROTOCOL_OWNER, address(0))
+            ),
             keccak256(abi.encode("oftAdapterFactoryCrossChainTest5"))
+        );
+        vm.writeFile(
+            ".env.deployments",
+            string(
+                abi.encodePacked(
+                    vm.readFile(".env.deployments"),
+                    "OFT_FACTORY=",
+                    vm.toString(address(oftFactory)),
+                    "\n"
+                )
+            )
+        );
+        vm.writeFile(
+            ".env",
+            string(abi.encodePacked(vm.readFile(".env"), "OFT_FACTORY=", vm.toString(address(oftFactory)), "\n"))
         );
          vm.writeFile(
             ".env.deployments",
@@ -589,6 +609,7 @@ contract DeployScript is Script {
                                 1 minutes,
                                 lzAdapter,
                                 MoreVaultsComposerImplementation,
+                                oftFactory,
                                 oftAdapterFactory
                             )
                         )
@@ -598,6 +619,8 @@ contract DeployScript is Script {
             )
         );
         console.log("Factory deployed at:", address(factory));
+        MoreVaultsOftFactory(oftFactory).setFactory(address(factory));
+        MoreVaultsOftAdapterFactory(oftAdapterFactory).setFactory(address(factory));
 
         // Save factory address
         vm.writeFile(

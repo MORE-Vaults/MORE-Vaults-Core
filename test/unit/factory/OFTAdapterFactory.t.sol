@@ -38,7 +38,7 @@ contract MoreVaultsOftFactoryTest is Test {
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        address adapter = factory.deployOFT(token, true, salt);
+        address adapter = factory.deployOFT(token, false, salt);
 
         assertTrue(adapter != address(0), "Adapter should be deployed");
         assertEq(factory.getOFT(token), adapter, "Should store adapter address");
@@ -57,11 +57,11 @@ contract MoreVaultsOftFactoryTest is Test {
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        factory.deployOFT(token, true, salt);
+        factory.deployOFT(token, false, salt);
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IMoreVaultsOftFactory.OFTAlreadyExists.selector, token));
-        factory.deployOFT(token, true, salt);
+        factory.deployOFT(token, false, salt);
     }
 
     function test_predictAdapterAddress_ShouldReturnCorrectAddress() public {
@@ -69,7 +69,7 @@ contract MoreVaultsOftFactoryTest is Test {
         address predicted = factory.predictOFTAddress(token, salt);
 
         vm.prank(owner);
-        address actual = factory.deployOFT(token, true, salt);
+        address actual = factory.deployOFT(token, false, salt);
 
         assertEq(predicted, actual, "Predicted address should match actual");
     }
@@ -127,10 +127,10 @@ contract MoreVaultsOftFactoryTest is Test {
         MockERC20 token2 = new MockERC20("Token 2", "T2");
 
         vm.prank(owner);
-        address adapter1 = factory.deployOFT(token, true, salt1);
+        address adapter1 = factory.deployOFT(token, false, salt1);
 
         vm.prank(owner);
-        address adapter2 = factory.deployOFT(address(token2), true, salt2);
+        address adapter2 = factory.deployOFT(address(token2), false, salt2);
 
         address[] memory adapters = factory.getDeployedOFTs();
 
@@ -145,7 +145,7 @@ contract MoreVaultsOftFactoryTest is Test {
         bytes32 salt = keccak256("test-salt");
 
         vm.prank(owner);
-        factory.deployOFT(token, true, salt);
+        factory.deployOFT(token, false, salt);
 
         assertEq(factory.getOFTsCount(), 1, "Should return 1 adapter");
     }

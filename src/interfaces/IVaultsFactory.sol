@@ -27,10 +27,11 @@ interface IVaultsFactory {
     event VaultComposerUpdated(address indexed vault, address indexed composer);
     event ComposerImplementationUpdated(address indexed newImplementation);
     event MoreVaultsOftFactoryUpdated(address indexed newMoreVaultsOftFactory);
+    event MoreVaultsOftAdapterFactoryUpdated(address indexed newMoreVaultsOftAdapterFactory);
     event VaultFailedToPause(address indexed vault);
 
     /**
-     * @notice Initialize the factory
+     * @notice Initialize the factory with separate OFT and OFT adapter factories
      * @param _owner Owner address
      * @param _registry Registry contract address
      * @param _diamondCutFacet Diamond cut facet address
@@ -40,7 +41,8 @@ interface IVaultsFactory {
      * @param _maxFinalizationTime Maximum finalization time of block for a chain
      * @param _lzAdapter LayerZero adapter address
      * @param _composerImplementation MoreVaultsComposer implementation address
-     * @param _MoreVaultsOftFactory OFT adapter factory address
+     * @param _MoreVaultsOftFactory OFT factory address for spoke vaults
+     * @param _MoreVaultsOftAdapterFactory OFT adapter factory address for hub vaults
      */
     function initialize(
         address _owner,
@@ -52,7 +54,8 @@ interface IVaultsFactory {
         uint96 _maxFinalizationTime,
         address _lzAdapter,
         address _composerImplementation,
-        address _MoreVaultsOftFactory
+        address _MoreVaultsOftFactory,
+        address _MoreVaultsOftAdapterFactory
     ) external;
 
     /**
@@ -135,10 +138,16 @@ interface IVaultsFactory {
     function setComposerImplementation(address composerImplementation) external;
 
     /**
-     * @notice sets the OFT adapter factory
-     * @param MoreVaultsOftFactory address of the OFT adapter factory
+     * @notice sets the OFT factory used for spoke vaults
+     * @param MoreVaultsOftFactory address of the OFT factory
      */
     function setMoreVaultsOftFactory(address MoreVaultsOftFactory) external;
+
+    /**
+     * @notice sets the OFT adapter factory used for hub vaults
+     * @param MoreVaultsOftAdapterFactory address of the OFT adapter factory
+     */
+    function setMoreVaultsOftAdapterFactory(address MoreVaultsOftAdapterFactory) external;
 
     /**
      * @notice sets restricted flag for facet
@@ -246,10 +255,16 @@ interface IVaultsFactory {
     function composerImplementation() external view returns (address);
 
     /**
-     * @notice Returns OFT adapter factory address
-     * @return OFT adapter factory address
+     * @notice Returns OFT factory address for spoke vaults
+     * @return OFT factory address for spoke vaults
      */
     function MoreVaultsOftFactory() external view returns (address);
+
+    /**
+     * @notice Returns OFT adapter factory address for hub vaults
+     * @return OFT adapter factory address for hub vaults
+     */
+    function MoreVaultsOftAdapterFactory() external view returns (address);
 
     /**
      * @notice Returns max finalization time

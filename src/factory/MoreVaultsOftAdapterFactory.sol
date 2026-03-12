@@ -2,17 +2,16 @@
 pragma solidity 0.8.28;
 
 import {IMoreVaultsOftFactory} from "../interfaces/IMoreVaultsOftFactory.sol";
-import {MoreVaultOft} from "../cross-chain/layerZero/MoreVaultOft.sol";
+import {MoreVaultOftAdapter} from "../cross-chain/layerZero/MoreVaultOftAdapter.sol";
 import {CREATE3} from "@solady/src/utils/CREATE3.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /**
- * @title MoreVaultsOftFactory
- * @notice Factory contract for deploying OFT tokens for spoke vault shares
+ * @title MoreVaultsOftAdapterFactory
+ * @notice Factory contract for deploying OFT adapters for hub vault shares
  */
-contract MoreVaultsOftFactory is Initializable, IMoreVaultsOftFactory, OwnableUpgradeable {
+contract MoreVaultsOftAdapterFactory is Initializable, IMoreVaultsOftFactory, OwnableUpgradeable {
     /// @dev LayerZero endpoint address
     address public endpoint;
 
@@ -35,28 +34,26 @@ contract MoreVaultsOftFactory is Initializable, IMoreVaultsOftFactory, OwnableUp
     }
 
     /**
-     * @notice Deploy OFT for a given token
-     * @param token The token address to create OFT for
-     * @param isHub Whether the vault is a hub vault. Must be false for this factory
+     * @notice Deploy OFT adapter for a given token
+     * @param token The token address to create OFT adapter for
+     * @param isHub Whether the vault is a hub vault. Must be true for this factory
      * @param salt The salt for deterministic deployment
-     * @return oft The address of the deployed OFT
+     * @return oft The address of the deployed OFT adapter
      */
     function deployOFT(address token, bool isHub, bytes32 salt) external returns (address oft) {
         if (factory != msg.sender && msg.sender != owner()) revert OwnableUnauthorizedAccount(msg.sender);
         if (token == address(0)) revert ZeroAddress();
         if (OFTs[token] != address(0)) revert OFTAlreadyExists(token);
-        if (isHub) revert InvalidToken();
+        if (!isHub) revert InvalidToken();
 
-        string memory name = string(abi.encodePacked(IERC20Metadata(token).name(), " OFT"));
-        string memory symbol = string(abi.encodePacked(IERC20Metadata(token).symbol(), "_OFT"));
         oft = CREATE3.deployDeterministic(
-            abi.encodePacked(type(MoreVaultOft).creationCode, abi.encode(name, symbol, endpoint, owner())), salt
+            abi.encodePacked(type(MoreVaultOftAdapter).creationCode, abi.encode(token, endpoint, owner())), salt
         );
 
         OFTs[token] = oft;
         deployedOFTs.push(oft);
 
-        emit OFTDeployed(token, oft, false, salt);
+        emit OFTDeployed(token, oft, true, salt);
     }
 
     /**
