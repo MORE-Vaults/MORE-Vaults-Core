@@ -1105,7 +1105,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         // mint fee shares to fee recipient if withdrawal fee is applied
         if (withdrawalFeeAmount > 0) {
             uint256 feeShares = _convertToSharesWithTotals(
-                withdrawalFeeAmount, _totalSupply, newTotalAssets - assets, Math.Rounding.Floor
+                withdrawalFeeAmount, newTotalSupply, newTotalAssets - assets, Math.Rounding.Floor
             );
             _mint(ds.feeRecipient, feeShares);
             // Adjust local total supply to include minted fee shares
