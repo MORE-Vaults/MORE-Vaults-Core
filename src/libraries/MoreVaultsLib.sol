@@ -125,6 +125,7 @@ library MoreVaultsLib {
         uint256 totalAssets;
         uint256 finalizationResult;
         uint256 amountLimit; // Amount limit for slippage check: minAmountOut for deposits/mints, maxAmountIn for withdraws/redeems (0 = check not required)
+        uint256 totalSupply;
     }
 
     struct MoreVaultsStorage {

@@ -353,9 +353,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      */
     function accrueFees(address _user) public {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        (uint256 newTotalAssets,) = _getInfoForAction(ds, _user, false);
-        _accrueInterest(newTotalAssets, _user);
-        _updateUserHWMpS(newTotalAssets, _user);
+        (uint256 newTotalAssets, uint256 totalSupply_,) = _getInfoForAction(ds, _user, false);
+        uint256 newTotalSupply = _accrueInterest(newTotalAssets, totalSupply_, _user);
+        _updateUserHWMpS(newTotalAssets, newTotalSupply, _user);
     }
 
     /**
@@ -425,7 +425,8 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
         _beforeAccounting(ds.beforeAccountingFacets);
         uint256 newTotalAssets = totalAssets();
-        _accrueInterest(newTotalAssets, _onBehalfOf);
+        // No need to use local total supply here, because this function should work only in case of sync accounting
+        _accrueInterest(newTotalAssets, totalSupply(), _onBehalfOf);
 
         uint256 shares = _convertToSharesWithTotals(_assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
 
@@ -446,7 +447,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         uint256 endsAt = block.timestamp + ds.witdrawTimelock;
         request.timelockEndsAt = endsAt;
-        _updateUserHWMpS(newTotalAssets, _onBehalfOf);
+        _updateUserHWMpS(newTotalAssets, totalSupply(), _onBehalfOf);
 
         emit WithdrawRequestCreated(_onBehalfOf, shares, endsAt);
     }
@@ -464,16 +465,19 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds, receiver, true);
+        (uint256 newTotalAssets, uint256 _totalSupply, address msgSender) = _getInfoForAction(ds, receiver, true);
 
-        _accrueInterest(newTotalAssets, receiver);
+        // Adjust local total supply to include fee shares
+        uint256 tatalSupplyPlusFeeShares = _accrueInterest(newTotalAssets, _totalSupply, receiver);
         _validateCapacity(msgSender, newTotalAssets, assets);
 
-        shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Floor);
+        shares = _convertToSharesWithTotals(assets, tatalSupplyPlusFeeShares, newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, assets, shares);
 
         // Update user's HWMpS after deposit (using new total assets after deposit)
-        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, assets), receiver);
+        // Adjust local total supply to include minted shares
+        uint256 newTotalSupply = tatalSupplyPlusFeeShares + shares;
+        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, assets), newTotalSupply, receiver);
     }
 
     /**
@@ -489,16 +493,19 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds, receiver, true);
+        (uint256 newTotalAssets, uint256 _totalSupply, address msgSender) = _getInfoForAction(ds, receiver, true);
 
-        _accrueInterest(newTotalAssets, receiver);
+        // Adjust local total supply to include fee shares
+        uint256 tatalSupplyPlusFeeShares = _accrueInterest(newTotalAssets, _totalSupply, receiver);
 
-        assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
+        assets = _convertToAssetsWithTotals(shares, tatalSupplyPlusFeeShares, newTotalAssets, Math.Rounding.Ceil);
         _validateCapacity(msgSender, newTotalAssets, assets);
         _deposit(msgSender, receiver, assets, shares);
 
         // Update user's HWMpS after mint (using new total assets after deposit)
-        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, assets), receiver);
+        // Adjust local total supply to include minted shares
+        uint256 newTotalSupply = tatalSupplyPlusFeeShares + shares;
+        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, assets), newTotalSupply, receiver);
     }
 
     /**
@@ -514,18 +521,20 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
 
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds, receiver, false);
+        (uint256 newTotalAssets, uint256 _totalSupply, address msgSender) = _getInfoForAction(ds, receiver, false);
 
-        _accrueInterest(newTotalAssets, owner);
+        // Adjust local total supply to include fee shares
+        uint256 tatalSupplyPlusFeeShares = _accrueInterest(newTotalAssets, _totalSupply, owner);
 
-        shares = _convertToSharesWithTotals(assets, totalSupply(), newTotalAssets, Math.Rounding.Ceil);
+        shares = _convertToSharesWithTotals(assets, tatalSupplyPlusFeeShares, newTotalAssets, Math.Rounding.Ceil);
         _consumeWithdrawRequestAndCheckMaxRedeem(ds, owner, shares);
 
         // Calculate withdrawal fee to determine net assets
-        uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        // Here we will update local total supply in handleWithdrawal function
+        (uint256 netAssets, uint256 newTotalSupply) = _handleWithdrawal(ds, newTotalAssets, tatalSupplyPlusFeeShares, msgSender, receiver, owner, assets, shares);
 
         // Update user's HWMpS after withdrawal (using calculated total assets after withdrawal)
-        _updateUserHWMpS(_calculateTotalAssetsAfterWithdrawal(newTotalAssets, netAssets), owner);
+        _updateUserHWMpS(_calculateTotalAssetsAfterWithdrawal(newTotalAssets, netAssets), newTotalSupply, owner);
     }
 
     /**
@@ -541,14 +550,16 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.validateNotMulticall();
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds, receiver, false);
+        (uint256 newTotalAssets, uint256 _totalSupply, address msgSender) = _getInfoForAction(ds, receiver, false);
         _consumeWithdrawRequestAndCheckMaxRedeem(ds, owner, shares);
 
-        _accrueInterest(newTotalAssets, owner);
+        // Adjust local total supply to include fee shares
+        uint256 tatalSupplyPlusFeeShares = _accrueInterest(newTotalAssets, _totalSupply, owner);
 
-        assets = _convertToAssetsWithTotals(shares, totalSupply(), newTotalAssets, Math.Rounding.Floor);
+        assets = _convertToAssetsWithTotals(shares, tatalSupplyPlusFeeShares, newTotalAssets, Math.Rounding.Floor);
 
-        uint256 netAssets = _handleWithdrawal(ds, newTotalAssets, msgSender, receiver, owner, assets, shares);
+        // Here we will update local total supply in handleWithdrawal function
+        (uint256 netAssets, uint256 newTotalSupply) = _handleWithdrawal(ds, newTotalAssets, _totalSupply, msgSender, receiver, owner, assets, shares);
         assets = netAssets;
 
         // Update user's HWMpS after redeem (using calculated total assets after withdrawal)
@@ -556,7 +567,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         unchecked {
             totalAssetsAfterWithdrawal = newTotalAssets > netAssets ? newTotalAssets - netAssets : 0;
         }
-        _updateUserHWMpS(totalAssetsAfterWithdrawal, owner);
+        _updateUserHWMpS(totalAssetsAfterWithdrawal, newTotalSupply, owner);
     }
 
     /**
@@ -573,8 +584,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         if (msg.value > 0) {
             ds.isNativeDeposit = true;
         }
-        (uint256 newTotalAssets, address msgSender) = _getInfoForAction(ds, receiver, true);
-        _accrueInterest(newTotalAssets, receiver);
+        (uint256 newTotalAssets, uint256 _totalSupply, address msgSender) = _getInfoForAction(ds, receiver, true);
+        // Adjust local total supply to include fee shares
+        uint256 tatalSupplyPlusFeeShares = _accrueInterest(newTotalAssets, _totalSupply, receiver);
 
         if (assets.length != tokens.length) {
             revert ArraysLengthsDontMatch(tokens.length, assets.length);
@@ -595,7 +607,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         _validateCapacity(msgSender, newTotalAssets, totalConvertedAmount);
 
-        shares = _convertToSharesWithTotals(totalConvertedAmount, totalSupply(), newTotalAssets, Math.Rounding.Floor);
+        shares = _convertToSharesWithTotals(totalConvertedAmount, tatalSupplyPlusFeeShares, newTotalAssets, Math.Rounding.Floor);
         _deposit(msgSender, receiver, tokens, assets, shares, totalConvertedAmount);
         if (shares < minAmountOut) {
             revert SlippageExceeded(shares, minAmountOut);
@@ -606,7 +618,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
 
         // Update user's HWMpS after deposit
-        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, totalConvertedAmount), receiver);
+        // Adjust local total supply to include minted shares
+        uint256 newTotalSupply = tatalSupplyPlusFeeShares + shares;
+        _updateUserHWMpS(_calculateTotalAssetsAfterDeposit(newTotalAssets, totalConvertedAmount), newTotalSupply, receiver);
     }
 
     /**
@@ -724,20 +738,23 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @notice Accrue the interest of the vault
      * @dev Calculate the interest of the vault and mint the fee shares
      * @param _totalAssets The total assets of the vault
+     * @param _totalSupply The total supply of the vault
      * @param _user The address of the user for per-user fee calculation (address(0) for global/legacy mode)
      */
-    function _accrueInterest(uint256 _totalAssets, address _user) internal {
+    function _accrueInterest(uint256 _totalAssets, uint256 _totalSupply, address _user) internal returns(uint256 newTotalSupply){
         if (_user == address(0)) {
             revert ZeroAddress();
         }
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        uint256 feeShares = _accruedFeeSharesPerUser(_totalAssets, _user);
-        _checkVaultHealth(_totalAssets, totalSupply());
+        uint256 feeShares = _accruedFeeSharesPerUser(_totalAssets, _totalSupply, _user);
+        _checkVaultHealth(_totalAssets, _totalSupply);
+        // Adjust local total supply to include fee shares
+        newTotalSupply = _totalSupply + feeShares;
 
         emit AccrueInterest(_totalAssets, feeShares);
 
-        if (feeShares == 0) return;
+        if (feeShares == 0) return newTotalSupply;
 
         AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
         (address protocolFeeRecipient, uint96 protocolFee) =
@@ -761,18 +778,17 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @param _user The address of the user
      * @return feeShares The fee shares for this user's position
      */
-    function _accruedFeeSharesPerUser(uint256 _totalAssets, address _user) internal view returns (uint256 feeShares) {
+    function _accruedFeeSharesPerUser(uint256 _totalAssets, uint256 _totalSupply, address _user) internal view returns (uint256 feeShares) {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
-        uint256 totalSupply_ = totalSupply();
-        if (totalSupply_ == 0) {
+        if (_totalSupply == 0) {
             return 0;
         }
 
         // Calculate current price per share (using same formula as _convertToAssets)
         uint256 decimalsMultiplier = 10 ** decimals();
         uint256 currentPricePerShare =
-            _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
+            _convertToAssetsWithTotals(decimalsMultiplier, _totalSupply, _totalAssets, Math.Rounding.Floor);
         // Get user's High-Water Mark per Share
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
 
@@ -815,7 +831,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         }
         unchecked {
             feeShares =
-                feeAssets.mulDiv(totalSupply_ + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
+                feeAssets.mulDiv(_totalSupply + 10 ** _decimalsOffset(), _totalAssets - feeAssets, Math.Rounding.Floor);
         }
     }
 
@@ -916,7 +932,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
      * @param _totalAssets The total assets of the vault
      * @param _user The address of the user
      */
-    function _updateUserHWMpS(uint256 _totalAssets, address _user) internal {
+    function _updateUserHWMpS(uint256 _totalAssets, uint256 _totalSupply, address _user) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         // Check both balance and locked shares - reset HWMpS only if user has no position at all
         address escrow = MoreVaultsLib._getEscrow();
@@ -932,10 +948,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
         // Calculate current price per share (using same formula as _convertToAssets)
         // Price per share = (totalAssets + 1) / (totalSupply + 10^decimalsOffset)
-        uint256 totalSupply_ = totalSupply();
         uint256 decimalsMultiplier = 10 ** decimals();
         uint256 currentPricePerShare =
-            _convertToAssetsWithTotals(decimalsMultiplier, totalSupply_, _totalAssets, Math.Rounding.Floor);
+            _convertToAssetsWithTotals(decimalsMultiplier, _totalSupply, _totalAssets, Math.Rounding.Floor);
 
         // Update HWMpS if current price is higher
         uint256 userHWMpS = ds.userHighWaterMarkPerShare[_user];
@@ -960,8 +975,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         _validateERC4626Compatible(ds);
         newTotalAssets = totalAssets();
+        // Works only in case of sync accounting, so we can use totalSupply()
         uint256 ts = totalSupply();
-        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, msg.sender);
+        uint256 feeShares = _accruedFeeSharesPerUser(newTotalAssets, ts, msg.sender);
         simTotalSupply = ts + feeShares;
     }
 
@@ -1007,7 +1023,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
 
     function _getInfoForAction(MoreVaultsLib.MoreVaultsStorage storage ds, address receiver, bool isDeposit)
         internal
-        returns (uint256 totalAssets_, address msgSender_)
+        returns (uint256 _totalAssets, uint256 _totalSupply, address msgSender_)
     {
         _requireIsHub(ds);
         if (_isCrossChainWithoutOracle(ds)) {
@@ -1017,11 +1033,13 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (msg.sender != address(this)) {
                 revert SyncActionsDisabledInThisVault();
             }
-            totalAssets_ = ds.guidToCrossChainRequestInfo[guid].totalAssets;
+            _totalAssets = ds.guidToCrossChainRequestInfo[guid].totalAssets;
+            _totalSupply = ds.guidToCrossChainRequestInfo[guid].totalSupply;
             msgSender_ = ds.guidToCrossChainRequestInfo[guid].initiator;
         } else {
             _beforeAccounting(ds.beforeAccountingFacets);
-            totalAssets_ = totalAssets();
+            _totalAssets = totalAssets();
+            _totalSupply = totalSupply();
             msgSender_ = _msgSender();
             if (isDeposit) {
                 AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
@@ -1061,12 +1079,13 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     function _handleWithdrawal(
         MoreVaultsLib.MoreVaultsStorage storage ds,
         uint256 newTotalAssets,
+        uint256 _totalSupply,
         address msgSender,
         address receiver,
         address owner,
         uint256 assets,
         uint256 shares
-    ) internal returns (uint256 netAssets) {
+    ) internal returns (uint256 netAssets, uint256 newTotalSupply) {
         // calculate withdrawal fee
         uint256 withdrawalFeeAmount;
         if (ds.withdrawalFee > 0) {
@@ -1080,13 +1099,17 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         _changeDepositCap(ds, owner, assets, false);
 
         _withdraw(msgSender, receiver, owner, netAssets, shares);
+        // Adjust local total supply to include burned shares
+        newTotalSupply = _totalSupply - shares;
 
         // mint fee shares to fee recipient if withdrawal fee is applied
         if (withdrawalFeeAmount > 0) {
             uint256 feeShares = _convertToSharesWithTotals(
-                withdrawalFeeAmount, totalSupply(), newTotalAssets - assets, Math.Rounding.Floor
+                withdrawalFeeAmount, _totalSupply, newTotalAssets - assets, Math.Rounding.Floor
             );
             _mint(ds.feeRecipient, feeShares);
+            // Adjust local total supply to include minted fee shares
+            newTotalSupply += feeShares;
         }
 
         emit WithdrawRequestFulfilled(owner, receiver, shares, netAssets);

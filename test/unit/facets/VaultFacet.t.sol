@@ -29,6 +29,7 @@ import {MoreVaultsLib} from "../../../src/libraries/MoreVaultsLib.sol";
 import {IConfigurationFacet} from "../../../src/interfaces/facets/IConfigurationFacet.sol";
 import {MaliciousAccountingFacet} from "../../mocks/MaliciousAccountingFacet.sol";
 import {MockMoreVaultsEscrow} from "../../mocks/MockMoreVaultsEscrow.sol";
+import {console} from "forge-std/console.sol";
 
 contract VaultFacetTest is Test {
     using Math for uint256;
@@ -3282,9 +3283,17 @@ contract VaultFacetTest is Test {
 
         // Verify HWMpS was updated
         uint256 finalTotalAssets = IVaultFacet(facet).totalAssets();
+        console.log("finalTotalAssets", finalTotalAssets);
         uint256 finalTotalSupply = IERC20(facet).totalSupply();
+        console.log("finalTotalSupply", finalTotalSupply);
         uint256 finalPricePerShare = _calculatePricePerShare(finalTotalAssets, finalTotalSupply);
+        console.log("finalPricePerShare", finalPricePerShare);
         uint256 finalHWMpS = _getHWMpS(user);
+        console.log("finalHWMpS", finalHWMpS);
+        console.log("initialHWMpS", initialHWMpS);
+        console.log("initialTotalSupply", initialTotalSupply);
+        console.log("totalFeeShares", totalFeeShares);
+        console.log("finalTotalSupply", finalTotalSupply);
 
         assertGt(finalHWMpS, initialHWMpS, "HWMpS should increase");
         assertEq(finalHWMpS, finalPricePerShare, "HWMpS should equal current price per share");

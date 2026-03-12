@@ -12,6 +12,7 @@ contract BridgeFacetHarness is BridgeFacet {
     using SafeERC20 for IERC20;
 
     uint256 private _totalAssets;
+    uint256 private _totalSupply;
     mapping(bytes32 => uint256) public depositResult;
     mapping(bytes32 => uint256) public mintResult;
     mapping(bytes32 => uint256) public withdrawResult;
@@ -26,6 +27,10 @@ contract BridgeFacetHarness is BridgeFacet {
     // Expose internal calls for testing where needed
     function h_setTotalAssets(uint256 v) external {
         _totalAssets = v;
+    }
+
+    function h_setTotalSupply(uint256 v) external {
+        _totalSupply = v;
     }
     
     function h_setBalance(address token, address account, uint256 balance) external {
@@ -91,6 +96,10 @@ contract BridgeFacetHarness is BridgeFacet {
     // Override IERC4626 methods that BridgeFacet.executeRequest calls via address(this)
     function totalAssets() public view returns (uint256) {
         return _totalAssets;
+    }
+
+    function totalSupply() public view returns (uint256) {
+        return _totalSupply;
     }
 
     function totalAssetsUsd() external returns (uint256, bool) {
