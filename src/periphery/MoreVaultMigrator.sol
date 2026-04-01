@@ -42,7 +42,7 @@ contract MoreVaultMigrator is Ownable {
     }
 
     constructor(address _oldVault, address _newVault, address _owner, address _curator) Ownable(_owner) {
-        if (_oldVault == address(0) || _newVault == address(0) || _owner == address(0) || _curator == address(0)) {
+        if (_oldVault == address(0) || _newVault == address(0) || _curator == address(0)) {
             revert ZeroAddress();
         }
         oldVault = IVaultFacet(_oldVault);
