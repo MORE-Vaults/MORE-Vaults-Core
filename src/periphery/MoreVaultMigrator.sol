@@ -21,6 +21,7 @@ contract MoreVaultMigrator is Ownable {
     error AssetMismatch(address oldAsset, address newAsset);
     error NothingToMigrate();
     error SlippageExceeded(uint256 actualShares, uint256 minShares);
+    error MigratorNotEligibleForDeposit(address migrator, uint256 assetsToDeposit, uint256 maxAllowed);
     error UserNotEligibleForDeposit(address user, uint256 assetsToDeposit, uint256 maxAllowed);
 
     event CuratorSet(address indexed previousCurator, address indexed newCurator);
@@ -85,16 +86,27 @@ contract MoreVaultMigrator is Ownable {
         sharesMigrated = _min4(target, reqShares, allowanceShares, balanceShares);
         if (sharesMigrated == 0) revert NothingToMigrate();
 
-        // Pre-check BEFORE redeem: verify the user (receiver) is eligible to deposit into the new vault.
-        // Using previewRedeem to estimate the asset amount without consuming the withdrawal request.
-        // newVault.maxDeposit(user) returns 0 when whitelist mode is on and the user has no allocation.
-        // This reverts before burning the user's old vault shares, keeping their withdrawal request intact.
-        // NOTE: The underlying deposit still checks msg.sender (this contract) for the whitelist entry;
-        // the migrator must also be whitelisted (or whitelist must be off) for the final deposit to succeed.
+        // Pre-checks BEFORE redeem: verify both the user and this migrator are eligible to deposit
+        // into the new vault. Both checks run before any shares are burned, so a revert here
+        // preserves the user's withdrawal request on the old vault.
+        //
+        // Hub vaults are always ERC4626-compatible; maxDeposit never reverts for them.
+        //
+        // Check order:
+        //   1. User check: closes the backdoor where a non-whitelisted user could end up in a
+        //      whitelisted vault simply because the migrator was whitelisted.
+        //   2. Migrator check: VaultFacet._validateCapacity uses msg.sender (= this contract) for
+        //      the actual deposit, so the migrator must also have sufficient whitelist allocation.
         uint256 assetsToDeposit = oldVault.previewRedeem(sharesMigrated);
+
         uint256 maxUserDeposit = newVault.maxDeposit(user);
         if (maxUserDeposit < assetsToDeposit) {
             revert UserNotEligibleForDeposit(user, assetsToDeposit, maxUserDeposit);
+        }
+
+        uint256 maxMigratorDeposit = newVault.maxDeposit(address(this));
+        if (maxMigratorDeposit < assetsToDeposit) {
+            revert MigratorNotEligibleForDeposit(address(this), assetsToDeposit, maxMigratorDeposit);
         }
 
         // Redeem from old vault into this contract, burning user's shares via allowance.

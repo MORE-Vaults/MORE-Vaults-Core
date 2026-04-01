@@ -28,6 +28,7 @@ no_match_test = "test_skip"
 
 [profile.issues]
 src = "src"
+test = "test/issues"
 out = "out"
 libs = ["lib"]
 solc = "0.8.28"
@@ -65,7 +66,12 @@ exclude = [
     "test/trace/batch-B15-harness.t.sol",
     "test/trace/batch-B16-harness.t.sol",
     "test/trace/batch-B17-harness.t.sol",
-    "test/trace/batch-B18-harness.t.sol"
+    "test/trace/batch-B18-harness.t.sol",
+    "test/trace/batch-B05-harness.t.sol",
+    "test/trace/batch-B04-harness.t.sol",
+    "test/trace/batch-B03-harness.t.sol",
+    "test/trace/batch-B02-harness.t.sol",
+    "test/trace/batch-B01-harness.t.sol"
 ]
 
 additional_compiler_profiles = [
