@@ -110,11 +110,14 @@ contract MoreVaultMigrator is Ownable {
             revert MigratorNotEligibleForDeposit(address(this), assetsToDeposit, maxMigratorDeposit);
         }
 
-        // Redeem from old vault into this contract, burning user's shares via allowance.
-        assetsReceived = oldVault.redeem(sharesMigrated, address(this), user);
+        IERC20 assetToken = IERC20(oldVault.asset());
+        uint256 expectedAssets = oldVault.previewRedeem(sharesMigrated);
+        uint256 balanceBefore = assetToken.balanceOf(address(this));
+        oldVault.redeem(sharesMigrated, address(this), user);
+        assetsReceived = assetToken.balanceOf(address(this)) - balanceBefore;
+        if (assetsReceived > expectedAssets) assetsReceived = expectedAssets;
 
         // Deposit into new vault for user.
-        IERC20 assetToken = IERC20(oldVault.asset());
         assetToken.forceApprove(address(newVault), assetsReceived);
         newSharesMinted = newVault.deposit(assetsReceived, user);
 
