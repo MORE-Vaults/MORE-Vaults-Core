@@ -3,41 +3,33 @@ pragma solidity 0.8.28;
 
 /**
  * @title Issue57WhitelistMigration
- * @notice Tests for the fix to Issue #57: finalizeMigration now pre-checks newVault.maxDeposit(user)
- *         BEFORE the redeem, emitting a clear UserNotEligibleForDeposit error when the user has no
- *         whitelist allocation in the new vault.
+ * @notice Tests for the fix to Issue #57: whitelist backdoor in MoreVaultMigrator.
  *
- * FIX LOCATION
- * ------------
- * src/periphery/MoreVaultMigrator.sol  (lines ~88-98)
+ * BACKDOOR SCENARIO (pre-fix)
+ * ---------------------------
+ * If migrator is whitelisted in newVault but user is NOT, migration would PASS.
+ * The non-whitelisted user would silently end up in a whitelisted vault.
  *
- *   uint256 assetsToDeposit = oldVault.previewRedeem(sharesMigrated);
- *   uint256 maxUserDeposit  = newVault.maxDeposit(user);
- *   if (maxUserDeposit < assetsToDeposit) {
- *       revert UserNotEligibleForDeposit(user, assetsToDeposit, maxUserDeposit);
- *   }
+ * FIX: Dual pre-check in finalizeMigration (both run BEFORE the redeem):
+ *   1. if (newVault.maxDeposit(user) < assetsToDeposit) revert UserNotEligibleForDeposit(...)
+ *   2. if (newVault.maxDeposit(address(this)) < assetsToDeposit) revert MigratorNotEligibleForDeposit(...)
  *
- * WHY BEFORE THE REDEEM
- * ---------------------
- * Placing the check before oldVault.redeem() means that if it reverts, the user's withdrawal
- * request is NOT consumed — their position in the old vault is preserved.
- *
- * REMAINING LIMITATION (BACKDOOR)
- * --------------------------------
- * The new vault's deposit() still checks msg.sender (the migrator) against the whitelist,
- * NOT the user/receiver. So even with the pre-check passing (user whitelisted), the actual
- * deposit will revert if the MIGRATOR is not whitelisted. Conversely, if only the MIGRATOR
- * is whitelisted (user is not), maxDeposit(user) == 0 so our pre-check fires first — this
- * closes the backdoor at the migrator level: a non-whitelisted user cannot have their assets
- * migrated into the new vault even if the migrator itself is whitelisted.
+ * WHY BOTH CHECKS
+ * ---------------
+ * - User check: closes the backdoor. Ensures only whitelisted users can migrate into
+ *   a whitelisted vault.
+ * - Migrator check: VaultFacet._validateCapacity uses msg.sender (= migrator) for the
+ *   actual deposit. If the migrator lacks allocation, the deposit would fail.
+ * - Both checks run BEFORE the redeem, so a revert preserves the user's withdrawal request.
  *
  * TEST SCENARIOS
  * --------------
- *  A. User NOT whitelisted, whitelist ON  → UserNotEligibleForDeposit, withdrawal request preserved
- *  B. User IS whitelisted, migrator IS whitelisted, whitelist ON → migration succeeds
- *  C. Whitelist OFF → migration succeeds regardless of whitelist entries
- *  D. Backdoor: migrator whitelisted, user NOT → pre-check fires UserNotEligibleForDeposit
- *  E. Revert does NOT consume the user's withdrawal request (safety property)
+ *  1. test_backdoor_original_bug          – demonstrates original bug; new code reverts with UserNotEligibleForDeposit
+ *  2. test_userNotWhitelisted_migratorWhitelisted_reverts   – UserNotEligibleForDeposit
+ *  3. test_userWhitelisted_migratorNotWhitelisted_reverts   – MigratorNotEligibleForDeposit
+ *  4. test_bothWhitelisted_migrationSucceeds                – both whitelisted → success
+ *  5. test_whitelistDisabled_migrationSucceeds              – whitelist off → success
+ *  6. test_failedMigration_preservesWithdrawalRequest       – revert preserves request; retry succeeds
  */
 
 import {Test, console} from "forge-std/Test.sol";
@@ -105,26 +97,77 @@ contract Issue57WhitelistMigration is Test {
     }
 
     // -------------------------------------------------------------------------
-    // Test A: User NOT whitelisted, whitelist ON → clear revert BEFORE redeem
+    // Helper: set up user request and migrator approval
     // -------------------------------------------------------------------------
-    function test_userNotWhitelisted_revertsWithClearError() public {
-        // Enable whitelist on newVault — user has NO allocation
-        MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
-
-        assertEq(
-            MoreVaultsStorageHelper.getAvailableToDeposit(newVault, user),
-            0,
-            "User should have zero whitelist allocation"
-        );
-
-        uint256 userShares = VaultFacet(oldVault).balanceOf(user);
+    function _setupUserRequest() internal returns (uint256 userShares) {
+        userShares = VaultFacet(oldVault).balanceOf(user);
         vm.startPrank(user);
         VaultFacet(oldVault).requestRedeem(userShares, user);
         IERC20(oldVault).approve(address(migrator), userShares);
         vm.stopPrank();
         vm.warp(block.timestamp + 1 days + 1);
+    }
 
-        // Compute expected assetsToDeposit so we can match the error params
+    // -------------------------------------------------------------------------
+    // Test 1: test_backdoor_original_bug
+    //
+    // Demonstrates the ORIGINAL BUG: migrator whitelisted, user NOT whitelisted.
+    // Before the fix, this would PASS — a non-whitelisted user silently entering
+    // a whitelisted vault.
+    //
+    // After the fix: reverts with UserNotEligibleForDeposit (user check fires first).
+    // -------------------------------------------------------------------------
+    function test_backdoor_original_bug() public {
+        // BUG SETUP: Enable whitelist on newVault, whitelist ONLY the migrator.
+        // The user has NO whitelist allocation.
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
+
+        // Confirm user has NO whitelist allocation
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(newVault, user),
+            0,
+            "User should have zero whitelist allocation to reproduce the bug"
+        );
+
+        uint256 userShares = _setupUserRequest();
+        uint256 expectedAssets = VaultFacet(oldVault).previewRedeem(userShares);
+
+        // PRE-FIX BEHAVIOR: this would have PASSED (backdoor).
+        // Migration succeeded because vault checks migrator (msg.sender), not user.
+        // Non-whitelisted user would silently end up in the whitelisted vault.
+        //
+        // POST-FIX BEHAVIOR: reverts with UserNotEligibleForDeposit.
+        // The user check (maxDeposit(user)) runs first and catches this case.
+        vm.prank(curator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MoreVaultMigrator.UserNotEligibleForDeposit.selector,
+                user,
+                expectedAssets,
+                uint256(0)
+            )
+        );
+        migrator.finalizeMigration(user, userShares, 0);
+
+        console.log("[Issue57-BUG] Original backdoor: migrator whitelisted, user NOT -> was PASS, now REVERTS");
+        console.log("[Issue57-BUG] UserNotEligibleForDeposit closes the backdoor");
+        console.log("[Issue57-BUG] assetsToDeposit:", expectedAssets);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 2: test_userNotWhitelisted_migratorWhitelisted_reverts
+    //
+    // Same as the backdoor scenario. After the fix, UserNotEligibleForDeposit is
+    // emitted (user check fires before migrator check).
+    // -------------------------------------------------------------------------
+    function test_userNotWhitelisted_migratorWhitelisted_reverts() public {
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
+
+        uint256 userShares = _setupUserRequest();
         uint256 expectedAssets = VaultFacet(oldVault).previewRedeem(userShares);
 
         vm.prank(curator);
@@ -138,30 +181,57 @@ contract Issue57WhitelistMigration is Test {
         );
         migrator.finalizeMigration(user, userShares, 0);
 
-        console.log("[Issue57-Fix] Test A PASSED: clear UserNotEligibleForDeposit error emitted");
-        console.log("[Issue57-Fix] assetsToDeposit:", expectedAssets);
+        console.log("[Issue57-Fix] Test 2 PASSED: user NOT whitelisted, migrator whitelisted -> UserNotEligibleForDeposit");
     }
 
     // -------------------------------------------------------------------------
-    // Test B: User IS whitelisted AND migrator IS whitelisted → migration succeeds
+    // Test 3: test_userWhitelisted_migratorNotWhitelisted_reverts
+    //
+    // User IS whitelisted, migrator is NOT. User check passes; migrator check fails.
+    // Reverts with MigratorNotEligibleForDeposit.
     // -------------------------------------------------------------------------
-    function test_userAndMigratorWhitelisted_migrationSucceeds() public {
-        // Enable whitelist on newVault
+    function test_userWhitelisted_migratorNotWhitelisted_reverts() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
+        MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, user, type(uint256).max);
 
-        // Whitelist BOTH the user and the migrator
-        // (user needs allocation for maxDeposit pre-check; migrator needs it for the actual deposit call)
+        // Confirm migrator has NO whitelist allocation
+        assertEq(
+            MoreVaultsStorageHelper.getAvailableToDeposit(newVault, address(migrator)),
+            0,
+            "Migrator should have zero whitelist allocation"
+        );
+
+        uint256 userShares = _setupUserRequest();
+        uint256 expectedAssets = VaultFacet(oldVault).previewRedeem(userShares);
+
+        vm.prank(curator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MoreVaultMigrator.MigratorNotEligibleForDeposit.selector,
+                address(migrator),
+                expectedAssets,
+                uint256(0)
+            )
+        );
+        migrator.finalizeMigration(user, userShares, 0);
+
+        console.log("[Issue57-Fix] Test 3 PASSED: user whitelisted, migrator NOT -> MigratorNotEligibleForDeposit");
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 4: test_bothWhitelisted_migrationSucceeds
+    //
+    // Both user and migrator are whitelisted. Both checks pass; migration succeeds.
+    // -------------------------------------------------------------------------
+    function test_bothWhitelisted_migrationSucceeds() public {
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
 
-        uint256 userShares = VaultFacet(oldVault).balanceOf(user);
-        vm.startPrank(user);
-        VaultFacet(oldVault).requestRedeem(userShares, user);
-        IERC20(oldVault).approve(address(migrator), userShares);
-        vm.stopPrank();
-        vm.warp(block.timestamp + 1 days + 1);
+        uint256 userShares = _setupUserRequest();
 
         vm.prank(curator);
         (uint256 sharesMigrated,, uint256 newShares) = migrator.finalizeMigration(user, userShares, 0);
@@ -170,62 +240,51 @@ contract Issue57WhitelistMigration is Test {
         assertEq(VaultFacet(newVault).balanceOf(user), newShares, "User should hold new vault shares");
         assertEq(sharesMigrated, userShares, "All shares should be migrated");
 
-        console.log("[Issue57-Fix] Test B PASSED: migration succeeded with user + migrator whitelisted");
+        console.log("[Issue57-Fix] Test 4 PASSED: both whitelisted -> migration succeeded");
         console.log("[Issue57-Fix] New shares minted:", newShares);
     }
 
     // -------------------------------------------------------------------------
-    // Test C: Whitelist OFF → migration succeeds regardless of whitelist entries
+    // Test 5: test_whitelistDisabled_migrationSucceeds
+    //
+    // Whitelist is disabled on newVault. maxDeposit returns type(uint256).max for
+    // both user and migrator, so both checks pass trivially. Migration succeeds.
     // -------------------------------------------------------------------------
-    function test_whitelistOff_migrationSucceeds() public {
-        // Whitelist disabled on newVault (default setUp state)
-        // Whitelist the migrator in newVault since deposit still uses msg.sender check
-        MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
-        MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
+    function test_whitelistDisabled_migrationSucceeds() public {
+        // Whitelist is disabled on newVault (default from setUp)
+        // No whitelist entries needed
 
-        uint256 userShares = VaultFacet(oldVault).balanceOf(user);
-        vm.startPrank(user);
-        VaultFacet(oldVault).requestRedeem(userShares, user);
-        IERC20(oldVault).approve(address(migrator), userShares);
-        vm.stopPrank();
-        vm.warp(block.timestamp + 1 days + 1);
+        uint256 userShares = _setupUserRequest();
 
         vm.prank(curator);
         (,, uint256 newShares) = migrator.finalizeMigration(user, userShares, 0);
 
         assertGt(newShares, 0, "Migration should succeed when whitelist is disabled");
-        console.log("[Issue57-Fix] Test C PASSED: migration succeeded with whitelist off");
+        assertEq(VaultFacet(newVault).balanceOf(user), newShares, "User should hold new vault shares");
+
+        console.log("[Issue57-Fix] Test 5 PASSED: whitelist disabled -> migration succeeded");
+        console.log("[Issue57-Fix] New shares minted:", newShares);
     }
 
     // -------------------------------------------------------------------------
-    // Test D: BACKDOOR CLOSED — migrator whitelisted but user NOT →
-    //         pre-check fires UserNotEligibleForDeposit (user's funds protected)
+    // Test 6: test_failedMigration_preservesWithdrawalRequest
+    //
+    // When migration fails due to user not being whitelisted, the revert happens
+    // BEFORE oldVault.redeem(), so the user's withdrawal request is preserved.
+    // After fixing the whitelist, the curator can retry and migration succeeds.
     // -------------------------------------------------------------------------
-    function test_migratorWhitelisted_userNotWhitelisted_backDoorClosed() public {
-        // Enable whitelist on newVault
+    function test_failedMigration_preservesWithdrawalRequest() public {
+        // Enable whitelist, neither user nor migrator whitelisted initially
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
 
-        // Only whitelist the MIGRATOR, NOT the user
-        MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
-        MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
+        uint256 userShares = _setupUserRequest();
 
-        // Confirm user has NO whitelist allocation → maxDeposit(user) == 0
-        assertEq(
-            MoreVaultsStorageHelper.getAvailableToDeposit(newVault, user),
-            0,
-            "User should have zero whitelist allocation"
-        );
-
-        uint256 userShares = VaultFacet(oldVault).balanceOf(user);
-        vm.startPrank(user);
-        VaultFacet(oldVault).requestRedeem(userShares, user);
-        IERC20(oldVault).approve(address(migrator), userShares);
-        vm.stopPrank();
-        vm.warp(block.timestamp + 1 days + 1);
-
+        // Capture withdrawal request state BEFORE failed migration attempt
+        (uint256 reqSharesBefore,) = VaultFacet(oldVault).getWithdrawalRequest(user);
+        uint256 balanceBefore = VaultFacet(oldVault).balanceOf(user);
         uint256 expectedAssets = VaultFacet(oldVault).previewRedeem(userShares);
 
-        // With the fix, the pre-check fires before the redeem — backdoor is CLOSED
+        // Attempt migration -- should revert with UserNotEligibleForDeposit (user check fires first)
         vm.prank(curator);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -237,62 +296,28 @@ contract Issue57WhitelistMigration is Test {
         );
         migrator.finalizeMigration(user, userShares, 0);
 
-        console.log("[Issue57-Fix] Test D PASSED: backdoor closed - migrator-whitelisted but user-not-whitelisted reverts");
-        console.log("[Issue57-Fix] UserNotEligibleForDeposit fired before redeem");
-    }
-
-    // -------------------------------------------------------------------------
-    // Test E: Revert does NOT consume the user's withdrawal request
-    //         (funds are safe — user can retry after being whitelisted)
-    // -------------------------------------------------------------------------
-    function test_revertPreservesWithdrawalRequest() public {
-        // Enable whitelist on newVault — user has NO allocation
-        MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
-
-        uint256 userShares = VaultFacet(oldVault).balanceOf(user);
-        vm.startPrank(user);
-        VaultFacet(oldVault).requestRedeem(userShares, user);
-        IERC20(oldVault).approve(address(migrator), userShares);
-        vm.stopPrank();
-        vm.warp(block.timestamp + 1 days + 1);
-
-        // Capture withdrawal request state BEFORE failed migration attempt
-        (uint256 reqSharesBefore,) = VaultFacet(oldVault).getWithdrawalRequest(user);
-        uint256 balanceBefore = VaultFacet(oldVault).balanceOf(user);
-
-        // Pre-compute expectedAssets BEFORE vm.prank to avoid consuming the prank
-        uint256 expectedAssets = VaultFacet(oldVault).previewRedeem(userShares);
-
-        // Attempt migration — should revert
-        vm.prank(curator);
-        vm.expectRevert(abi.encodeWithSelector(
-            MoreVaultMigrator.UserNotEligibleForDeposit.selector,
-            user,
-            expectedAssets,
-            uint256(0)
-        ));
-        migrator.finalizeMigration(user, userShares, 0);
-
-        // Verify withdrawal request is UNCHANGED
+        // Verify withdrawal request is UNCHANGED (pre-check fired before redeem)
         (uint256 reqSharesAfter,) = VaultFacet(oldVault).getWithdrawalRequest(user);
         uint256 balanceAfter = VaultFacet(oldVault).balanceOf(user);
 
         assertEq(reqSharesAfter, reqSharesBefore, "Withdrawal request shares must be unchanged after revert");
         assertEq(balanceAfter, balanceBefore, "User balance in old vault must be unchanged after revert");
 
-        // Now whitelist the user AND migrator, retry — should succeed
+        // Fix: whitelist BOTH the user and the migrator
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
 
+        // Retry -- should succeed
         vm.prank(curator);
         (,, uint256 newShares) = migrator.finalizeMigration(user, userShares, 0);
 
-        assertGt(newShares, 0, "Migration should succeed after user is whitelisted");
+        assertGt(newShares, 0, "Migration should succeed after both are whitelisted");
+        assertEq(VaultFacet(newVault).balanceOf(user), newShares, "User should hold new shares");
 
-        console.log("[Issue57-Fix] Test E PASSED: withdrawal request preserved after failed migration");
-        console.log("[Issue57-Fix] User successfully retried after being whitelisted");
+        console.log("[Issue57-Fix] Test 6 PASSED: withdrawal request preserved after failed migration");
+        console.log("[Issue57-Fix] Curator successfully retried after whitelisting both user and migrator");
         console.log("[Issue57-Fix] New shares after retry:", newShares);
     }
 
