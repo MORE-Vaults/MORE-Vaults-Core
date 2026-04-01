@@ -26,6 +26,48 @@ remappings = [
 
 no_match_test = "test_skip"
 
+[profile.issues]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc = "0.8.28"
+viaIR = true
+fs_permissions = [{ access = "read-write", path = "./"}]
+allow_internal_expect_revert = true
+optimizer = true
+optimizer_runs = 10000
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+    "@uniswap-v2/v2-periphery/=lib/v2-periphery/contracts/",
+    "@solady/src/=lib/solady/src/",
+    "forge-std/=lib/forge-std/src/",
+    "@layerzerolabs/oapp-evm/=lib/devtools/packages/oapp-evm/",
+    "@layerzerolabs/oft-evm/=lib/devtools/packages/oft-evm/",
+    "@layerzerolabs/oapp-evm-upgradeable/=lib/devtools/packages/oapp-evm-upgradeable/",
+    "@layerzerolabs/lz-evm-oapp-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/oapp/",
+    '@layerzerolabs/lz-evm-protocol-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/protocol/',
+    '@layerzerolabs/lz-evm-messagelib-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/messagelib/',
+    'solidity-bytes-utils/=lib/solidity-bytes-utils/'
+]
+no_match_test = "test_skip"
+exclude = [
+    "test/bounty-poc/TR-H05-LockTokens-ZeroAddress-Lock.t.sol",
+    "test/trace/batch-B06-harness.t.sol",
+    "test/trace/batch-B07-harness.t.sol",
+    "test/trace/batch-B08-harness.t.sol",
+    "test/trace/batch-B09-harness.t.sol",
+    "test/trace/batch-B10-harness.t.sol",
+    "test/trace/batch-B11-harness.t.sol",
+    "test/trace/batch-B12-harness.t.sol",
+    "test/trace/batch-B13-harness.t.sol",
+    "test/trace/batch-B14-harness.t.sol",
+    "test/trace/batch-B15-harness.t.sol",
+    "test/trace/batch-B16-harness.t.sol",
+    "test/trace/batch-B17-harness.t.sol",
+    "test/trace/batch-B18-harness.t.sol"
+]
+
 additional_compiler_profiles = [
     { name = "big_contracts", optimizer_runs = 900, via_ir = true, optimizer = true },
 ]
