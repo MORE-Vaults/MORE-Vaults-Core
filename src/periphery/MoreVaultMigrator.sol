@@ -48,6 +48,7 @@ contract MoreVaultMigrator is Ownable {
         oldVault = IVaultFacet(_oldVault);
         newVault = IVaultFacet(_newVault);
         curator = _curator;
+        emit CuratorSet(address(0), _curator);
 
         address oldAsset = oldVault.asset();
         address newAsset = newVault.asset();
