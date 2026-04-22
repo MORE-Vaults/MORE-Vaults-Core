@@ -34,6 +34,8 @@ interface IStakingFacet is IGenericMoreVaultFacetInitializable {
     // -------------------------------------------------------------------------
     error UnauthorizedCOA();
     error ZeroAmount();
+    error WithdrawalAlreadyPending();
+    error NoPendingWithdrawal();
 
     // -------------------------------------------------------------------------
     // Events
@@ -41,6 +43,7 @@ interface IStakingFacet is IGenericMoreVaultFacetInitializable {
     event StakedBalanceUpdated(uint256 previousBalance, uint256 newBalance);
     event DepositEnqueued(address indexed sender, uint256 amount);
     event DepositBridged(uint256 amount);
+    event WithdrawalRequested(address indexed user, uint256 amount, uint64 requestedAt);
     event WithdrawalSettled(address indexed user, uint256 amount);
 
     // -------------------------------------------------------------------------
@@ -102,4 +105,39 @@ interface IStakingFacet is IGenericMoreVaultFacetInitializable {
      *         `ds.lockedTokens[wrappedNative]` immediately.
      */
     function enqueueDeposit() external payable;
+
+    /**
+     * @notice Registers a user-initiated unstake request.
+     * @dev    Called by the user (or the vault on the user's behalf) AFTER the
+     *         corresponding moreFLOW shares have been burned via the vault's
+     *         redeem flow. The COA listens for `WithdrawalRequested` events and
+     *         relays each request to Cadence to start the 7-14 day unbonding
+     *         window. During unbonding `totalStakedInCadence` still includes
+     *         this amount, so `totalAssets()` remains stable — shares are gone
+     *         but the asset is still in transit, conservation preserved.
+     *
+     *         The request lifecycle:
+     *           1. user calls requestUnstake(amount) → req.pending = true
+     *           2. COA observes event, initiates Cadence unstake
+     *           3. unbonding window elapses (7-14 days)
+     *           4. COA calls settleWithdrawal(user, amount) → req.pending = false
+     *
+     *         Only one pending request per user. The vault's redeem flow is
+     *         expected to call this once per user redeem; if a user wants to
+     *         redeem again before settlement they must wait.
+     * @param amount FLOW amount to unstake (matches the value of the shares burned).
+     */
+    function requestUnstake(uint256 amount) external;
+
+    /**
+     * @notice Returns the pending withdrawal state for a user.
+     * @param user The user to query.
+     * @return amount      FLOW amount in transit (0 if no request).
+     * @return requestedAt Unix timestamp of when the request was registered.
+     * @return pending     True if a withdrawal is awaiting settlement.
+     */
+    function withdrawalRequest(address user)
+        external
+        view
+        returns (uint256 amount, uint64 requestedAt, bool pending);
 }
