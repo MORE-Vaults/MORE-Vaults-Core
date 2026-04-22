@@ -185,15 +185,21 @@ contract StakingFacet is IStakingFacet, BaseFacetInitializer {
      * @notice Settle a completed withdrawal: FLOW arrived on EVM, reduce staked.
      * @dev    selfbalance() rises (FLOW received) and totalStakedInCadence drops.
      *         Net totalAssets change = zero. moreFLOW already burned at redeem.
+     *         Reverts if there is no pending request for `user`, which prevents
+     *         the COA from settling the same request twice or settling without
+     *         a corresponding `requestUnstake`.
      */
     function settleWithdrawal(address user, uint256 amount) external onlyCOA {
         if (amount == 0) revert ZeroAmount();
 
         StakingStorage.Layout storage sl = StakingStorage.layout();
-        sl.totalStakedInCadence -= amount;
-
         StakingStorage.WithdrawalRequest storage req = sl.withdrawalRequests[user];
-        req.pending = false;
+        if (!req.pending) revert NoPendingWithdrawal();
+
+        sl.totalStakedInCadence -= amount;
+        sl.withdrawalPending -= amount;
+
+        delete sl.withdrawalRequests[user];
 
         emit WithdrawalSettled(user, amount);
     }
@@ -215,5 +221,40 @@ contract StakingFacet is IStakingFacet, BaseFacetInitializer {
         sl.pendingDepositsLocked += msg.value;
 
         emit DepositEnqueued(msg.sender, msg.value);
+    }
+
+    /**
+     * @notice Register an unstake request for the caller. See IStakingFacet.
+     * @dev    Pure storage write — no external calls, no asset movement. The
+     *         actual share burn must happen separately via the vault redeem
+     *         flow before this is invoked; this function only stamps the
+     *         intent so the COA can pick it up off-chain.
+     * @param amount FLOW amount to unstake.
+     */
+    function requestUnstake(uint256 amount) external {
+        if (amount == 0) revert ZeroAmount();
+
+        StakingStorage.Layout storage sl = StakingStorage.layout();
+        StakingStorage.WithdrawalRequest storage req = sl.withdrawalRequests[msg.sender];
+        if (req.pending) revert WithdrawalAlreadyPending();
+
+        req.amount = amount;
+        req.requestedAt = uint64(block.timestamp);
+        req.pending = true;
+        sl.withdrawalPending += amount;
+
+        emit WithdrawalRequested(msg.sender, amount, uint64(block.timestamp));
+    }
+
+    /**
+     * @notice View accessor for the per-user withdrawal request.
+     */
+    function withdrawalRequest(address user)
+        external
+        view
+        returns (uint256 amount, uint64 requestedAt, bool pending)
+    {
+        StakingStorage.WithdrawalRequest storage req = StakingStorage.layout().withdrawalRequests[user];
+        return (req.amount, req.requestedAt, req.pending);
     }
 }
