@@ -830,6 +830,7 @@ contract MoreVaultsComposerTest is Test {
         address router = address(1002);
         MoreVaultsStorageHelper.setMoreVaultsRegistry(address(vault), registry);
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(0)));
         deal(user, 10 ether);
         vm.startPrank(user);
         otherToken.approve(address(composer), 1000e18);

@@ -9,6 +9,7 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
     mapping(address => bool) public allowedBridges;
     address public defaultCrossChainAccountingManager;
     address public router;
+    address public migrator;
     address public escrow;
     function setDefaultCrossChainAccountingManager(address manager) external {
         defaultCrossChainAccountingManager = manager;
@@ -98,6 +99,10 @@ contract MockMoreVaultsRegistry is IMoreVaultsRegistry {
 
     function setRouter(address _router) external {
         router = _router;
+    }
+
+    function setMigrator(address _migrator) external {
+        migrator = _migrator;
     }
 
     function setEscrow(address _escrow) external {

@@ -695,13 +695,14 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
 
         if (_isERC4626Compatible(ds)) {
-            // ERC4626-compatible: transfer assets into the vault.
-            // In cross-chain finalization mode, assets are held by escrow, but caller remains the user/initiator
-            // for caps/whitelist and events.
+            // Escrow holds assets in cross-chain finalization; router/migrator hold assets when
+            // caller was remapped to receiver (caller != _msgSender()).
             address payer = caller;
             address escrow_ = MoreVaultsLib._getEscrow();
             if (ds.finalizationGuid != 0 && escrow_ != address(0)) {
                 payer = escrow_;
+            } else if (caller != _msgSender()) {
+                payer = _msgSender();
             }
             SafeERC20.safeTransferFrom(IERC20(asset()), payer, address(this), assets);
         }
@@ -730,13 +731,14 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
     ) internal {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         if (_isERC4626Compatible(ds)) {
-            // ERC4626-compatible: transfer assets into the vault.
-            // In cross-chain finalization mode, assets are held by escrow, but caller remains the user/initiator
-            // for caps/whitelist and events.
+            // Escrow holds assets in cross-chain finalization; router/migrator hold assets when
+            // caller was remapped to receiver (caller != _msgSender()).
             address payer = caller;
             address escrow_ = MoreVaultsLib._getEscrow();
             if (ds.finalizationGuid != 0 && escrow_ != address(0)) {
                 payer = escrow_;
+            } else if (caller != _msgSender()) {
+                payer = _msgSender();
             }
             for (uint256 i; i < assets.length;) {
                 SafeERC20.safeTransferFrom(IERC20(tokens[i]), payer, address(this), assets[i]);
@@ -1057,6 +1059,9 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
             if (isDeposit) {
                 AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
                 if (msgSender_ == IMoreVaultsRegistry(acs.moreVaultsRegistry).router()) {
+                    msgSender_ = receiver;
+                }
+                if (msgSender_ == IMoreVaultsRegistry(acs.moreVaultsRegistry).migrator()) {
                     msgSender_ = receiver;
                 }
             }

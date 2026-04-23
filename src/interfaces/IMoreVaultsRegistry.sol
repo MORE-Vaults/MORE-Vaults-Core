@@ -86,6 +86,13 @@ interface IMoreVaultsRegistry {
      * @param router Address of the router
      */
     event RouterSet(address indexed router);
+
+    /**
+     * @dev Emitted when migrator is set
+     * @param migrator Address of the migrator
+     */
+    event MigratorSet(address indexed migrator);
+
     /// @notice Emitted when protocol-wide escrow is set
     event EscrowSet(address indexed escrow);
 
@@ -94,6 +101,18 @@ interface IMoreVaultsRegistry {
      * @return address Router address
      */
     function router() external view returns (address);
+
+    /**
+     * @notice Get migrator address
+     * @return address Migrator address
+     */
+    function migrator() external view returns (address);
+
+    /**
+     * @notice Set migrator address
+     * @param migrator Address of the migrator
+     */
+    function setMigrator(address migrator) external;
 
     /**
      * @notice Returns protocol-wide escrow address

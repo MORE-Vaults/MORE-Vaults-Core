@@ -110,6 +110,7 @@ contract VaultFacetTest is Test {
             abi.encode(false)
         );
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector), abi.encode(address(escrow)));
 
         // Mint some assets to user for testing
@@ -3757,11 +3758,20 @@ contract VaultFacetTest is Test {
         uint256 depositAmount = 1000 ether;
         MockERC20(asset).mint(routerAddress, depositAmount);
 
-        // Deposit through router
+        uint256 routerBalanceBefore = IERC20(asset).balanceOf(routerAddress);
+        uint256 receiverBalanceBefore = IERC20(asset).balanceOf(receiver);
+        uint256 vaultBalanceBefore = IERC20(asset).balanceOf(facet);
+
+        // Deposit through router (router holds assets, approves vault, calls deposit with receiver)
         vm.startPrank(routerAddress);
         IERC20(asset).approve(facet, depositAmount);
         VaultFacet(facet).deposit(depositAmount, receiver);
         vm.stopPrank();
+
+        // Verify token flow: router's tokens move to vault, receiver's balance untouched
+        assertEq(IERC20(asset).balanceOf(routerAddress), routerBalanceBefore - depositAmount, "Router should send assets");
+        assertEq(IERC20(asset).balanceOf(receiver), receiverBalanceBefore, "Receiver balance must not change");
+        assertEq(IERC20(asset).balanceOf(facet), vaultBalanceBefore + depositAmount, "Vault should receive assets");
 
         // Check that deposit cap was updated for receiver, not router
         uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
@@ -3796,11 +3806,20 @@ contract VaultFacetTest is Test {
         uint256 depositAmount = VaultFacet(facet).previewMint(sharesToMint);
         MockERC20(asset).mint(routerAddress, depositAmount);
 
-        // Mint through router
+        uint256 routerBalanceBefore = IERC20(asset).balanceOf(routerAddress);
+        uint256 receiverBalanceBefore = IERC20(asset).balanceOf(receiver);
+        uint256 vaultBalanceBefore = IERC20(asset).balanceOf(facet);
+
+        // Mint through router (router holds assets, approves vault, calls mint with receiver)
         vm.startPrank(routerAddress);
         IERC20(asset).approve(facet, depositAmount);
         VaultFacet(facet).mint(sharesToMint, receiver);
         vm.stopPrank();
+
+        // Verify token flow: router's tokens move to vault, receiver's balance untouched
+        assertEq(IERC20(asset).balanceOf(routerAddress), routerBalanceBefore - depositAmount, "Router should send assets");
+        assertEq(IERC20(asset).balanceOf(receiver), receiverBalanceBefore, "Receiver balance must not change");
+        assertEq(IERC20(asset).balanceOf(facet), vaultBalanceBefore + depositAmount, "Vault should receive assets");
 
         // Check that deposit cap was updated for receiver, not router
         uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
@@ -3808,6 +3827,104 @@ contract VaultFacetTest is Test {
 
         assertEq(receiverCap, 10_000 ether - depositAmount, "Receiver cap should be decreased");
         assertEq(routerCap, 0, "Router cap should not be changed");
+    }
+
+    /**
+     * @notice Test deposit through migrator - deposit cap should be updated for receiver, not migrator
+     */
+    function test_deposit_through_migrator_cap_updated_for_receiver() public {
+        address migratorAddress = address(0x030303);
+        address receiver = user;
+
+        // Set router in registry (keep router mock intact)
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        // Set migrator in registry
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(migratorAddress));
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, receiver, 10_000 ether);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 depositAmount = 1000 ether;
+        MockERC20(asset).mint(migratorAddress, depositAmount);
+
+        uint256 migratorBalanceBefore = IERC20(asset).balanceOf(migratorAddress);
+        uint256 receiverBalanceBefore = IERC20(asset).balanceOf(receiver);
+        uint256 vaultBalanceBefore = IERC20(asset).balanceOf(facet);
+
+        // Deposit through migrator
+        vm.startPrank(migratorAddress);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).deposit(depositAmount, receiver);
+        vm.stopPrank();
+
+        // Verify token flow: migrator's tokens move to vault, receiver's balance untouched
+        assertEq(IERC20(asset).balanceOf(migratorAddress), migratorBalanceBefore - depositAmount, "Migrator should send assets");
+        assertEq(IERC20(asset).balanceOf(receiver), receiverBalanceBefore, "Receiver balance must not change");
+        assertEq(IERC20(asset).balanceOf(facet), vaultBalanceBefore + depositAmount, "Vault should receive assets");
+
+        // Check that deposit cap was updated for receiver, not migrator
+        uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
+        uint256 migratorCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, migratorAddress);
+
+        assertLt(receiverCap, 10_000 ether, "Receiver cap should be decreased");
+        assertEq(migratorCap, 0, "Migrator cap should not be changed");
+        assertEq(receiverCap, 10_000 ether - depositAmount, "Receiver cap should be decreased by deposit amount");
+    }
+
+    /**
+     * @notice Test mint through migrator - deposit cap should be updated for receiver, not migrator
+     */
+    function test_mint_through_migrator_cap_updated_for_receiver() public {
+        address migratorAddress = address(0x030303);
+        address receiver = user;
+
+        // Set router in registry (keep router mock intact)
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        // Set migrator in registry
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(migratorAddress));
+
+        // Enable whitelist
+        MoreVaultsStorageHelper.setIsWhitelistEnabled(facet, true);
+        MoreVaultsStorageHelper.setDepositWhitelist(facet, receiver, 10_000 ether);
+
+        // Mock protocol fee info
+        vm.mockCall(registry, abi.encodeWithSignature("protocolFeeInfo(address)"), abi.encode(address(0), 0));
+        uint32[] memory eids = new uint32[](0);
+        address[] memory vaults = new address[](0);
+        vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.hubToSpokes.selector), abi.encode(eids, vaults));
+
+        uint256 sharesToMint = 1000 ether;
+        uint256 depositAmount = VaultFacet(facet).previewMint(sharesToMint);
+        MockERC20(asset).mint(migratorAddress, depositAmount);
+
+        uint256 migratorBalanceBefore = IERC20(asset).balanceOf(migratorAddress);
+        uint256 receiverBalanceBefore = IERC20(asset).balanceOf(receiver);
+        uint256 vaultBalanceBefore = IERC20(asset).balanceOf(facet);
+
+        // Mint through migrator
+        vm.startPrank(migratorAddress);
+        IERC20(asset).approve(facet, depositAmount);
+        VaultFacet(facet).mint(sharesToMint, receiver);
+        vm.stopPrank();
+
+        // Verify token flow: migrator's tokens move to vault, receiver's balance untouched
+        assertEq(IERC20(asset).balanceOf(migratorAddress), migratorBalanceBefore - depositAmount, "Migrator should send assets");
+        assertEq(IERC20(asset).balanceOf(receiver), receiverBalanceBefore, "Receiver balance must not change");
+        assertEq(IERC20(asset).balanceOf(facet), vaultBalanceBefore + depositAmount, "Vault should receive assets");
+
+        // Check that deposit cap was updated for receiver, not migrator
+        uint256 receiverCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, receiver);
+        uint256 migratorCap = MoreVaultsStorageHelper.getAvailableToDeposit(facet, migratorAddress);
+
+        assertEq(receiverCap, 10_000 ether - depositAmount, "Receiver cap should be decreased");
+        assertEq(migratorCap, 0, "Migrator cap should not be changed");
     }
 
     /**

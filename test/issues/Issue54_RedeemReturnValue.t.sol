@@ -52,6 +52,7 @@ contract Issue54_RedeemReturnValue is Test {
         escrowNew.setUnderlyingToken(newVault, address(asset));
 
         migrator = new MoreVaultMigrator(oldVault, newVault, owner, curator);
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(migrator)));
 
         asset.mint(user, DEPOSIT_AMOUNT);
         vm.startPrank(user);
@@ -154,6 +155,7 @@ contract Issue54_RedeemReturnValue is Test {
         );
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.protocolFeeInfo.selector), abi.encode(address(0), uint96(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector), abi.encode(address(escrow)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector), abi.encode(true));
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.localEid.selector), abi.encode(uint32(block.chainid)));

@@ -15,10 +15,17 @@ import {MoreVaultMigrator} from "../../src/periphery/MoreVaultMigrator.sol";
 
 // Issue #57: whitelist backdoor in MoreVaultMigrator.
 //
-// Bug: VaultFacet._validateCapacity checks msg.sender (migrator), not the receiver (user).
-// If only the migrator was whitelisted, a non-whitelisted user could be migrated into
-// a whitelisted vault. Fix adds dual pre-checks before the redeem: maxDeposit(user)
-// and maxDeposit(migrator), both running before any shares are burned.
+// Root bug: VaultFacet._validateCapacity checked msg.sender (migrator), not receiver (user).
+// A non-whitelisted user could be migrated into a whitelisted vault if the migrator was whitelisted.
+//
+// Fix (two-layer):
+//   1. MoreVaultMigrator.finalizeMigration: pre-check maxDeposit(user) before redeem.
+//   2. VaultFacet: when msg.sender == registry.migrator(), remap msgSender_ → receiver (user)
+//      so _validateCapacity and _changeDepositCap operate on the user's quota.
+//      The actual token payer remains the migrator contract (caller != _msgSender() branch).
+//
+// Consequence of the fix: the migrator no longer needs its own whitelist allocation.
+// Only the user's quota is checked and consumed during the deposit.
 contract Issue57WhitelistMigration is Test {
     address owner    = address(0xA11CE);
     address curator  = address(0xC0FFEE);
@@ -54,6 +61,9 @@ contract Issue57WhitelistMigration is Test {
 
         migrator = new MoreVaultMigrator(oldVault, newVault, owner, curator);
 
+        // Critical: tell the vault who the registered migrator is so remap activates.
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(migrator)));
+
         asset.mint(user, DEPOSIT_AMOUNT);
         vm.startPrank(user);
         IERC20(address(asset)).approve(oldVault, type(uint256).max);
@@ -71,9 +81,8 @@ contract Issue57WhitelistMigration is Test {
         vm.warp(block.timestamp + 1 days + 1);
     }
 
-    // Original bug: migrator whitelisted, user NOT → migration used to pass.
-    // Vault checks msg.sender (migrator) on deposit, not the receiver (user).
-    // Fix: UserNotEligibleForDeposit fires before the redeem.
+    // Original bug scenario: migrator whitelisted, user NOT.
+    // Fix (pre-check): UserNotEligibleForDeposit fires before any redeem.
     function test_backdoor_original_bug() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
@@ -92,6 +101,7 @@ contract Issue57WhitelistMigration is Test {
         migrator.finalizeMigration(user, userShares, 0);
     }
 
+    // User not whitelisted, migrator whitelisted → pre-check blocks it before redeem.
     function test_userNotWhitelisted_migratorWhitelisted_reverts() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
@@ -110,24 +120,29 @@ contract Issue57WhitelistMigration is Test {
         migrator.finalizeMigration(user, userShares, 0);
     }
 
-    function test_userWhitelisted_migratorNotWhitelisted_reverts() public {
+    // User whitelisted, migrator NOT whitelisted → migration SUCCEEDS.
+    // After the fix, VaultFacet remaps msg.sender → receiver (user) for whitelist/cap checks,
+    // so the migrator no longer needs its own whitelist allocation.
+    function test_userWhitelisted_migratorNotWhitelisted_succeeds() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, user, type(uint256).max);
+        // Migrator intentionally NOT whitelisted.
 
         uint256 userShares = _setupUserRequest();
-        uint256 expectedAssets = VaultFacet(oldVault).previewRedeem(userShares);
 
         vm.prank(curator);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MoreVaultMigrator.MigratorNotEligibleForDeposit.selector,
-                address(migrator), expectedAssets, uint256(0)
-            )
-        );
-        migrator.finalizeMigration(user, userShares, 0);
+        (uint256 sharesMigrated,, uint256 newShares) = migrator.finalizeMigration(user, userShares, 0);
+
+        assertGt(newShares, 0, "migration must succeed");
+        assertEq(VaultFacet(newVault).balanceOf(user), newShares, "user receives shares");
+        assertEq(sharesMigrated, userShares, "all shares migrated");
+
+        // Verify token flow: migrator paid, not the user.
+        assertEq(IERC20(address(asset)).balanceOf(address(migrator)), 0, "migrator balance should be zero after deposit");
     }
 
+    // Both whitelisted still works (migrator whitelist is now irrelevant but harmless).
     function test_bothWhitelisted_migrationSucceeds() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
@@ -145,6 +160,7 @@ contract Issue57WhitelistMigration is Test {
         assertEq(sharesMigrated, userShares);
     }
 
+    // No whitelist → always works.
     function test_whitelistDisabled_migrationSucceeds() public {
         uint256 userShares = _setupUserRequest();
 
@@ -155,7 +171,8 @@ contract Issue57WhitelistMigration is Test {
         assertEq(VaultFacet(newVault).balanceOf(user), newShares);
     }
 
-    // Revert fires before redeem — withdrawal request must be intact for retry.
+    // Pre-check revert fires before redeem — withdrawal request must be intact for retry.
+    // Retry only needs user to be whitelisted (migrator whitelist no longer required).
     function test_failedMigration_preservesWithdrawalRequest() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
 
@@ -174,18 +191,16 @@ contract Issue57WhitelistMigration is Test {
         migrator.finalizeMigration(user, userShares, 0);
 
         (uint256 reqSharesAfter,) = VaultFacet(oldVault).getWithdrawalRequest(user);
-        assertEq(reqSharesAfter, reqSharesBefore);
-        assertEq(VaultFacet(oldVault).balanceOf(user), balanceBefore);
+        assertEq(reqSharesAfter, reqSharesBefore, "withdrawal request must be intact");
+        assertEq(VaultFacet(oldVault).balanceOf(user), balanceBefore, "shares must be intact");
 
-        // Whitelist both and retry
+        // Retry: only whitelist user — migrator whitelist not required.
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, user, type(uint256).max);
-        MoreVaultsStorageHelper.setDepositWhitelist(newVault, address(migrator), type(uint256).max);
-        MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, address(migrator), type(uint256).max);
 
         vm.prank(curator);
         (,, uint256 newShares) = migrator.finalizeMigration(user, userShares, 0);
-        assertGt(newShares, 0);
+        assertGt(newShares, 0, "retry must succeed with only user whitelisted");
     }
 
     function _deployVault(MockMoreVaultsEscrow escrow) internal returns (address vault) {
@@ -204,6 +219,7 @@ contract Issue57WhitelistMigration is Test {
         );
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.protocolFeeInfo.selector), abi.encode(address(0), uint96(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector), abi.encode(address(escrow)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector), abi.encode(true));
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.localEid.selector), abi.encode(uint32(block.chainid)));

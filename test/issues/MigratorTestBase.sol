@@ -79,6 +79,11 @@ abstract contract MigratorTestBase is Test {
         );
         vm.mockCall(
             registry,
+            abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector),
+            abi.encode(address(0))
+        );
+        vm.mockCall(
+            registry,
             abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector),
             abi.encode(address(_escrow))
         );

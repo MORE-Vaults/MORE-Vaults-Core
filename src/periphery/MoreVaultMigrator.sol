@@ -21,7 +21,6 @@ contract MoreVaultMigrator is Ownable {
     error AssetMismatch(address oldAsset, address newAsset);
     error NothingToMigrate();
     error SlippageExceeded(uint256 actualShares, uint256 minShares);
-    error MigratorNotEligibleForDeposit(address migrator, uint256 assetsToDeposit, uint256 maxAllowed);
     error UserNotEligibleForDeposit(address user, uint256 assetsToDeposit, uint256 maxAllowed);
 
     event CuratorSet(address indexed previousCurator, address indexed newCurator);
@@ -87,27 +86,14 @@ contract MoreVaultMigrator is Ownable {
         sharesMigrated = _min4(target, reqShares, allowanceShares, balanceShares);
         if (sharesMigrated == 0) revert NothingToMigrate();
 
-        // Pre-checks BEFORE redeem: verify both the user and this migrator are eligible to deposit
-        // into the new vault. Both checks run before any shares are burned, so a revert here
-        // preserves the user's withdrawal request on the old vault.
-        //
-        // Hub vaults are always ERC4626-compatible; maxDeposit never reverts for them.
-        //
-        // Check order:
-        //   1. User check: closes the backdoor where a non-whitelisted user could end up in a
-        //      whitelisted vault simply because the migrator was whitelisted.
-        //   2. Migrator check: VaultFacet._validateCapacity uses msg.sender (= this contract) for
-        //      the actual deposit, so the migrator must also have sufficient whitelist allocation.
+        // Pre-check before redeem so a revert leaves the withdrawal request intact for retry.
+        // VaultFacet remaps msg.sender → receiver for whitelist/cap when caller is the migrator,
+        // so only the user's quota matters here.
         uint256 assetsToDeposit = oldVault.previewRedeem(sharesMigrated);
 
         uint256 maxUserDeposit = newVault.maxDeposit(user);
         if (maxUserDeposit < assetsToDeposit) {
             revert UserNotEligibleForDeposit(user, assetsToDeposit, maxUserDeposit);
-        }
-
-        uint256 maxMigratorDeposit = newVault.maxDeposit(address(this));
-        if (maxMigratorDeposit < assetsToDeposit) {
-            revert MigratorNotEligibleForDeposit(address(this), assetsToDeposit, maxMigratorDeposit);
         }
 
         IERC20 assetToken = IERC20(oldVault.asset());

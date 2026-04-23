@@ -47,6 +47,9 @@ contract Issue57_WhitelistMigratorCheck is Test {
         escrowNew.setUnderlyingToken(newVault, address(asset));
         migrator = new MoreVaultMigrator(oldVault, newVault, owner, curator);
 
+        // Override the migrator mock now that we know the address.
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(migrator)));
+
         asset.mint(user, DEPOSIT_AMOUNT);
         vm.startPrank(user);
         IERC20(address(asset)).approve(oldVault, type(uint256).max);
@@ -55,13 +58,15 @@ contract Issue57_WhitelistMigratorCheck is Test {
         vm.stopPrank();
     }
 
-    // User whitelisted, migrator NOT → reverts because deposit checks msg.sender (migrator).
-    function test_userWhitelisted_migratorNot_migrationReverts() public {
+    // User whitelisted, migrator NOT → migration SUCCEEDS after fix.
+    // VaultFacet remaps msg.sender → receiver (user) for whitelist/cap checks when the
+    // registered migrator is calling, so the migrator needs no whitelist allocation.
+    function test_userWhitelisted_migratorNot_migrationSucceeds() public {
         MoreVaultsStorageHelper.setIsWhitelistEnabled(newVault, true);
         MoreVaultsStorageHelper.setDepositWhitelist(newVault, user, type(uint256).max);
         MoreVaultsStorageHelper.setInitialDepositCapPerUser(newVault, user, type(uint256).max);
 
-        assertEq(MoreVaultsStorageHelper.getAvailableToDeposit(newVault, address(migrator)), 0);
+        assertEq(MoreVaultsStorageHelper.getAvailableToDeposit(newVault, address(migrator)), 0, "migrator has no quota");
 
         uint256 userShares = VaultFacet(oldVault).balanceOf(user);
         vm.startPrank(user);
@@ -71,8 +76,11 @@ contract Issue57_WhitelistMigratorCheck is Test {
         vm.warp(block.timestamp + 1 days + 1);
 
         vm.prank(curator);
-        vm.expectRevert();
-        migrator.finalizeMigration(user, userShares, 0);
+        (,, uint256 newShares) = migrator.finalizeMigration(user, userShares, 0);
+
+        assertGt(newShares, 0, "user receives shares");
+        assertEq(VaultFacet(newVault).balanceOf(user), newShares, "user owns the shares");
+        assertEq(MoreVaultsStorageHelper.getAvailableToDeposit(newVault, address(migrator)), 0, "migrator quota still zero");
     }
 
     // Migrator whitelisted, user NOT → reverts with UserNotEligibleForDeposit (dual-check fix).
@@ -131,6 +139,7 @@ contract Issue57_WhitelistMigratorCheck is Test {
         vm.mockCall(oReg, abi.encodeWithSelector(IOracleRegistry.getOracleInfo.selector, address(asset)), abi.encode(address(0x9000), uint96(1 hours)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.protocolFeeInfo.selector), abi.encode(address(0), uint96(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.router.selector), abi.encode(router));
+        vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.migrator.selector), abi.encode(address(0)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.escrow.selector), abi.encode(address(escrow)));
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isWhitelisted.selector), abi.encode(true));
         vm.mockCall(factory, abi.encodeWithSelector(IVaultsFactory.localEid.selector), abi.encode(uint32(block.chainid)));
