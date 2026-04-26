@@ -35,6 +35,13 @@ compilation_restrictions = [
     { paths = "src/factory/VaultsFactory.sol", optimizer_runs = 900 },
 ]
 
+[profile.unit]
+src = "src"
+test = "test/unit"
+out = "out"
+libs = ["lib"]
+solc = "0.8.28"
+
 [rpc_endpoints]
 flow_testnet = "${FLOW_TESTNET_RPC_URL}"
 

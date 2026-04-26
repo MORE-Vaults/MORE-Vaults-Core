@@ -427,9 +427,15 @@ contract LzAdapter is IBridgeAdapter, OAppRead, OAppOptionsType3, Pausable, Reen
         // Validate OFT token is trusted
         if (!_trustedOFTs[oftTokenAddress]) revert UntrustedOFT();
 
+        if (dstVaultAddress == address(0)) revert ZeroAddress();
+
         if (!IConfigurationFacet(msg.sender).isHub()) {
             (uint32 hubEid, address hubVault) = vaultsFactory.spokeToHub(vaultsFactory.localEid(), msg.sender);
-            if (lzEid != hubEid || dstVaultAddress != hubVault) {
+            // Allow spoke → hub (original) or spoke → sibling spoke (new).
+            // Short-circuit: isSpokeOfHub is only called when dest is not the hub itself.
+            // Factory propagates co-spoke registrations via MSG_TYPE_SPOKE_ADDED so isSpokeOfHub is authoritative.
+            bool destIsHub = (lzEid == hubEid && dstVaultAddress == hubVault);
+            if (!destIsHub && !vaultsFactory.isSpokeOfHub(hubEid, hubVault, lzEid, dstVaultAddress)) {
                 revert InvalidReceiver(lzEid, dstVaultAddress);
             }
         } else {
