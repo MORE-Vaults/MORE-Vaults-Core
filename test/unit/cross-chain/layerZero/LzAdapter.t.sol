@@ -195,6 +195,10 @@ contract MockVaultsFactory {
     mapping(address => uint32)  private _spokeToHubEid;
     mapping(address => address) private _spokeToHubVault;
 
+    // isSpokeOfHub tuple overrides: when set, take precedence over the global flag.
+    mapping(bytes32 => bool) private _spokeOfHubResult;
+    mapping(bytes32 => bool) private _spokeOfHubSet;
+
     function setVault(address vault, bool isValidVault) external {
         _vaults[vault] = isValidVault;
     }
@@ -204,8 +208,15 @@ contract MockVaultsFactory {
     }
 
     // Rejects address(0) as a spoke vault — mirrors production factory behaviour.
-    function isSpokeOfHub(uint32, address, uint32, address _spokeVault) external view returns (bool) {
-        if (_spokeVault == address(0)) return false;
+    // Tuple-specific results registered via setSpokeOfHub take precedence over _isSpokeOfHub.
+    function isSpokeOfHub(uint32 hubEid, address hubVault, uint32 dstEid, address dstVault)
+        external
+        view
+        returns (bool)
+    {
+        if (dstVault == address(0)) return false;
+        bytes32 k = keccak256(abi.encodePacked(hubEid, hubVault, dstEid, dstVault));
+        if (_spokeOfHubSet[k]) return _spokeOfHubResult[k];
         return _isSpokeOfHub;
     }
 
@@ -219,6 +230,14 @@ contract MockVaultsFactory {
 
     function setIsSpokeOfHub(bool isSpokeOfHub_) external {
         _isSpokeOfHub = isSpokeOfHub_;
+    }
+
+    function setSpokeOfHub(uint32 hubEid, address hubVault, uint32 dstEid, address dstVault, bool result)
+        external
+    {
+        bytes32 k = keccak256(abi.encodePacked(hubEid, hubVault, dstEid, dstVault));
+        _spokeOfHubResult[k] = result;
+        _spokeOfHubSet[k] = true;
     }
 
     function setIsCrossChainVault(bool isCrossChainVault_) external {
@@ -1812,11 +1831,9 @@ contract LzAdapterTest is Test {
         bytes memory message = abi.encode(uint256(5000000), true);
 
         vm.startPrank(address(mockEndpoint));
-        // This covers the FALSE branch of line 540
         lzAdapterHelper.exposed_lzReceive(origin, testGuid, message, address(0), "");
         vm.stopPrank();
 
-        // Should NOT have called composer callback
         assertFalse(mockComposer.completedDeposits(testGuid));
     }
 
@@ -1824,10 +1841,6 @@ contract LzAdapterTest is Test {
     // Spoke-to-Spoke Bridging Tests
     // ============================
 
-    // Constants for spoke-to-spoke topology:
-    //   A_EID (1)       = local chain (spoke sends from here)
-    //   HUB_EID (3)     = the hub chain
-    //   CO_SPOKE_EID (4) = another spoke chain
     uint32 constant HUB_EID      = 3;
     uint32 constant CO_SPOKE_EID = 4;
 
@@ -1846,7 +1859,6 @@ contract LzAdapterTest is Test {
 
         address hubVaultAddr = makeAddr("hubVault");
         mockVaultsFactory.setSpokeToHub(address(spokeVault), HUB_EID, hubVaultAddr);
-        // _isSpokeOfHub irrelevant here; destIsHub = true is sufficient
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA), HUB_EID, TEST_AMOUNT, hubVaultAddr, user
@@ -1860,7 +1872,6 @@ contract LzAdapterTest is Test {
         lzAdapter.executeBridging{value: fee}(bridgeParams);
         vm.stopPrank();
 
-        // Tokens must have left the spoke vault
         assertEq(oftTokenA.balanceOf(address(spokeVault)), balBefore - TEST_AMOUNT);
     }
 
@@ -1871,7 +1882,8 @@ contract LzAdapterTest is Test {
         address hubVaultAddr  = makeAddr("hubVault");
         address coSpokeVault  = makeAddr("coSpokeVault");
         mockVaultsFactory.setSpokeToHub(address(spokeVault), HUB_EID, hubVaultAddr);
-        // Default _isSpokeOfHub = true → factory confirms coSpokeVault is a spoke of that hub
+        mockVaultsFactory.setSpokeOfHub(HUB_EID, hubVaultAddr, CO_SPOKE_EID, coSpokeVault, true);
+        mockVaultsFactory.setIsSpokeOfHub(false);
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA), CO_SPOKE_EID, TEST_AMOUNT, coSpokeVault, user
@@ -1885,7 +1897,6 @@ contract LzAdapterTest is Test {
         lzAdapter.executeBridging{value: fee}(bridgeParams);
         vm.stopPrank();
 
-        // Tokens must have left the spoke vault — co-spoke route accepted
         assertEq(oftTokenA.balanceOf(address(spokeVault)), balBefore - TEST_AMOUNT);
     }
 
@@ -1897,7 +1908,7 @@ contract LzAdapterTest is Test {
         address unrelatedVault   = makeAddr("unrelatedVault");
         uint32  unrelatedEid     = 99;
         mockVaultsFactory.setSpokeToHub(address(spokeVault), HUB_EID, hubVaultAddr);
-        mockVaultsFactory.setIsSpokeOfHub(false); // factory says dest is NOT a spoke
+        mockVaultsFactory.setIsSpokeOfHub(false);
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA), unrelatedEid, TEST_AMOUNT, unrelatedVault, user
@@ -1922,7 +1933,6 @@ contract LzAdapterTest is Test {
         address foreignHubSpoke  = makeAddr("foreignHubSpoke");
         uint32  foreignEid       = 77;
         mockVaultsFactory.setSpokeToHub(address(spokeVault), HUB_EID, myHubVault);
-        // factory.isSpokeOfHub(myHubEid, myHubVault, foreignEid, foreignHubSpoke) returns false
         mockVaultsFactory.setIsSpokeOfHub(false);
 
         bytes memory bridgeParams = _createBridgeParams(
@@ -1941,9 +1951,8 @@ contract LzAdapterTest is Test {
 
     /// @notice Hub → unrelated vault must revert (factory returns false for isSpokeOfHub).
     function test_executeBridging_hub_to_unrelated_revert() public {
-        // mockVault.isHub = true → hub branch
         address unrelatedVault = makeAddr("unrelatedVault");
-        mockVaultsFactory.setIsSpokeOfHub(false); // not a spoke of this hub
+        mockVaultsFactory.setIsSpokeOfHub(false);
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA), DST_EID, TEST_AMOUNT, unrelatedVault, user
@@ -1968,7 +1977,7 @@ contract LzAdapterTest is Test {
         mockVaultsFactory.setSpokeToHub(address(spokeVault), HUB_EID, hubVaultAddr);
 
         bytes memory bridgeParams = _createBridgeParams(
-            address(oftTokenA), HUB_EID, TEST_AMOUNT, hubVaultAddr, address(0) // zero refund
+            address(oftTokenA), HUB_EID, TEST_AMOUNT, hubVaultAddr, address(0)
         );
         uint256 fee = lzAdapter.quoteBridgeFee(bridgeParams);
 
@@ -1981,9 +1990,9 @@ contract LzAdapterTest is Test {
 
     /// @notice Hub → spoke still works (existing path, regression guard).
     function test_executeBridging_hub_to_spoke_unchanged() public {
-        // mockVault.isHub = true by default → hub branch
         address spokeAddr = makeAddr("spokeAddr");
-        // _isSpokeOfHub = true by default → hub confirms spokeAddr is a spoke
+        mockVaultsFactory.setSpokeOfHub(mockVaultsFactory.localEid(), address(mockVault), DST_EID, spokeAddr, true);
+        mockVaultsFactory.setIsSpokeOfHub(false);
 
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA), DST_EID, TEST_AMOUNT, spokeAddr, user
@@ -2003,8 +2012,6 @@ contract LzAdapterTest is Test {
     }
 
     /// @notice dstVaultAddress == address(0) must revert before any factory call.
-    /// Verifies the zero-check added to _executeBridging is the first line of defence —
-    /// not relying on the factory's isSpokeOfHub to happen to return false.
     function test_executeBridging_spoke_zeroDstVault_revert() public {
         MockVault spokeVault = _deploySpokeVault();
         address hubVaultAddr = makeAddr("hubVault");
@@ -2024,7 +2031,6 @@ contract LzAdapterTest is Test {
 
     /// @notice hub dstVaultAddress == address(0) must also revert (hub branch).
     function test_executeBridging_hub_zeroDstVault_revert() public {
-        // mockVault.isHub = true → hub branch
         bytes memory bridgeParams = _createBridgeParams(
             address(oftTokenA), DST_EID, TEST_AMOUNT, address(0), user
         );
@@ -2039,19 +2045,50 @@ contract LzAdapterTest is Test {
         vm.stopPrank();
     }
 
-    /// @notice A hub vault that lies isHub()=false gets (0,address(0)) from spokeToHub
-    /// (factory returns empty for any address not registered as a spoke).
-    /// destIsHub = false, isSpokeOfHub(0,address(0),...) = false → InvalidReceiver.
+    /// @notice OFT-Proxy path: when token() != oftToken the adapter pulls the underlying
+    /// ERC20 from the vault and approves the proxy to spend it via forceApprove.
+    function test_executeBridging_oftProxy_underlying_transfer() public {
+        MockOFT underlying = new MockOFT("Underlying USDC", "USDC");
+        MockOFT oftProxy   = new MockOFT("OFT Proxy USDC", "pUSDC");
+        oftProxy.setUnderlyingToken(address(underlying));
+
+        vm.startPrank(owner);
+        address[] memory ofts   = new address[](1);
+        bool[]    memory trusted = new bool[](1);
+        ofts[0]    = address(oftProxy);
+        trusted[0] = true;
+        lzAdapter.setTrustedOFTs(ofts, trusted);
+        vm.stopPrank();
+
+        underlying.mint(address(mockVault), TEST_AMOUNT);
+        vm.deal(address(mockVault), 1 ether);
+
+        bytes memory bridgeParams = _createBridgeParams(
+            address(oftProxy), DST_EID, TEST_AMOUNT, dstVault, user
+        );
+        uint256 fee = lzAdapter.quoteBridgeFee(bridgeParams);
+
+        uint256 vaultBalBefore   = underlying.balanceOf(address(mockVault));
+        uint256 adapterBalBefore = underlying.balanceOf(address(lzAdapter));
+
+        vm.startPrank(address(mockVault));
+        underlying.approve(address(lzAdapter), TEST_AMOUNT);
+        lzAdapter.executeBridging{value: fee}(bridgeParams);
+        vm.stopPrank();
+
+        assertEq(underlying.balanceOf(address(mockVault)), vaultBalBefore   - TEST_AMOUNT);
+        assertEq(underlying.balanceOf(address(lzAdapter)), adapterBalBefore + TEST_AMOUNT);
+        assertEq(underlying.allowance(address(lzAdapter), address(oftProxy)), TEST_AMOUNT);
+    }
+
+    /// @notice A hub lying isHub()=false gets (0,address(0)) from spokeToHub;
+    /// isSpokeOfHub with a zero hub entry returns false → InvalidReceiver.
     function test_executeBridging_hubPretendingSpoke_revert() public {
-        // Deploy a "hub" vault that lies about isHub()
         MockVault fakeSpoke = new MockVault();
-        fakeSpoke.setIsHub(false);              // lie: pretend to be a spoke
+        fakeSpoke.setIsHub(false);
         mockVaultsFactory.setVault(address(fakeSpoke), true);
         oftTokenA.mint(address(fakeSpoke), INITIAL_BALANCE);
         vm.deal(address(fakeSpoke), 1 ether);
-
-        // Factory has NO spokeToHub entry for fakeSpoke → returns (0, address(0))
-        // We do NOT call setSpokeToHub for fakeSpoke.
 
         address targetVault = makeAddr("targetVault");
         bytes memory bridgeParams = _createBridgeParams(
@@ -2059,9 +2096,6 @@ contract LzAdapterTest is Test {
         );
         uint256 fee = lzAdapter.quoteBridgeFee(bridgeParams);
 
-        // _isSpokeOfHub = true globally, but isSpokeOfHub(0, address(0), DST_EID, targetVault)
-        // returns false because targetVault != address(0) — wait, mock returns true for non-zero dst.
-        // Set to false to reflect production: (0,address(0)) hub entry means no valid spokes.
         mockVaultsFactory.setIsSpokeOfHub(false);
 
         vm.startPrank(address(fakeSpoke));
