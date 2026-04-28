@@ -1060,8 +1060,7 @@ contract VaultFacet is ERC4626Upgradeable, PausableUpgradeable, IVaultFacet, Bas
                 AccessControlLib.AccessControlStorage storage acs = AccessControlLib.accessControlStorage();
                 if (msgSender_ == IMoreVaultsRegistry(acs.moreVaultsRegistry).router()) {
                     msgSender_ = receiver;
-                }
-                if (msgSender_ == IMoreVaultsRegistry(acs.moreVaultsRegistry).migrator()) {
+                } else if (msgSender_ == IMoreVaultsRegistry(acs.moreVaultsRegistry).migrator()) {
                     msgSender_ = receiver;
                 }
             }

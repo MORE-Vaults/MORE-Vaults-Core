@@ -36,10 +36,10 @@ contract VaultsRegistry is BaseVaultsRegistry {
 
     address public router;
 
-    address public migrator;
-
     /// @dev Protocol-wide escrow contract address (shared escrow)
     address public escrow;
+
+    address public migrator;
 
 
     /**
@@ -235,6 +235,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
     }
 
     function setRouter(address _router) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_router == address(0)) revert ZeroAddress();
         router = _router;
 
         emit RouterSet(_router);
@@ -244,6 +245,7 @@ contract VaultsRegistry is BaseVaultsRegistry {
      * @inheritdoc IMoreVaultsRegistry
      */
     function setMigrator(address _migrator) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_migrator == address(0)) revert ZeroAddress();
         migrator = _migrator;
 
         emit MigratorSet(_migrator);
