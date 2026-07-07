@@ -91,7 +91,6 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
 
     function stake(address adapter, uint256 amount, bytes calldata params)
         external
-        nonReentrant
         returns (uint256 receipts)
     {
         if (amount == 0) revert StakingFacetStorage.ZeroAmount();
@@ -113,7 +112,6 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
 
     function requestUnstake(address adapter, uint256 receipts, bytes calldata params)
         external
-        nonReentrant
         returns (bytes32 requestId)
     {
         if (receipts == 0) revert StakingFacetStorage.ZeroAmount();
@@ -168,7 +166,7 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
     ///      is the facet snapshot from unstake time (receipt shares). On shared protocol buckets the first
     ///      claim may emit `nativeAmountReceived` larger than this request's native deposit value — use
     ///      `requestedSharesAmount` for share attribution, not for summing native inflow.
-    function finalizeUnstake(bytes32 requestId) external nonReentrant returns (uint256 amount) {
+    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
         AccessControlLib.validateDiamond(msg.sender);
 
         StakingFacetStorage.Layout storage sfs = StakingFacetStorage.layout();
@@ -219,7 +217,6 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
     /// @param params Adapter-specific recovery options forwarded via delegatecall.
     function recoverStrandedWithdrawals(address adapter, bytes calldata params)
         external
-        nonReentrant
         returns (uint256 amount)
     {
         AccessControlLib.validateDiamond(msg.sender);
