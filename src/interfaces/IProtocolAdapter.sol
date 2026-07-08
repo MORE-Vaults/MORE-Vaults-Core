@@ -15,7 +15,8 @@ pragma solidity 0.8.28;
  *      `isWithdrawalClaimable`; `getWithdrawalClaimableAt` is informational and may be dynamic.
  *      `isWithdrawalCompleted` tracks protocol-side auto-settlement. `finalizeUnstake` must be
  *      idempotent: claim when needed and return the native amount received; return 0 when
- *      `isWithdrawalCompleted` is true (funds already on the vault).
+ *      `isWithdrawalCompleted` is true (funds already on the vault). Adapter-specific `params`
+ *      on finalize (e.g. Lido checkpoint hint) may be empty to use protocol defaults.
  *      Modules are audited and whitelisted in the registry before use.
  */
 interface IProtocolAdapter {
@@ -46,7 +47,7 @@ interface IProtocolAdapter {
         external
         returns (bytes32 requestId, uint256 actualReceipts);
 
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount);
+    function finalizeUnstake(bytes32 requestId, bytes calldata params) external returns (uint256 amount);
 
     /// @notice Recover native deposit-token refunds stranded in a protocol bucket without a matching
     ///         facet withdrawal request. Adapter-specific; see module natspec. Draining a shared bucket

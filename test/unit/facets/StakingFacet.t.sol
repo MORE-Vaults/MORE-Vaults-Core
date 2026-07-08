@@ -65,7 +65,7 @@ contract StakeRevertAdapter is IProtocolAdapter {
         return (bytes32(0), 0);
     }
 
-    function finalizeUnstake(bytes32) external pure returns (uint256) {
+    function finalizeUnstake(bytes32, bytes calldata) external pure returns (uint256) {
         return 0;
     }
 
@@ -129,7 +129,7 @@ contract StakeEmptyRevertAdapter is IProtocolAdapter {
         return (bytes32(0), 0);
     }
 
-    function finalizeUnstake(bytes32) external pure returns (uint256) {
+    function finalizeUnstake(bytes32, bytes calldata) external pure returns (uint256) {
         return 0;
     }
 
@@ -193,7 +193,7 @@ contract InvalidTokensAdapter is IProtocolAdapter {
         return (bytes32(0), 0);
     }
 
-    function finalizeUnstake(bytes32) external pure returns (uint256) {
+    function finalizeUnstake(bytes32, bytes calldata) external pure returns (uint256) {
         return 0;
     }
 
@@ -300,7 +300,7 @@ contract ZeroUnstakeReceiptsAdapter is IProtocolAdapter {
         actualReceipts = 0;
     }
 
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
+    function finalizeUnstake(bytes32 requestId, bytes calldata) external returns (uint256 amount) {
         MockLST lst = MockLST(lstPool);
         if (lst.isCompleted(requestId)) {
             return 0;
@@ -397,7 +397,7 @@ contract OverUnstakeReceiptsAdapter is IProtocolAdapter {
         actualReceipts = receipts + 1;
     }
 
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
+    function finalizeUnstake(bytes32 requestId, bytes calldata) external returns (uint256 amount) {
         MockLST lst = MockLST(lstPool);
         if (lst.isCompleted(requestId)) {
             return 0;
@@ -498,7 +498,7 @@ contract AsyncPendingStakeAdapter is IProtocolAdapter {
         return (bytes32(uint256(1)), receipts);
     }
 
-    function finalizeUnstake(bytes32) external returns (uint256 amount) {
+    function finalizeUnstake(bytes32, bytes calldata) external returns (uint256 amount) {
         return MockAsyncStakePool(pool).finalize(address(this));
     }
 
@@ -622,7 +622,7 @@ contract StakingFacetTest is Test {
 
     function _finalizeUnstake(bytes32 requestId) internal returns (uint256 amount) {
         vm.prank(address(facet));
-        amount = facet.finalizeUnstake(requestId);
+        amount = facet.finalizeUnstake(requestId, bytes(""));
     }
 
     function _vaultExternalAssetCount(uint8 tokenType) internal view returns (uint256) {
@@ -896,7 +896,7 @@ contract StakingFacetTest is Test {
 
         vm.prank(address(facet));
         vm.expectRevert(abi.encodeWithSelector(StakingFacetStorage.WithdrawalAlreadyFinalized.selector, requestId));
-        facet.finalizeUnstake(requestId);
+        facet.finalizeUnstake(requestId, bytes(""));
     }
 
     function test_finalizeUnstake_shouldRevertWhenWithdrawalNotReady() public {
@@ -912,13 +912,13 @@ contract StakingFacetTest is Test {
                 request.expectedClaimableAt
             )
         );
-        facet.finalizeUnstake(requestId);
+        facet.finalizeUnstake(requestId, bytes(""));
     }
 
     function test_finalizeUnstake_shouldRevertWhenUnauthorized() public {
         vm.prank(unauthorized);
         vm.expectRevert(AccessControlLib.UnauthorizedAccess.selector);
-        facet.finalizeUnstake(bytes32(uint256(1)));
+        facet.finalizeUnstake(bytes32(uint256(1)), bytes(""));
     }
 
     function test_finalizeUnstake_shouldSyncAfterAutoSettle() public {
@@ -949,7 +949,7 @@ contract StakingFacetTest is Test {
     function test_finalizeUnstake_shouldRevertWhenRequestNotFound() public {
         vm.prank(address(facet));
         vm.expectRevert(abi.encodeWithSelector(StakingFacetStorage.WithdrawalRequestNotFound.selector, bytes32(0)));
-        facet.finalizeUnstake(bytes32(0));
+        facet.finalizeUnstake(bytes32(0), bytes(""));
     }
 
     function test_beforeAccounting_shouldIgnoreFailingHarvest() public {

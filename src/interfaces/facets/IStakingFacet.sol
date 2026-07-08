@@ -14,10 +14,12 @@ interface IStakingFacet is IGenericMoreVaultFacetInitializable {
     ///                 use this event alone for indexer position tracking until keeper fulfillment.
     event Staked(address indexed adapter, address indexed depositToken, uint256 amount, uint256 receipts);
     event UnstakeRequested(address indexed adapter, uint256 receipts, bytes32 indexed requestId);
-    /// @param nativeAmountReceived Native deposit-token amount transferred to the vault in this transaction.
-    ///                           Zero when `alreadySettled` is true. May exceed `requestedSharesAmount` on
-    ///                           the first claim that drains a shared protocol bucket; sum `nativeAmountReceived`
-    ///                           only where `alreadySettled` is false.
+    /// @param nativeAmountReceived Native balance increase on the vault in this transaction (ETH/FLOW/etc.).
+    ///                           Not an ERC-20 mint; adapters do not auto-wrap to WETH. Zero when
+    ///                           `alreadySettled` is true. May exceed `requestedSharesAmount` on the first
+    ///                           claim that drains a shared protocol bucket; sum `nativeAmountReceived` only
+    ///                           where `alreadySettled` is false. Included in NAV via `VaultFacet` native +
+    ///                           wrapped-native accounting when wrapped native is in `availableAssets`.
     /// @param alreadySettled True when the protocol already delivered withdrawal funds before this call.
     /// @param requestedSharesAmount Receipt-share amount recorded on the facet withdrawal request at unstake
     ///        time (`WithdrawalRequest.amount`). Informational attribution in share units; not a native payout
@@ -35,11 +37,17 @@ interface IStakingFacet is IGenericMoreVaultFacetInitializable {
 
     function stake(address adapter, uint256 amount, bytes calldata params) external returns (uint256 receipts);
 
+    /// @notice Request unstake from a whitelisted adapter; records one facet withdrawal request.
+    /// @dev Returns one `requestId` per call. Protocol limits are per adapter call — e.g. Lido at most
+    ///      1000 stETH per queue entry; split large exits into multiple transactions.
     function requestUnstake(address adapter, uint256 receipts, bytes calldata params)
         external
         returns (bytes32 requestId);
 
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount);
+    /// @notice Claim a finalized adapter withdrawal. Returns native received on the vault (not ERC-20).
+    /// @param params Adapter-specific finalize options forwarded via delegatecall. Lido: optional
+    ///        `abi.encode(uint256 checkpointHint)` from `LidoAdapter.getClaimHint`; empty uses protocol default.
+    function finalizeUnstake(bytes32 requestId, bytes calldata params) external returns (uint256 amount);
 
     /// @notice Recover native deposit-token refunds stranded in the adapter protocol without a facet
     ///         withdrawal request. For edge cases only (e.g. async stake cancel); normal unstake uses

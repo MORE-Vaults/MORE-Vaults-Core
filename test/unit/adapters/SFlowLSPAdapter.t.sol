@@ -9,6 +9,8 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IWrappedToken} from "../../../src/interfaces/IWrappedToken.sol";
 
 contract MockWrappedNative is MockERC20, IWrappedToken {
+    error NativeTransferFailed();
+
     constructor() MockERC20("WFLOW", "WFLOW") {}
 
     function deposit() external payable {
@@ -18,20 +20,25 @@ contract MockWrappedNative is MockERC20, IWrappedToken {
     function withdraw(uint256 amount) external {
         _burn(msg.sender, amount);
         (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "native transfer failed");
+        if (!success) revert NativeTransferFailed();
     }
 
     receive() external payable {}
 }
 
 contract SFlowAdapterDelegateHarness {
+    error StakeFailed();
+    error RequestUnstakeFailed();
+    error FinalizeUnstakeFailed();
+    error RecoverStrandedWithdrawalsFailed();
+
     receive() external payable {}
 
     function stake(address adapter, uint256 amount) external returns (uint256 receipts) {
         (bool success, bytes memory data) = adapter.delegatecall(
             abi.encodeWithSelector(SFlowLSPAdapter.stake.selector, amount, bytes(""))
         );
-        require(success, "stake failed");
+        if (!success) revert StakeFailed();
         return abi.decode(data, (uint256));
     }
 
@@ -42,7 +49,7 @@ contract SFlowAdapterDelegateHarness {
         (bool success, bytes memory data) = adapter.delegatecall(
             abi.encodeWithSelector(SFlowLSPAdapter.requestUnstake.selector, receipts, bytes(""))
         );
-        require(success, "requestUnstake failed");
+        if (!success) revert RequestUnstakeFailed();
         return abi.decode(data, (bytes32, uint256));
     }
 
@@ -62,11 +69,14 @@ contract SFlowAdapterDelegateHarness {
         return SFlowLSPAdapter(adapter).isWithdrawalClaimable(vault, protocolRequestId);
     }
 
-    function finalizeUnstake(address adapter, bytes32 protocolRequestId) external returns (uint256 amount) {
+    function finalizeUnstake(address adapter, bytes32 protocolRequestId, bytes calldata params)
+        external
+        returns (uint256 amount)
+    {
         (bool success, bytes memory data) = adapter.delegatecall(
-            abi.encodeWithSelector(SFlowLSPAdapter.finalizeUnstake.selector, protocolRequestId)
+            abi.encodeWithSelector(SFlowLSPAdapter.finalizeUnstake.selector, protocolRequestId, params)
         );
-        require(success, "finalizeUnstake failed");
+        if (!success) revert FinalizeUnstakeFailed();
         return abi.decode(data, (uint256));
     }
 
@@ -74,7 +84,7 @@ contract SFlowAdapterDelegateHarness {
         (bool success, bytes memory data) = adapter.delegatecall(
             abi.encodeWithSelector(SFlowLSPAdapter.recoverStrandedWithdrawals.selector, params)
         );
-        require(success, "recoverStrandedWithdrawals failed");
+        if (!success) revert RecoverStrandedWithdrawalsFailed();
         return abi.decode(data, (uint256));
     }
 }
@@ -167,7 +177,7 @@ contract SFlowLSPAdapterTest is Test {
         (bytes32 protocolRequestId,) = harness.requestUnstake(address(adapter), 40 ether);
         lspVault.fulfillUnstake(1, 40 ether, 100);
 
-        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId);
+        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId, bytes(""));
 
         assertEq(amount, 40 ether);
         assertEq(vault.balance, 1_040 ether);
@@ -181,7 +191,7 @@ contract SFlowLSPAdapterTest is Test {
         lspVault.claimPendingWithdrawal();
 
         uint256 balanceBefore = vault.balance;
-        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId);
+        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId, bytes(""));
 
         assertEq(amount, 0);
         assertEq(vault.balance, balanceBefore);

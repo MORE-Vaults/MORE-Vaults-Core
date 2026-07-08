@@ -27,6 +27,8 @@ contract MockRegistry {
 }
 
 contract MockWrappedNative is MockERC20, IWrappedToken {
+    error NativeTransferFailed();
+
     constructor() MockERC20("WFLOW", "WFLOW") {}
 
     function deposit() external payable {
@@ -36,7 +38,7 @@ contract MockWrappedNative is MockERC20, IWrappedToken {
     function withdraw(uint256 amount) external {
         _burn(msg.sender, amount);
         (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "native transfer failed");
+        if (!success) revert NativeTransferFailed();
     }
 
     receive() external payable {}
@@ -102,7 +104,7 @@ contract StakingFacetSFlowTest is Test {
 
     function _finalizeUnstake(bytes32 requestId) internal returns (uint256 amount) {
         vm.prank(address(facet));
-        amount = facet.finalizeUnstake(requestId);
+        amount = facet.finalizeUnstake(requestId, bytes(""));
     }
 
     function test_stake_shouldQueueAsyncStakeWithoutWalletSFlow() public {

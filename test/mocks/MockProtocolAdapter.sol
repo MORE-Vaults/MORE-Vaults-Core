@@ -68,7 +68,7 @@ contract MockProtocolAdapter is IProtocolAdapter {
         actualReceipts = receipts;
     }
 
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
+    function finalizeUnstake(bytes32 requestId, bytes calldata params) external returns (uint256 amount) {
         MockLST lst = MockLST(lstPool);
         if (lst.isCompleted(requestId)) {
             return 0;

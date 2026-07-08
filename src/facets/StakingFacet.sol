@@ -9,7 +9,6 @@ import {IProtocolAdapter} from "../interfaces/IProtocolAdapter.sol";
 import {BaseFacetInitializer} from "./BaseFacetInitializer.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title StakingFacet
@@ -20,8 +19,15 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  *      MoreVaultsLib.stakingAddresses[STAKING_FACET_ID]. Withdrawal readiness is enforced only
  *      through adapter.isWithdrawalClaimable. Receipt tokens may be listed in availableAssets;
  *      adapter accounting excludes wallet receipts in that case.
+ *
+ *      Wrapped-native adapters (Lido, AnkrFlow, sFlowLSP):
+ *      - Stake unwraps WETH (or WFLOW) to native before protocol deposit; unstake finalize delivers native
+ *        back to the vault. Proceeds are not re-wrapped by the adapter.
+ *      - WETH/WFLOW must stay in `availableAssets` for the diamond `receive()` gate and for NAV (native balance
+ *        is counted with the wrapped-native ERC-20 balance in `VaultFacet`). Removing wrapped native while
+ *        claims are pending will revert finalize/recovery when the protocol sends ETH/FLOW.
  */
-contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
+contract StakingFacet is BaseFacetInitializer, IStakingFacet {
     using Math for uint256;
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.Bytes32Set;
@@ -110,6 +116,13 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
         emit Staked(adapter, depositToken, amount, receipts);
     }
 
+    /// @notice Request unstake from a whitelisted adapter; records one facet withdrawal request.
+    /// @dev Returns one `requestId` per call. Adapter-specific limits apply per call — e.g. Lido allows at
+    ///      most 1000 stETH per queue entry (`LidoAdapter.MAX_STETH_WITHDRAWAL_AMOUNT`); larger Lido exits
+    ///      require multiple `requestUnstake` transactions, each with its own facet `requestId` and
+    ///      `finalizeUnstake`. Lido mints unstETH to the vault — do not transfer the NFT before finalize.
+    ///      Ankr may return `actualReceipts < receipts`; sFlow may block unstake while async stake is unfulfilled
+    ///      (`getUnstakeableReceipts` gate).
     function requestUnstake(address adapter, uint256 receipts, bytes calldata params)
         external
         returns (bytes32 requestId)
@@ -162,11 +175,17 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
     }
 
     /// @notice Finalize a vault withdrawal request: claim from the protocol or close an already-settled request.
-    /// @dev `nativeAmountReceived` in `UnstakeFinalized` is the native delta this tx; `requestedSharesAmount`
-    ///      is the facet snapshot from unstake time (receipt shares). On shared protocol buckets the first
-    ///      claim may emit `nativeAmountReceived` larger than this request's native deposit value — use
-    ///      `requestedSharesAmount` for share attribution, not for summing native inflow.
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
+    /// @param params Adapter-specific finalize options forwarded to the module. Lido: optional
+    ///        `abi.encode(checkpointHint)` from `LidoAdapter.getClaimHint` or an off-chain Lido hint for very
+    ///        stale requestIds; empty uses `claimWithdrawal`.
+    /// @dev `nativeAmountReceived` in `UnstakeFinalized` is the **native** balance delta on the vault this tx
+    ///      (e.g. ETH from Lido `claimWithdrawal`, FLOW from Ankr/sFlow claim paths) — not an ERC-20 transfer.
+    ///      Adapters do not wrap proceeds; NAV still counts native via `VaultFacet` when wrapped native is in
+    ///      `availableAssets`. Requires WETH/WFLOW to remain available so diamond `receive()` accepts inbound
+    ///      native. `requestedSharesAmount` is the facet snapshot from unstake time (receipt shares). On shared
+    ///      protocol buckets the first claim may emit `nativeAmountReceived` larger than this request's native
+    ///      deposit value — use `requestedSharesAmount` for share attribution, not for summing native inflow.
+    function finalizeUnstake(bytes32 requestId, bytes calldata params) external returns (uint256 amount) {
         AccessControlLib.validateDiamond(msg.sender);
 
         StakingFacetStorage.Layout storage sfs = StakingFacetStorage.layout();
@@ -197,7 +216,7 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet, ReentrancyGuard {
 
         bytes memory result = _delegatecallAdapter(
             adapter,
-            abi.encodeWithSelector(IProtocolAdapter.finalizeUnstake.selector, protocolRequestId)
+            abi.encodeWithSelector(IProtocolAdapter.finalizeUnstake.selector, protocolRequestId, params)
         );
         amount = abi.decode(result, (uint256));
 

@@ -123,7 +123,7 @@ contract AnkrFlowAdapter is IProtocolAdapter {
     ///         finalize that drained the shared manual-claim bucket. Order of finalize does not affect total payout.
     ///      2. Claim: call `claimManually` → vault receives the entire manual-claim balance; returned `amount` is
     ///         the native delta (may exceed this request's `bondAmount` when multiple bonds share the bucket).
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
+    function finalizeUnstake(bytes32 requestId, bytes calldata) external returns (uint256 amount) {
         address vault = address(this);
         uint256 bondAmount = uint256(requestId);
 
@@ -141,9 +141,7 @@ contract AnkrFlowAdapter is IProtocolAdapter {
     ///      `finalizeUnstake` path (e.g. operational cleanup). Normal unstake withdrawals should use
     ///      `finalizeUnstake`. If this drains a bucket covering open fulfilled requests, finalize each
     ///      afterward (sync path). Not a substitute for per-request facet bookkeeping.
-    /// @param params Reserved for adapter-specific recovery options; unused.
-    function recoverStrandedWithdrawals(bytes calldata params) external returns (uint256 amount) {
-        params;
+    function recoverStrandedWithdrawals(bytes calldata) external returns (uint256 amount) {
         address vault = address(this);
         if (IAnkrFlowStakingPool(stakingPool).getForManualClaimOf(vault) == 0) return 0;
 

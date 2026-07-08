@@ -102,7 +102,7 @@ contract SFlowLSPAdapter is IProtocolAdapter {
     }
 
     /// @notice Claim pending native FLOW or sync an already-claimed fulfilled request (returns 0).
-    function finalizeUnstake(bytes32 requestId) external returns (uint256 amount) {
+    function finalizeUnstake(bytes32 requestId, bytes calldata params) external returns (uint256 amount) {
         address vault = address(this);
         uint256 id = uint256(requestId);
 
@@ -121,9 +121,7 @@ contract SFlowLSPAdapter is IProtocolAdapter {
     ///      `WithdrawalRequest` to finalize. Can also drain a shared bucket if unstake proceeds were
     ///      not claimed via `finalizeUnstake` first; then finalize each open fulfilled request afterward
     ///      (sync path). Prefer `finalizeUnstake` for normal unstake flow.
-    /// @param params Reserved for adapter-specific options (e.g. alternate claim recipient); unused.
-    function recoverStrandedWithdrawals(bytes calldata params) external returns (uint256 amount) {
-        params;
+    function recoverStrandedWithdrawals(bytes calldata) external returns (uint256 amount) {
         address vault = address(this);
         if (ILSPVault(lspVault).pendingWithdrawals(vault) == 0) return 0;
 

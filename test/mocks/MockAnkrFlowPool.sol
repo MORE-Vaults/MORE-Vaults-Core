@@ -33,6 +33,10 @@ contract MockAnkrCertificateToken is ERC20, IAnkrCertificateToken {
 }
 
 contract MockAnkrFlowPool is IAnkrFlowStakingPool {
+    error NothingToClaim();
+    error TransferFailed();
+    error InsufficientPending();
+
     address public bearingToken;
     address public certificateToken;
 
@@ -63,10 +67,10 @@ contract MockAnkrFlowPool is IAnkrFlowStakingPool {
 
     function claimManually(address receiverAddress) external {
         uint256 amount = manualClaimsOf[receiverAddress];
-        require(amount > 0, "nothing to claim");
+        if (amount == 0) revert NothingToClaim();
         manualClaimsOf[receiverAddress] = 0;
         (bool success,) = receiverAddress.call{value: amount}("");
-        require(success, "transfer failed");
+        if (!success) revert TransferFailed();
     }
 
     function getTokens() external view returns (address, address) {
@@ -90,7 +94,7 @@ contract MockAnkrFlowPool is IAnkrFlowStakingPool {
     }
 
     function settlePending(address claimer, uint256 bonds, bool toManual) external {
-        require(pendingUnstakesOf[claimer] >= bonds, "insufficient pending");
+        if (pendingUnstakesOf[claimer] < bonds) revert InsufficientPending();
         pendingUnstakesOf[claimer] -= bonds;
         totalPending -= bonds;
         _removeFirstPendingRequest(claimer, bonds);
@@ -101,7 +105,7 @@ contract MockAnkrFlowPool is IAnkrFlowStakingPool {
         }
 
         (bool success,) = claimer.call{value: bonds}("");
-        require(success, "transfer failed");
+        if (!success) revert TransferFailed();
     }
 
     function _removeFirstPendingRequest(address claimer, uint256 bonds) private {

@@ -8,6 +8,8 @@ import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IWrappedToken} from "../../../src/interfaces/IWrappedToken.sol";
 
 contract MockWrappedNative is MockERC20, IWrappedToken {
+    error NativeTransferFailed();
+
     constructor() MockERC20("WFLOW", "WFLOW") {}
 
     function deposit() external payable {
@@ -17,20 +19,24 @@ contract MockWrappedNative is MockERC20, IWrappedToken {
     function withdraw(uint256 amount) external {
         _burn(msg.sender, amount);
         (bool success,) = msg.sender.call{value: amount}("");
-        require(success, "native transfer failed");
+        if (!success) revert NativeTransferFailed();
     }
 
     receive() external payable {}
 }
 
 contract AdapterDelegateHarness {
+    error StakeFailed();
+    error FinalizeUnstakeFailed();
+    error RecoverStrandedWithdrawalsFailed();
+
     receive() external payable {}
 
     function stake(address adapter, uint256 amount) external returns (uint256 receipts) {
         (bool success, bytes memory data) = adapter.delegatecall(
             abi.encodeWithSelector(AnkrFlowAdapter.stake.selector, amount, bytes(""))
         );
-        require(success, "stake failed");
+        if (!success) revert StakeFailed();
         return abi.decode(data, (uint256));
     }
 
@@ -65,11 +71,14 @@ contract AdapterDelegateHarness {
         return AnkrFlowAdapter(adapter).isWithdrawalClaimable(vault, protocolRequestId);
     }
 
-    function finalizeUnstake(address adapter, bytes32 protocolRequestId) external returns (uint256 amount) {
+    function finalizeUnstake(address adapter, bytes32 protocolRequestId, bytes calldata params)
+        external
+        returns (uint256 amount)
+    {
         (bool success, bytes memory data) = adapter.delegatecall(
-            abi.encodeWithSelector(AnkrFlowAdapter.finalizeUnstake.selector, protocolRequestId)
+            abi.encodeWithSelector(AnkrFlowAdapter.finalizeUnstake.selector, protocolRequestId, params)
         );
-        require(success, "finalizeUnstake failed");
+        if (!success) revert FinalizeUnstakeFailed();
         return abi.decode(data, (uint256));
     }
 
@@ -77,7 +86,7 @@ contract AdapterDelegateHarness {
         (bool success, bytes memory data) = adapter.delegatecall(
             abi.encodeWithSelector(AnkrFlowAdapter.recoverStrandedWithdrawals.selector, params)
         );
-        require(success, "recoverStrandedWithdrawals failed");
+        if (!success) revert RecoverStrandedWithdrawalsFailed();
         return abi.decode(data, (uint256));
     }
 }
@@ -230,7 +239,7 @@ contract AnkrFlowAdapterTest is Test {
         (bytes32 protocolRequestId,) = harness.requestUnstake(address(adapter), 40 ether);
         pool.settlePending(vault, 40 ether, true);
 
-        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId);
+        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId, bytes(""));
 
         assertEq(amount, 40 ether);
         assertEq(vault.balance, 1_040 ether);
@@ -242,7 +251,7 @@ contract AnkrFlowAdapterTest is Test {
         pool.settlePending(vault, 40 ether, false);
 
         uint256 balanceBefore = vault.balance;
-        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId);
+        uint256 amount = harness.finalizeUnstake(address(adapter), protocolRequestId, bytes(""));
 
         assertEq(amount, 0);
         assertEq(vault.balance, balanceBefore);
@@ -256,8 +265,8 @@ contract AnkrFlowAdapterTest is Test {
         pool.settlePending(vault, 40 ether, true);
         pool.settlePending(vault, uint256(second), true);
 
-        uint256 firstAmount = harness.finalizeUnstake(address(adapter), first);
-        uint256 secondAmount = harness.finalizeUnstake(address(adapter), second);
+        uint256 firstAmount = harness.finalizeUnstake(address(adapter), first, bytes(""));
+        uint256 secondAmount = harness.finalizeUnstake(address(adapter), second, bytes(""));
 
         assertEq(firstAmount, 70 ether, "first finalize drains shared manual bucket");
         assertEq(secondAmount, 0, "second finalize syncs after bucket drained");

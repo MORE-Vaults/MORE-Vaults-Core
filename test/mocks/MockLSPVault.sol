@@ -30,6 +30,9 @@ contract MockSFlow is ERC20 {
 }
 
 contract MockLSPVault is ILSPVault {
+    error NothingToClaim();
+    error TransferFailed();
+
     address public immutable S_FLOW_ADDRESS;
     address public immutable FLOW_RECEIPT;
 
@@ -103,10 +106,10 @@ contract MockLSPVault is ILSPVault {
 
     function claimPendingWithdrawal() external {
         uint256 pending = pendingWithdrawals[msg.sender];
-        require(pending > 0, "nothing to claim");
+        if (pending == 0) revert NothingToClaim();
         pendingWithdrawals[msg.sender] = 0;
         (bool success,) = msg.sender.call{value: pending}("");
-        require(success, "transfer failed");
+        if (!success) revert TransferFailed();
     }
 
     function getSFlowQuote(uint256 flowWei) external view returns (uint256 sFlowWei) {
