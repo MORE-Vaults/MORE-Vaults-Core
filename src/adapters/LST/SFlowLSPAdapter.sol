@@ -130,8 +130,6 @@ contract SFlowLSPAdapter is IProtocolAdapter {
         amount = vault.balance - balanceBefore;
     }
 
-    function harvest() external {}
-
     function isWithdrawalClaimable(address vault, bytes32 requestId) external view returns (bool) {
         uint256 id = uint256(requestId);
         if (id == 0) return false;

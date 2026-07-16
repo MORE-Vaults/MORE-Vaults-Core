@@ -308,9 +308,6 @@ contract LidoAdapterTest is Test {
         assertFalse(adapter.isWithdrawalClaimable(address(0), bytes32(uint256(1))));
     }
 
-    function test_harvest_shouldBeNoOp() public {
-        adapter.harvest();
-    }
 
     function test_getProtocolName_shouldReturnLido() public view {
         assertEq(adapter.getProtocolName(), "Lido");

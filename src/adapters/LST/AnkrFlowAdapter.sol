@@ -150,8 +150,6 @@ contract AnkrFlowAdapter is IProtocolAdapter {
         amount = vault.balance - balanceBefore;
     }
 
-    function harvest() external {}
-
     /// @notice True when manual-claim bucket covers this bond (`>=`, not exact match).
     /// @dev Multiple vault requests can be claimable simultaneously while the pool holds one shared bucket.
     function isWithdrawalClaimable(address vault, bytes32 requestId) external view returns (bool) {

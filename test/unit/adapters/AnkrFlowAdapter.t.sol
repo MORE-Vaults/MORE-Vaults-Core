@@ -307,9 +307,6 @@ contract AnkrFlowAdapterTest is Test {
         assertFalse(adapter.isWithdrawalClaimable(address(0), bytes32(uint256(40 ether))));
     }
 
-    function test_harvest_shouldBeNoOp() public {
-        adapter.harvest();
-    }
 
     function test_requestUnstake_shouldRevertDuplicateBondAmount() public {
         harness.requestUnstake(address(adapter), 1);

@@ -13,7 +13,6 @@ import {MoreVaultsStorageHelper} from "../../helper/MoreVaultsStorageHelper.sol"
 import {IMoreVaultsRegistry} from "../../../src/interfaces/IMoreVaultsRegistry.sol";
 import {MockProtocolAdapter} from "../../mocks/MockProtocolAdapter.sol";
 import {MockLST} from "../../mocks/MockLST.sol";
-import {HarvestRevertAdapter} from "../../mocks/HarvestRevertAdapter.sol";
 import {MockERC20} from "../../mocks/MockERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -72,8 +71,6 @@ contract StakeRevertAdapter is IProtocolAdapter {
     function recoverStrandedWithdrawals(bytes calldata) external pure returns (uint256) {
         return 0;
     }
-
-    function harvest() external pure {}
 
     function isWithdrawalClaimable(address, bytes32) external pure returns (bool) {
         return false;
@@ -137,8 +134,6 @@ contract StakeEmptyRevertAdapter is IProtocolAdapter {
         return 0;
     }
 
-    function harvest() external pure {}
-
     function isWithdrawalClaimable(address, bytes32) external pure returns (bool) {
         return false;
     }
@@ -200,8 +195,6 @@ contract InvalidTokensAdapter is IProtocolAdapter {
     function recoverStrandedWithdrawals(bytes calldata) external pure returns (uint256) {
         return 0;
     }
-
-    function harvest() external pure {}
 
     function isWithdrawalClaimable(address, bytes32) external pure returns (bool) {
         return false;
@@ -312,8 +305,6 @@ contract ZeroUnstakeReceiptsAdapter is IProtocolAdapter {
         return 0;
     }
 
-    function harvest() external pure {}
-
     function isWithdrawalClaimable(address, bytes32 requestId) external view returns (bool) {
         return MockLST(lstPool).isClaimable(requestId);
     }
@@ -408,8 +399,6 @@ contract OverUnstakeReceiptsAdapter is IProtocolAdapter {
     function recoverStrandedWithdrawals(bytes calldata) external pure returns (uint256) {
         return 0;
     }
-
-    function harvest() external pure {}
 
     function isWithdrawalClaimable(address, bytes32 requestId) external view returns (bool) {
         return MockLST(lstPool).isClaimable(requestId);
@@ -506,8 +495,6 @@ contract AsyncPendingStakeAdapter is IProtocolAdapter {
         return 0;
     }
 
-    function harvest() external pure {}
-
     function isWithdrawalClaimable(address vault, bytes32) external view returns (bool) {
         return MockAsyncStakePool(pool).pendingUnstakeReceipts(vault) > 0;
     }
@@ -536,7 +523,6 @@ contract StakingFacetTest is Test {
     MockERC20 public receiptToken;
     MockLST public lst;
     MockProtocolAdapter public adapter;
-    HarvestRevertAdapter public harvestRevertAdapter;
     StakeRevertAdapter public stakeRevertAdapter;
     StakeEmptyRevertAdapter public stakeEmptyRevertAdapter;
     InvalidTokensAdapter public invalidTokensAdapter;
@@ -562,7 +548,6 @@ contract StakingFacetTest is Test {
         receiptToken = new MockERC20("Receipt", "REC");
         lst = new MockLST(address(depositToken), address(receiptToken), EXCHANGE_RATE, WITHDRAWAL_DELAY);
         adapter = new MockProtocolAdapter(address(lst));
-        harvestRevertAdapter = new HarvestRevertAdapter(address(lst));
         stakeRevertAdapter = new StakeRevertAdapter(address(depositToken), address(receiptToken));
         stakeEmptyRevertAdapter = new StakeEmptyRevertAdapter(address(depositToken), address(receiptToken));
         invalidTokensAdapter = new InvalidTokensAdapter();
@@ -589,7 +574,6 @@ contract StakingFacetTest is Test {
         );
 
         _whitelistAdapter(address(adapter));
-        _whitelistAdapter(address(harvestRevertAdapter));
         _whitelistAdapter(address(stakeRevertAdapter));
         _whitelistAdapter(address(stakeEmptyRevertAdapter));
         _whitelistAdapter(address(invalidTokensAdapter));
@@ -952,25 +936,7 @@ contract StakingFacetTest is Test {
         facet.finalizeUnstake(bytes32(0), bytes(""));
     }
 
-    function test_beforeAccounting_shouldIgnoreFailingHarvest() public {
-        _stake(address(harvestRevertAdapter), STAKE_AMOUNT);
 
-        vm.expectEmit(true, false, false, true, address(facet));
-        emit IStakingFacet.RewardsHarvested(address(harvestRevertAdapter), false);
-
-        vm.prank(address(facet));
-        facet.beforeAccounting();
-    }
-
-    function test_beforeAccounting_shouldHarvestActiveAdapters() public {
-        _stake(address(adapter), STAKE_AMOUNT);
-
-        vm.expectEmit(true, false, false, true, address(facet));
-        emit IStakingFacet.RewardsHarvested(address(adapter), true);
-
-        vm.prank(address(facet));
-        facet.beforeAccounting();
-    }
 
     function test_accountingStakingFacet_shouldReturnStakedValue() public {
         _stake(address(adapter), STAKE_AMOUNT);
@@ -1102,8 +1068,4 @@ contract StakingFacetTest is Test {
         assertEq(depositToken.balanceOf(address(facet)), depositBefore + 110e18);
     }
 
-    function test_beforeAccounting_shouldNoOpWhenNoActiveAdapters() public {
-        vm.prank(address(facet));
-        facet.beforeAccounting();
-    }
 }

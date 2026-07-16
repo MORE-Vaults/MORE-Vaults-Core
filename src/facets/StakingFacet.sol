@@ -50,12 +50,8 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet {
         MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
         ds.supportedInterfaces[type(IStakingFacet).interfaceId] = true;
 
-        StakingFacetStorage.Layout storage sfs = StakingFacetStorage.layout();
-        sfs.facetAddress = ds.selectorToFacetAndPosition[IStakingFacet.stake.selector].facetAddress;
-
         bytes32 facetSelector = abi.decode(data, (bytes32));
         ds.facetsForAccounting.push(facetSelector);
-        ds.beforeAccountingFacets.push(sfs.facetAddress);
         ds.vaultExternalAssets[MoreVaultsLib.TokenType.StakingToken].add(STAKING_FACET_ID);
     }
 
@@ -67,32 +63,13 @@ contract StakingFacet is BaseFacetInitializer, IStakingFacet {
             ds, IStakingFacet.accountingStakingFacet.selector, isReplacing
         );
 
-        StakingFacetStorage.Layout storage sfs = StakingFacetStorage.layout();
-        MoreVaultsLib.removeFromBeforeAccounting(ds, sfs.facetAddress, isReplacing);
-
         if (!isReplacing) {
             ds.vaultExternalAssets[MoreVaultsLib.TokenType.StakingToken].remove(STAKING_FACET_ID);
         }
     }
 
-
     function accountingStakingFacet() public view returns (uint256 sum, bool isPositive) {
         return (_computeStakedValue(), true);
-    }
-
-    function beforeAccounting() external {
-        MoreVaultsLib.MoreVaultsStorage storage ds = MoreVaultsLib.moreVaultsStorage();
-        EnumerableSet.AddressSet storage adapters = ds.stakingAddresses[STAKING_FACET_ID];
-
-        for (uint256 i; i < adapters.length();) {
-            address adapter = adapters.at(i);
-            (bool success,) = adapter.delegatecall(abi.encodeWithSelector(IProtocolAdapter.harvest.selector));
-            emit RewardsHarvested(adapter, success);
-
-            unchecked {
-                ++i;
-            }
-        }
     }
 
     function stake(address adapter, uint256 amount, bytes calldata params)

@@ -24,7 +24,6 @@ library StakingFacetStorage {
     struct Layout {
         mapping(bytes32 => WithdrawalRequest) withdrawalRequests;
         mapping(address => uint256) withdrawalRequestNonce;
-        address facetAddress;
     }
 
     error InvalidUnstakeReceipts(uint256 requested, uint256 actual);

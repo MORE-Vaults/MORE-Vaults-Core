@@ -27,13 +27,10 @@ interface IStakingFacet is IGenericMoreVaultFacetInitializable {
     event UnstakeFinalized(
         bytes32 indexed requestId, uint256 nativeAmountReceived, bool alreadySettled, uint256 requestedSharesAmount
     );
-    event RewardsHarvested(address indexed adapter, bool success);
     /// @param amount Native deposit-token amount recovered in this transaction.
     event StrandedWithdrawalsRecovered(address indexed adapter, uint256 amount);
 
     function accountingStakingFacet() external view returns (uint256 sum, bool isPositive);
-
-    function beforeAccounting() external;
 
     function stake(address adapter, uint256 amount, bytes calldata params) external returns (uint256 receipts);
 

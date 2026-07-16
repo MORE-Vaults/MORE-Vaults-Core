@@ -16,7 +16,6 @@ contract MoreVaultsDiamondTest is Test {
     address public registry;
     address public wrappedNative;
     address public factory;
-    IDiamondCut.FacetCut[] public cuts;
     address owner = address(1111);
     address curator = address(2222);
     address guardian = address(3333);
@@ -28,7 +27,7 @@ contract MoreVaultsDiamondTest is Test {
         registry = address(2);
         wrappedNative = address(3);
         factory = address(4);
-        cuts = new IDiamondCut.FacetCut[](0);
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](0);
 
         vm.mockCall(registry, abi.encodeWithSelector(IMoreVaultsRegistry.isPermissionless.selector), abi.encode(false));
         // Mock registry calls for diamondCut

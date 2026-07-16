@@ -80,8 +80,6 @@ contract MockProtocolAdapter is IProtocolAdapter {
         return 0;
     }
 
-    function harvest() external virtual {}
-
     function isWithdrawalClaimable(address, bytes32 requestId) external view returns (bool) {
         return MockLST(lstPool).isClaimable(requestId);
     }

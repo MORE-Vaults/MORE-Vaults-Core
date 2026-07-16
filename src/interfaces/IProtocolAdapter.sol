@@ -5,9 +5,8 @@ pragma solidity 0.8.28;
  * @title IProtocolAdapter
  * @notice Stateless staking module executed by StakingFacet via delegatecall
  * @dev View functions are called with a normal staticcall to the module address.
- *      Execution functions (`stake`, `requestUnstake`, `finalizeUnstake`, `recoverStrandedWithdrawals`,
- *      `harvest`) are
- *      delegatecalled into the vault context and MUST NOT read or write persistent storage.
+ *      Execution functions (`stake`, `requestUnstake`, `finalizeUnstake`, `recoverStrandedWithdrawals`)
+ *      are delegatecalled into the vault context and MUST NOT read or write persistent storage.
  *      Only constants/immutables and external calls are allowed in execution paths.
  *      Position accounting is exposed through view functions that read on-chain protocol state.
  *      `getAccountingDepositValue` returns the deposit-token value locked in the protocol that is
@@ -54,9 +53,6 @@ interface IProtocolAdapter {
     ///         here does not finalize facet requests — follow with `finalizeUnstake` per open request.
     /// @param params Adapter-specific recovery options. Unused by current implementations.
     function recoverStrandedWithdrawals(bytes calldata params) external returns (uint256 amount);
-
-    /// @notice Claim staking rewards to the vault. Side-effect only; accounting reads wallet balances.
-    function harvest() external;
 
     /// @notice Whether the protocol allows claiming this withdrawal request right now
     function isWithdrawalClaimable(address vault, bytes32 requestId) external view returns (bool);
