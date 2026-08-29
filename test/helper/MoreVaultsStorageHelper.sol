@@ -371,6 +371,10 @@ library MoreVaultsStorageHelper {
         return uint256(getMappingValue(contractAddress, ASSET_AVAILABLE, bytes32(uint256(uint160(asset))))) != 0;
     }
 
+    function setAssetAvailable(address contractAddress, address asset, bool available) internal {
+        setMappingValue(contractAddress, ASSET_AVAILABLE, bytes32(uint256(uint160(asset))), bytes32(uint256(available ? 1 : 0)));
+    }
+
     function isAssetDepositable(address contractAddress, address asset) internal view returns (bool) {
         return uint256(getMappingValue(contractAddress, ASSET_DEPOSITABLE, bytes32(uint256(uint160(asset))))) != 0;
     }
@@ -744,6 +748,41 @@ library MoreVaultsStorageHelper {
 
         // Get shares from second slot
         shares = uint256(vm.load(contractAddress, bytes32(uint256(key) + 1)));
+    }
+
+    /**
+     * @notice Adds a bytes32 value to the vaultExternalAssets EnumerableSet for a given TokenType
+     * @param contractAddress The contract address
+     * @param tokenType The TokenType (0 = HeldToken, 1 = StakingToken)
+     * @param value The bytes32 value to add (e.g., facet ID)
+     */
+    function addVaultExternalAsset(address contractAddress, uint8 tokenType, bytes32 value) internal {
+        // vaultExternalAssets is mapping(TokenType => EnumerableSet.Bytes32Set)
+        // Get the mapping slot for the specific TokenType
+        bytes32 mappingSlot = keccak256(
+            abi.encode(uint256(tokenType), bytes32(uint256(MoreVaultsLib.MORE_VAULTS_STORAGE_POSITION) + VAULT_EXTERNAL_ASSETS))
+        );
+
+        // Read current length
+        uint256 currentLength = uint256(vm.load(contractAddress, mappingSlot));
+
+        // Check if value already exists
+        bytes32 positionsSlot = bytes32(uint256(mappingSlot) + 1);
+        bytes32 positionKey = keccak256(abi.encode(value, positionsSlot));
+        uint256 position = uint256(vm.load(contractAddress, positionKey));
+
+        if (position == 0) {
+            // Value doesn't exist, add it
+            // Update length
+            vm.store(contractAddress, mappingSlot, bytes32(currentLength + 1));
+
+            // Add value to _values array
+            bytes32 valuesSlot = keccak256(abi.encode(mappingSlot));
+            vm.store(contractAddress, bytes32(uint256(valuesSlot) + currentLength), value);
+
+            // Update _positions mapping (1-indexed)
+            vm.store(contractAddress, positionKey, bytes32(currentLength + 1));
+        }
     }
 
     // Functions for lockedTokens mapping (slot 17) - DEPRECATED
